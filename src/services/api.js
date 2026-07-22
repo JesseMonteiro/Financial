@@ -1,11 +1,16 @@
 import axios from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
+// In production (GitHub Pages) calls go to the Supabase Edge Function.
+// Locally, Vite proxies /api → localhost:3001 (vite.config.js proxy setting).
+const SUPABASE_FUNCTION_URL = 'https://tslzhkbxabbhrmbefhrj.supabase.co/functions/v1/pluggy-proxy';
+const API_BASE_URL = import.meta.env.VITE_API_URL ||
+  (import.meta.env.DEV ? '/api' : SUPABASE_FUNCTION_URL);
 
 const api = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 15000,
+  timeout: 30000,
 });
+
 
 export async function fetchAccounts(itemId) {
   try {
