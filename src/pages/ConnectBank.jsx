@@ -37,15 +37,7 @@ export function ConnectBank() {
       if (Array.isArray(it) && it.length > 0) {
         setItems(it);
       } else {
-        // Known connected item fallback
-        setItems([
-          {
-            id: '62c2ec62-0cfa-40c7-9a83-b33c5ff60d98',
-            connector: { name: 'Banco Santander', type: 'PERSONAL_BANK' },
-            status: 'UPDATED',
-            updatedAt: new Date().toISOString()
-          }
-        ]);
+        setItems([]);
       }
     } catch (e) {
       setItems([]);

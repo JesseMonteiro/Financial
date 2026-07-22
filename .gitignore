@@ -20,6 +20,9 @@ dist-ssr
 .env.*.local
 !.env.example
 
+# Supabase CLI temp files (contain project ref, org ID, email)
+supabase/.temp/
+
 # Editor directories and OS files
 .vscode/*
 !.vscode/extensions.json
