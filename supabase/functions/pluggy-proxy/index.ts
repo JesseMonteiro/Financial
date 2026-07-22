@@ -292,6 +292,262 @@ async function handleWebhooks(client: PluggyClient, url: URL, method: string, bo
   return errorResponse('Invalid webhook action', 400);
 }
 
+// ─── Telegram chatbot (per-user context via profiles.telegram_chat_id) ───
+
+interface TelegramProfile {
+  id: string;
+  display_name?: string;
+  pluggy_item_ids?: unknown;
+  pluggy_client_id?: string | null;
+  pluggy_client_secret?: string | null;
+}
+
+function resolvePluggyCredentials(profile: TelegramProfile): { clientId: string; clientSecret: string } | null {
+  if (profile.pluggy_client_id && profile.pluggy_client_secret) {
+    return { clientId: profile.pluggy_client_id, clientSecret: profile.pluggy_client_secret };
+  }
+  const envId = Deno.env.get('PLUGGY_CLIENT_ID');
+  const envSecret = Deno.env.get('PLUGGY_CLIENT_SECRET');
+  if (envId && envSecret) return { clientId: envId, clientSecret: envSecret };
+  return null;
+}
+
+async function sendTelegramMessage(chatId: string, text: string): Promise<void> {
+  const token = Deno.env.get('TELEGRAM_BOT_TOKEN');
+  if (!token) {
+    console.error('[telegram] TELEGRAM_BOT_TOKEN missing');
+    return;
+  }
+  await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'Markdown' }),
+  });
+}
+
+async function parseIntentWithGemini(text: string): Promise<{ intent: string; data?: Record<string, unknown>; message?: string }> {
+  const apiKey = Deno.env.get('GEMINI_API_KEY');
+  if (!apiKey) return { intent: 'UNKNOWN', message: 'Assistente de linguagem natural indisponível no momento.' };
+
+  const system = `Você é o assistente do FinanceHub. Retorne APENAS JSON:
+{"intent":"ADD_TRANSACTION"|"GET_BALANCE"|"GET_TRANSACTIONS"|"UNKNOWN","data":{"amount":number,"description":string,"category":string,"type":"DEBIT"|"CREDIT","date_offset_days":number},"message":string}
+Categorias: Alimentação, Transporte, Moradia, Lazer, Saúde, Educação, Outros.`;
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      systemInstruction: { parts: [{ text: system }] },
+      contents: [{ role: 'user', parts: [{ text }] }],
+      generationConfig: { temperature: 0.1, responseMimeType: 'application/json' },
+    }),
+  });
+  if (!res.ok) {
+    console.error('[telegram] Gemini error', await res.text());
+    return { intent: 'UNKNOWN', message: 'Desculpe, tive um problema ao interpretar sua mensagem.' };
+  }
+  const data = await res.json();
+  const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '{}';
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return { intent: 'UNKNOWN', message: 'Não consegui entender o comando.' };
+  }
+}
+
+async function fetchPluggyAccountsForProfile(profile: TelegramProfile): Promise<Array<{ name: string; balance: number; id: string }>> {
+  const itemIds = asItemIdList(profile.pluggy_item_ids);
+  const creds = resolvePluggyCredentials(profile);
+  if (!itemIds.length || !creds) return [];
+
+  const client = { clientId: creds.clientId, clientSecret: creds.clientSecret };
+  const all: Array<{ name: string; balance: number; id: string }> = [];
+  for (const itemId of itemIds) {
+    try {
+      const d = await pluggyJson(client, '/accounts', { params: { itemId } }) as { results?: Array<{ name: string; balance: number; id: string }> };
+      all.push(...(d.results || []));
+    } catch (e) {
+      console.error(`[telegram] accounts for item ${itemId}:`, e);
+    }
+  }
+  return all;
+}
+
+async function buildBalanceText(profile: TelegramProfile, supabase: ReturnType<typeof createClient>): Promise<string> {
+  const bankAccounts = await fetchPluggyAccountsForProfile(profile);
+  let manualBalance = 0;
+  const { data: manualTxs } = await supabase
+    .from('manual_transactions')
+    .select('amount, type')
+    .eq('user_id', profile.id);
+
+  (manualTxs || []).forEach((tx: { amount: number; type: string }) => {
+    const amt = Number(tx.amount);
+    manualBalance += tx.type === 'DEBIT' ? -amt : amt;
+  });
+
+  let text = `💰 *Saldos de ${profile.display_name || 'usuário'}:*\n\n`;
+  let bankTotal = 0;
+  if (bankAccounts.length) {
+    for (const acc of bankAccounts) {
+      text += `🏦 *${acc.name}*: R$ ${Number(acc.balance).toFixed(2)}\n`;
+      bankTotal += Number(acc.balance);
+    }
+    text += `\n💵 *Total Bancos:* R$ ${bankTotal.toFixed(2)}\n`;
+  } else {
+    text += `🏦 *Contas de Banco:* Nenhuma conectada.\n`;
+  }
+  text += `📦 *Carteira Manual:* R$ ${manualBalance.toFixed(2)}\n`;
+  text += `\n📊 *Saldo Geral:* R$ ${(bankTotal + manualBalance).toFixed(2)}`;
+  return text;
+}
+
+async function buildTransactionsText(profile: TelegramProfile, supabase: ReturnType<typeof createClient>): Promise<string> {
+  const transactions: Array<{ date: Date; description: string; amount: number; type: string; category: string; origin: string }> = [];
+  const itemIds = asItemIdList(profile.pluggy_item_ids);
+  const creds = resolvePluggyCredentials(profile);
+
+  if (itemIds.length && creds) {
+    const client = { clientId: creds.clientId, clientSecret: creds.clientSecret };
+    const accounts = await fetchPluggyAccountsForProfile(profile);
+    for (const acc of accounts.slice(0, 3)) {
+      try {
+        const d = await pluggyJson(client, '/v2/transactions', {
+          params: { accountId: acc.id, pageSize: '5' },
+        }) as { results?: Array<{ date: string; description: string; amount: number; category?: string }> };
+        for (const t of d.results || []) {
+          const amount = Number(t.amount);
+          transactions.push({
+            date: new Date(t.date),
+            description: t.description,
+            amount,
+            type: amount < 0 ? 'DEBIT' : 'CREDIT',
+            category: t.category || 'Outros',
+            origin: 'Banco',
+          });
+        }
+      } catch (_) {}
+    }
+  }
+
+  const { data: manualTxs } = await supabase
+    .from('manual_transactions')
+    .select('date, description, amount, type, category')
+    .eq('user_id', profile.id)
+    .order('date', { ascending: false })
+    .limit(5);
+
+  for (const t of manualTxs || []) {
+    transactions.push({
+      date: new Date(t.date),
+      description: t.description,
+      amount: Number(t.amount),
+      type: t.type,
+      category: t.category || 'Outros',
+      origin: 'Manual',
+    });
+  }
+
+  if (!transactions.length) return '📝 Nenhuma transação recente encontrada.';
+  transactions.sort((a, b) => b.date.getTime() - a.date.getTime());
+
+  let text = `📝 *Últimos Lançamentos de ${profile.display_name || 'usuário'}:*\n\n`;
+  for (const tx of transactions.slice(0, 8)) {
+    const dateStr = tx.date.toLocaleDateString('pt-BR');
+    const prefix = tx.type === 'CREDIT' ? '🟢' : '🔴';
+    const sign = tx.type === 'CREDIT' ? '+' : '-';
+    text += `${prefix} *${dateStr}* - ${tx.description}\n     Valor: R$ ${sign}${Math.abs(tx.amount).toFixed(2)} [${tx.origin}] (${tx.category})\n`;
+  }
+  return text;
+}
+
+async function handleTelegramWebhook(payload: unknown): Promise<void> {
+  const message = (payload as { message?: { chat?: { id?: number | string }; text?: string } })?.message;
+  if (!message?.text || message.chat?.id == null) return;
+
+  const chatId = String(message.chat.id);
+  const text = message.text.trim();
+
+  const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+  const supabase = createClient(supabaseUrl, serviceKey);
+
+  if (text.startsWith('/start')) {
+    const token = text.split(/\s+/)[1];
+    if (!token) {
+      await sendTelegramMessage(chatId, '👋 *Olá! Eu sou o assistente do FinanceHub.*\n\nVincule sua conta em *Configurações → Conectar Telegram*.');
+      return;
+    }
+    const { data: linkResult, error } = await supabase.rpc('link_telegram_user', { p_token: token, p_chat_id: chatId });
+    if (error || !linkResult?.success) {
+      await sendTelegramMessage(chatId, `❌ *Falha ao vincular:* ${linkResult?.message || error?.message || 'Token inválido'}`);
+    } else {
+      await sendTelegramMessage(chatId, `🎉 *Olá, ${linkResult.display_name}!*\n\nConta vinculada. Pergunte: "Qual meu saldo?"`);
+    }
+    return;
+  }
+
+  const { data: profile, error: profileError } = await supabase.rpc('get_profile_by_telegram_chat_id', { p_chat_id: chatId });
+  if (profileError || !profile?.id) {
+    await sendTelegramMessage(chatId, '⚠️ *Conta não vinculada!*\nVá em Configurações do FinanceHub e conecte o Telegram.');
+    return;
+  }
+
+  console.log(`[telegram] chat=${chatId} user=${profile.id} name=${profile.display_name} items=${asItemIdList(profile.pluggy_item_ids).length}`);
+
+  let parsed: { intent: string; data?: Record<string, unknown>; message?: string } = { intent: 'UNKNOWN' };
+  const lower = text.toLowerCase();
+  if (lower === '/saldo' || lower === 'saldo') parsed = { intent: 'GET_BALANCE' };
+  else if (lower === '/ultimos' || lower === 'extrato') parsed = { intent: 'GET_TRANSACTIONS' };
+  else parsed = await parseIntentWithGemini(text);
+
+  if (parsed.intent === 'GET_BALANCE') {
+    await sendTelegramMessage(chatId, '🔍 _Buscando seus saldos..._');
+    await sendTelegramMessage(chatId, await buildBalanceText(profile, supabase));
+    return;
+  }
+
+  if (parsed.intent === 'GET_TRANSACTIONS') {
+    await sendTelegramMessage(chatId, '🔍 _Buscando lançamentos..._');
+    await sendTelegramMessage(chatId, await buildTransactionsText(profile, supabase));
+    return;
+  }
+
+  if (parsed.intent === 'ADD_TRANSACTION') {
+    const amount = Number(parsed.data?.amount);
+    const description = String(parsed.data?.description || '');
+    if (!amount || !description) {
+      await sendTelegramMessage(chatId, '❌ Informe o valor e a descrição do lançamento.');
+      return;
+    }
+    const formattedType = (parsed.data?.type as string) || 'DEBIT';
+    const formattedCategory = (parsed.data?.category as string) || 'Outros';
+    const dateOffset = Number(parsed.data?.date_offset_days || 0);
+    const { data: txResult, error: txError } = await supabase.rpc('create_manual_transaction_from_telegram', {
+      p_chat_id: chatId,
+      p_amount: amount,
+      p_description: description,
+      p_category: formattedCategory,
+      p_type: formattedType,
+      p_date_offset_days: dateOffset,
+    });
+    if (txError || !txResult?.success) {
+      await sendTelegramMessage(chatId, `❌ Erro ao salvar: ${txError?.message || txResult?.message}`);
+    } else {
+      const emoji = formattedType === 'CREDIT' ? '💰' : '💸';
+      const typeText = formattedType === 'CREDIT' ? 'Receita' : 'Despesa';
+      await sendTelegramMessage(chatId, `${emoji} *${typeText} cadastrada!*\n📝 ${description}\n💵 R$ ${amount.toFixed(2)}\n📂 ${formattedCategory}`);
+    }
+    return;
+  }
+
+  await sendTelegramMessage(
+    chatId,
+    parsed.message || 'Olá! Pergunte seu saldo ("qual meu saldo?") ou registre um gasto ("gastei 50 no mercado").'
+  );
+}
+
 // ─── Main router ───
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
@@ -307,6 +563,18 @@ Deno.serve(async (req: Request) => {
 
   if (resource === 'chatbot') {
     const action = segments[2];
+
+    // Public Telegram webhook — resolve FinanceHub user by telegram_chat_id
+    if (segments[1] === 'telegram' && action === 'webhook' && method === 'POST') {
+      try {
+        const payload = await req.json();
+        await handleTelegramWebhook(payload);
+      } catch (e) {
+        console.error('[telegram-webhook]', e);
+      }
+      return new Response('ok', { status: 200, headers: CORS });
+    }
+
     if (segments[1] === 'telegram' && action === 'link-token' && method === 'POST') {
       const authHeader = req.headers.get('authorization');
       if (!authHeader) return errorResponse('Missing authorization header', 401);

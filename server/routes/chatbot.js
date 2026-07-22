@@ -1,11 +1,31 @@
 import { Router } from 'express';
 import { checkAuth } from '../middleware/auth.js';
-import { getSupabaseClient } from '../services/supabaseClient.js';
+import { getSupabaseClient, getServiceRoleClient } from '../services/supabaseClient.js';
 import { createPluggyClient } from '../services/pluggyClient.js';
 import { parseNaturalLanguageCommand } from '../services/geminiService.js';
 import axios from 'axios';
 
 const router = Router();
+
+function asItemIdList(value) {
+  if (!Array.isArray(value)) return [];
+  return value.filter((id) => typeof id === 'string' && id.length > 0);
+}
+
+/** Prefer a complete profile credential pair; otherwise use the shared env pair. Never mix. */
+function resolvePluggyCredentials(profile) {
+  const profileId = profile?.pluggy_client_id;
+  const profileSecret = profile?.pluggy_client_secret;
+  if (profileId && profileSecret) {
+    return { clientId: profileId, clientSecret: profileSecret, source: 'profile' };
+  }
+  const envId = process.env.PLUGGY_CLIENT_ID;
+  const envSecret = process.env.PLUGGY_CLIENT_SECRET;
+  if (envId && envSecret) {
+    return { clientId: envId, clientSecret: envSecret, source: 'env' };
+  }
+  return null;
+}
 
 // Helper para enviar mensagens para o Telegram
 async function sendTelegramMessage(chatId, text) {
@@ -56,8 +76,14 @@ router.post('/telegram/webhook', async (req, res) => {
     const chatId = message.chat.id.toString();
     const text = message.text.trim();
 
-    // Criamos o cliente Supabase (anon) para interagir com as funções RPC
-    const supabase = getSupabaseClient(req);
+    // Service role: webhook não tem JWT; precisa ler perfil + manual_transactions sem RLS
+    let supabase;
+    try {
+      supabase = getServiceRoleClient();
+    } catch (e) {
+      console.warn('[Chatbot] SERVICE_ROLE ausente, fallback anon:', e.message);
+      supabase = getSupabaseClient(req);
+    }
 
     // 2.1 Fluxo de ativação de conta (/start TOKEN)
     if (text.startsWith('/start')) {
@@ -90,6 +116,8 @@ router.post('/telegram/webhook', async (req, res) => {
       await sendTelegramMessage(chatId, `⚠️ *Conta não vinculada!*\n\nNão consegui encontrar nenhuma conta do FinanceHub associada a este número de chat.\n\nPara vincular:\n1. Vá nas *Configurações* do FinanceHub Web.\n2. Clique em *Conectar Telegram*.\n3. Digite o comando gerado aqui no chat.`);
       return;
     }
+
+    console.log(`[Chatbot] chat=${chatId} user=${profile.id} name=${profile.display_name} items=${asItemIdList(profile.pluggy_item_ids).length}`);
 
     // 2.3 Processamento de Comandos Tradicionais ou Linguagem Natural com Gemini
     let parsed = { intent: 'UNKNOWN' };
@@ -171,32 +199,32 @@ router.post('/telegram/webhook', async (req, res) => {
   }
 });
 
+async function fetchPluggyAccounts(profile) {
+  const pluggyItemIds = asItemIdList(profile.pluggy_item_ids);
+  const creds = resolvePluggyCredentials(profile);
+  if (pluggyItemIds.length === 0 || !creds) {
+    return [];
+  }
+
+  const pluggyClient = await createPluggyClient(creds.clientId, creds.clientSecret);
+  const promises = pluggyItemIds.map(async (itemId) => {
+    try {
+      const res = await pluggyClient.get('/accounts', { params: { itemId } });
+      return res.data.results || res.data || [];
+    } catch (e) {
+      console.warn(`[Chatbot Pluggy] Falha ao buscar contas do item ${itemId} (${creds.source}):`, e.response?.data || e.message);
+      return [];
+    }
+  });
+  return (await Promise.all(promises)).flat();
+}
+
 // Helper para compilar saldos do Pluggy + Manual
 async function fetchUserBalancesText(profile, supabase) {
   try {
-    const pluggyItemIds = profile.pluggy_item_ids || [];
-    let bankAccounts = [];
+    const bankAccounts = await fetchPluggyAccounts(profile);
 
-    // Busca saldos dos bancos conectados via Pluggy
-    if (pluggyItemIds.length > 0 && profile.pluggy_client_id && profile.pluggy_client_secret) {
-      try {
-        const pluggyClient = await createPluggyClient(profile.pluggy_client_id, profile.pluggy_client_secret);
-        const promises = pluggyItemIds.map(async (itemId) => {
-          try {
-            const res = await pluggyClient.get('/accounts', { params: { itemId } });
-            return res.data.results || res.data || [];
-          } catch (e) {
-            return [];
-          }
-        });
-        const results = await Promise.all(promises);
-        bankAccounts = results.flat();
-      } catch (pluggyErr) {
-        console.warn('[Chatbot Balance] Erro Pluggy Client:', pluggyErr.message);
-      }
-    }
-
-    // Busca transações manuais no Supabase para calcular saldo manual
+    // Busca transações manuais no Supabase para calcular saldo manual (somente deste user_id)
     let manualBalance = 0;
     const { data: manualTxs } = await supabase
       .from('manual_transactions')
@@ -219,8 +247,8 @@ async function fetchUserBalancesText(profile, supabase) {
 
     if (bankAccounts.length > 0) {
       bankAccounts.forEach(acc => {
-        text += `🏦 *${acc.name}*: R$ ${acc.balance.toFixed(2)}\n`;
-        bankTotal += acc.balance;
+        text += `🏦 *${acc.name}*: R$ ${Number(acc.balance).toFixed(2)}\n`;
+        bankTotal += Number(acc.balance);
       });
       text += `\n💵 *Total Bancos:* R$ ${bankTotal.toFixed(2)}\n`;
     } else {
@@ -240,15 +268,15 @@ async function fetchUserBalancesText(profile, supabase) {
 // Helper para compilar transações recentes do Pluggy + Manual
 async function fetchUserTransactionsText(profile, supabase) {
   try {
-    const pluggyItemIds = profile.pluggy_item_ids || [];
     let transactions = [];
+    const pluggyItemIds = asItemIdList(profile.pluggy_item_ids);
+    const creds = resolvePluggyCredentials(profile);
 
-    // 1. Buscar transações do Pluggy
-    if (pluggyItemIds.length > 0 && profile.pluggy_client_id && profile.pluggy_client_secret) {
+    // 1. Buscar transações do Pluggy (somente itemIds deste perfil)
+    if (pluggyItemIds.length > 0 && creds) {
       try {
-        const pluggyClient = await createPluggyClient(profile.pluggy_client_id, profile.pluggy_client_secret);
-        
-        // Primeiro busca contas
+        const pluggyClient = await createPluggyClient(creds.clientId, creds.clientSecret);
+
         const accPromises = pluggyItemIds.map(async (itemId) => {
           try {
             const res = await pluggyClient.get('/accounts', { params: { itemId } });
@@ -267,7 +295,6 @@ async function fetchUserTransactionsText(profile, supabase) {
           });
           const pluggyTxs = (await Promise.all(txPromises)).flat();
           pluggyTxs.forEach(t => {
-            // Se o valor for negativo é débito, se for positivo é crédito
             const tAmount = Number(t.amount);
             transactions.push({
               date: new Date(t.date),
@@ -284,7 +311,7 @@ async function fetchUserTransactionsText(profile, supabase) {
       }
     }
 
-    // 2. Buscar últimas 5 transações manuais do Supabase
+    // 2. Buscar últimas 5 transações manuais do Supabase (somente deste user_id)
     const { data: manualTxs } = await supabase
       .from('manual_transactions')
       .select('date, description, amount, type, category')
@@ -298,7 +325,7 @@ async function fetchUserTransactionsText(profile, supabase) {
           date: new Date(t.date),
           description: t.description,
           amount: Number(t.amount),
-          type: t.type, // 'DEBIT' ou 'CREDIT'
+          type: t.type,
           category: t.category || 'Outros',
           origin: 'Manual'
         });
@@ -309,16 +336,15 @@ async function fetchUserTransactionsText(profile, supabase) {
       return "📝 Nenhuma transação recente encontrada.";
     }
 
-    // Ordena decrescente por data
     transactions.sort((a, b) => b.date - a.date);
 
-    let text = `📝 *Últimos Lançamentos (Bancos + Manual):*\n\n`;
+    let text = `📝 *Últimos Lançamentos de ${profile.display_name}:*\n\n`;
     transactions.slice(0, 8).forEach(tx => {
       const dateStr = tx.date.toLocaleDateString('pt-BR');
       const prefix = tx.type === 'CREDIT' ? '🟢' : '🔴';
       const amountSign = tx.type === 'CREDIT' ? '+' : '-';
       const absAmount = Math.abs(tx.amount).toFixed(2);
-      
+
       text += `${prefix} *${dateStr}* - ${tx.description}\n     Valor: R$ ${amountSign}${absAmount} [${tx.origin}] (${tx.category})\n`;
     });
 
