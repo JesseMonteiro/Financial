@@ -1,17 +1,15 @@
-// Pluggy Proxy — Supabase Edge Function
+// Pluggy Proxy — Supabase Edge Function (Reverted to Global Env Secrets)
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.8";
 
 const PLUGGY_API = 'https://api.pluggy.ai';
 
-// ─── In-memory token cache ───
 interface CachedToken {
   token: string;
   expiresAt: number;
 }
 const tokenCache = new Map<string, CachedToken>();
 
-// ─── CORS ───
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -26,6 +24,7 @@ function jsonResponse(data: unknown, status = 200): Response {
 }
 
 function errorResponse(message: string, status = 500): Response {
+  console.error(`[pluggy-proxy] Error Response (${status}): ${message}`);
   return jsonResponse({ error: message }, status);
 }
 
@@ -35,8 +34,7 @@ interface PluggyClient {
   itemIds: string[];
 }
 
-async function getPluggyApiKey(client: PluggyClient): Promise<string> {
-  const { clientId, clientSecret } = client;
+async function getPluggyApiKey(clientId: string, clientSecret: string): Promise<string> {
   const cached = tokenCache.get(clientId);
   if (cached && Date.now() < cached.expiresAt - 5 * 60 * 1000) {
     return cached.token;
@@ -56,11 +54,11 @@ async function getPluggyApiKey(client: PluggyClient): Promise<string> {
 }
 
 async function pluggyFetch(
-  client: PluggyClient,
+  client: { clientId: string, clientSecret: string },
   path: string,
   options: { method?: string; body?: unknown; params?: Record<string, string | undefined> } = {}
 ): Promise<Response> {
-  const apiKey = await getPluggyApiKey(client);
+  const apiKey = await getPluggyApiKey(client.clientId, client.clientSecret);
   let url = `${PLUGGY_API}${path}`;
   if (options.params) {
     const qs = new URLSearchParams();
@@ -79,7 +77,7 @@ async function pluggyFetch(
 }
 
 async function pluggyJson(
-  client: PluggyClient,
+  client: { clientId: string, clientSecret: string },
   path: string,
   options?: { method?: string; body?: unknown; params?: Record<string, string | undefined> }
 ): Promise<unknown> {
@@ -95,9 +93,11 @@ async function handleAccounts(client: PluggyClient, url: URL, id?: string): Prom
   if (id) return jsonResponse(await pluggyJson(client, `/accounts/${id}`));
   const itemId = url.searchParams.get('itemId');
   const type = url.searchParams.get('type') ?? undefined;
-  let targetItemIds = itemId ? (client.itemIds.includes(itemId) ? [itemId] : []) : client.itemIds;
-  if (itemId && targetItemIds.length === 0) return errorResponse('Acesso negado para este item ID', 403);
-  if (targetItemIds.length === 0) return jsonResponse({ results: [], total: 0 });
+  
+  let targetItemIds = itemId ? [itemId] : client.itemIds;
+  if (targetItemIds.length === 0) {
+    return jsonResponse({ results: [], total: 0 });
+  }
   
   const all: unknown[] = [];
   for (const iid of targetItemIds) {
@@ -106,7 +106,9 @@ async function handleAccounts(client: PluggyClient, url: URL, id?: string): Prom
       if (type) params.type = type;
       const d = await pluggyJson(client, '/accounts', { params }) as { results?: unknown[] };
       all.push(...(d.results || []));
-    } catch (_) {}
+    } catch (e) {
+      console.error(`[pluggy-proxy] Error fetching accounts for item ${iid}:`, e);
+    }
   }
   return jsonResponse({ results: all, total: all.length });
 }
@@ -144,8 +146,7 @@ async function handleInvestments(client: PluggyClient, url: URL, id?: string): P
   if (id) return jsonResponse(await pluggyJson(client, `/investments/${id}`));
   const itemId = url.searchParams.get('itemId');
   const type = url.searchParams.get('type') ?? undefined;
-  let targetItemIds = itemId ? (client.itemIds.includes(itemId) ? [itemId] : []) : client.itemIds;
-  if (itemId && targetItemIds.length === 0) return errorResponse('Acesso negado para este item ID', 403);
+  let targetItemIds = itemId ? [itemId] : client.itemIds;
   if (targetItemIds.length === 0) return jsonResponse({ results: [], total: 0 });
   const all: unknown[] = [];
   for (const iid of targetItemIds) {
@@ -162,8 +163,7 @@ async function handleInvestments(client: PluggyClient, url: URL, id?: string): P
 async function handleLoans(client: PluggyClient, url: URL, id?: string): Promise<Response> {
   if (id) return jsonResponse(await pluggyJson(client, `/loans/${id}`));
   const itemId = url.searchParams.get('itemId');
-  let targetItemIds = itemId ? (client.itemIds.includes(itemId) ? [itemId] : []) : client.itemIds;
-  if (itemId && targetItemIds.length === 0) return errorResponse('Acesso negado para este item ID', 403);
+  let targetItemIds = itemId ? [itemId] : client.itemIds;
   if (targetItemIds.length === 0) return jsonResponse({ results: [], total: 0 });
   const all: unknown[] = [];
   for (const iid of targetItemIds) {
@@ -194,21 +194,15 @@ async function handleItems(client: PluggyClient, url: URL, method: string, body:
     const itemId = (body as { itemId?: string })?.itemId;
     return jsonResponse(await pluggyJson(client, '/connect_token', { method: 'POST', body: itemId ? { itemId } : {} }));
   }
-  if (idOrAction === 'register') {
-    return errorResponse('Use internal register logic', 400); 
-  }
   const id = idOrAction;
   if (id && method === 'PATCH') {
-    if (!client.itemIds.includes(id)) return errorResponse('Acesso negado', 403);
     return jsonResponse(await pluggyJson(client, `/items/${id}`, { method: 'PATCH', body }));
   }
   if (id && method === 'DELETE') {
-    if (!client.itemIds.includes(id)) return errorResponse('Acesso negado', 403);
     await pluggyFetch(client, `/items/${id}`, { method: 'DELETE' });
     return jsonResponse({ success: true, message: 'Conexão removida com sucesso' });
   }
   if (id) {
-    if (!client.itemIds.includes(id)) return errorResponse('Acesso negado', 403);
     return jsonResponse(await pluggyJson(client, `/items/${id}`));
   }
   const itemIds = client.itemIds;
@@ -218,7 +212,9 @@ async function handleItems(client: PluggyClient, url: URL, method: string, body:
     try {
       const d = await pluggyJson(client, `/items/${iid}`);
       results.push(d);
-    } catch (_) {}
+    } catch (e) {
+      console.error(`[pluggy-proxy] Failed to fetch item ${iid}:`, e);
+    }
   }
   return jsonResponse({ results, total: results.length });
 }
@@ -304,14 +300,13 @@ Deno.serve(async (req: Request) => {
     try { body = await req.json(); } catch (_) {}
   }
 
-  const { data: profile, error: profileError } = await supabaseClient
+  const { data: profile } = await supabaseClient
     .from('profiles')
-    .select('pluggy_item_ids, pluggy_client_id, pluggy_client_secret')
+    .select('pluggy_item_ids')
     .eq('id', user.id)
     .maybeSingle();
 
-  if (profileError) return errorResponse(`Profile fetch error: ${profileError.message}`, 500);
-  let itemIds = profile?.pluggy_item_ids || [];
+  const itemIds = profile?.pluggy_item_ids || [];
   
   if (resource === 'items' && actionOrId === 'register' && method === 'POST') {
     const itemIdToRegister = (body as { itemId?: string })?.itemId;
@@ -327,31 +322,12 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ success: true, message: 'Item registrado com sucesso no perfil.' });
   }
 
-  const clientId = profile?.pluggy_client_id || Deno.env.get('PLUGGY_CLIENT_ID');
-  const clientSecret = profile?.pluggy_client_secret || Deno.env.get('PLUGGY_CLIENT_SECRET');
+  // --- ALWAYS USE GLOBAL ENV VARS ---
+  const clientId = Deno.env.get('PLUGGY_CLIENT_ID');
+  const clientSecret = Deno.env.get('PLUGGY_CLIENT_SECRET');
 
   if (!clientId || !clientSecret) {
-    return errorResponse('PLUGGY_CLIENT_ID or PLUGGY_CLIENT_SECRET not configured for this user or globally', 500);
-  }
-
-  // --- AUTOMATIC SYNC FOR CUSTOM CREDENTIALS ---
-  // Se o usuário estiver usando as próprias chaves, ele é dono do workspace inteiro.
-  // Vamos buscar todos os itens disponíveis na Pluggy e permitir acesso a eles automaticamente,
-  // evitando que ele perca conexões antigas.
-  if (profile?.pluggy_client_id && profile?.pluggy_client_id !== Deno.env.get('PLUGGY_CLIENT_ID')) {
-    try {
-      const itemsData = await pluggyJson({ clientId, clientSecret } as PluggyClient, '/items') as { results?: { id: string }[] };
-      const allWorkspaceItemIds = (itemsData.results || []).map(i => i.id);
-      
-      // Update profile in background if there are new items not in profile yet
-      const missingItems = allWorkspaceItemIds.filter(id => !itemIds.includes(id));
-      if (missingItems.length > 0) {
-        itemIds = Array.from(new Set([...itemIds, ...allWorkspaceItemIds]));
-        supabaseClient.from('profiles').update({ pluggy_item_ids: itemIds }).eq('id', user.id).then();
-      }
-    } catch (e) {
-      console.error('Failed to sync custom workspace items:', e);
-    }
+    return errorResponse('PLUGGY_CLIENT_ID or PLUGGY_CLIENT_SECRET not configured in Edge Function environment variables', 500);
   }
 
   const clientConfig: PluggyClient = { clientId, clientSecret, itemIds };
