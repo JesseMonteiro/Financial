@@ -21,6 +21,7 @@ import { useAccountStore } from '../stores/accountStore';
 import { useTransactionStore } from '../stores/transactionStore';
 import { useInvestmentStore } from '../stores/investmentStore';
 import { useBudgetStore } from '../stores/budgetStore';
+import { useAuthStore } from '../stores/authStore';
 import { formatCurrency, formatDateRelative } from '../utils/formatters';
 import { translateCategory } from '../utils/categories';
 import { getCategoryColor } from '../utils/colors';
@@ -31,6 +32,7 @@ export function Dashboard() {
   const { loadTransactions, transactions } = useTransactionStore();
   const { loadInvestments, investments, getTotalInvested } = useInvestmentStore();
   const { loadBudgets, budgets } = useBudgetStore();
+  const user = useAuthStore((s) => s.user);
 
   useEffect(() => {
     loadAccounts();
@@ -41,6 +43,11 @@ export function Dashboard() {
 
   const summary = getSummary();
   const totalInvestments = getTotalInvested();
+  const displayName =
+    user?.user_metadata?.full_name ||
+    user?.user_metadata?.name ||
+    user?.email?.split('@')[0] ||
+    'usuário';
 
   // Dynamic budget calculations based on real transaction category expenses
   const dynamicCategoryBudgets = useMemo(() => {
@@ -75,10 +82,10 @@ export function Dashboard() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
           <h1 style={{ fontSize: 'var(--font-size-3xl)', fontWeight: 700, color: 'var(--text-primary)' }}>
-            Olá, Jesse Monteiro! 👋
+            Olá, {displayName}! 👋
           </h1>
           <p style={{ color: 'var(--text-muted)', fontSize: 'var(--font-size-sm)' }}>
-            Visão consolidada real das suas contas do Banco Santander sincronizadas via Pluggy.ai.
+            Visão consolidada das suas contas sincronizadas via Pluggy.ai.
           </p>
         </div>
         <Link to="/connect" style={{ textDecoration: 'none' }}>
