@@ -6,12 +6,8 @@ import { migrateLocalDataToSupabase } from '../../services/dataMigration';
 import { useSettingsStore } from '../../stores/settingsStore';
 
 export function AuthGuard({ children }) {
-  const { user, loading, initialize } = useAuthStore();
+  const { user, loading } = useAuthStore();
   const loadFromSupabase = useSettingsStore(s => s.loadFromSupabase);
-
-  useEffect(() => {
-    initialize();
-  }, [initialize]);
 
   // Run data migration and load settings when user is authenticated
   useEffect(() => {
