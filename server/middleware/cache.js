@@ -9,7 +9,8 @@ export function cacheMiddleware(ttlSeconds = 300) {
       return next();
     }
 
-    const key = req.originalUrl || req.url;
+    const userId = req.user?.id || 'anonymous';
+    const key = `${userId}:${req.originalUrl || req.url}`;
     const cachedResponse = cache.get(key);
 
     if (cachedResponse) {
@@ -30,4 +31,15 @@ export function cacheMiddleware(ttlSeconds = 300) {
 
 export function clearCache() {
   cache.flushAll();
+}
+
+export function clearUserCache(userId) {
+  if (!userId) return;
+  const keys = cache.keys();
+  const prefix = `${userId}:`;
+  keys.forEach(key => {
+    if (key.startsWith(prefix)) {
+      cache.del(key);
+    }
+  });
 }

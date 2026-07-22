@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { supabase } from './supabaseClient.js';
 
 // In production (GitHub Pages) calls go to the Supabase Edge Function.
 // Locally, Vite proxies /api → localhost:3001 (vite.config.js proxy setting).
@@ -10,6 +11,20 @@ const api = axios.create({
   baseURL: API_BASE_URL,
   timeout: 30000,
 });
+
+// Interceptor to attach the Supabase user session token to outgoing requests
+api.interceptors.request.use(async (config) => {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.access_token) {
+      config.headers.Authorization = `Bearer ${session.access_token}`;
+    }
+  } catch (error) {
+    console.error('[API Interceptor Error] Falha ao obter sessão do Supabase:', error);
+  }
+  return config;
+});
+
 
 
 export async function fetchAccounts(itemId) {

@@ -1,41 +1,43 @@
 import { Router } from 'express';
-import { createPluggyClient } from '../services/pluggyClient.js';
+import { checkAuth, loadPluggyClient } from '../middleware/auth.js';
 import { cacheMiddleware } from '../middleware/cache.js';
-import { getItemIds, addItemId } from '../services/itemRegistry.js';
 
 const router = Router();
 
-router.get('/', cacheMiddleware(180), async (req, res) => {
+// GET /api/loans
+router.get('/', checkAuth, loadPluggyClient, cacheMiddleware(180), async (req, res) => {
   try {
-    const client = await createPluggyClient();
+    const client = req.pluggyClient;
     const { itemId } = req.query;
 
     let targetItemIds = [];
     if (itemId) {
+      if (!req.pluggyItemIds.includes(itemId)) {
+        return res.status(403).json({ error: 'Acesso negado para este item ID' });
+      }
       targetItemIds = [itemId];
     } else {
-      try {
-        const itemsRes = await client.get('/items');
-        const items = itemsRes.data.results || itemsRes.data || [];
-        if (Array.isArray(items) && items.length > 0) {
-          items.forEach(i => i.id && addItemId(i.id));
-        }
-      } catch (e) {}
-      targetItemIds = getItemIds();
+      targetItemIds = req.pluggyItemIds;
+    }
+
+    if (targetItemIds.length === 0) {
+      return res.json({ results: [], total: 0 });
     }
 
     const allLoans = [];
-    for (const id of targetItemIds) {
+    const promises = targetItemIds.map(async (id) => {
       try {
         const response = await client.get('/loans', { params: { itemId: id } });
         const list = response.data.results || response.data || [];
-        if (Array.isArray(list)) {
-          allLoans.push(...list);
-        }
+        return Array.isArray(list) ? list : [];
       } catch (e) {
         console.warn(`[Loans Proxy] Erro ao buscar empréstimos do item ${id}:`, e.message);
+        return [];
       }
-    }
+    });
+
+    const results = await Promise.all(promises);
+    results.forEach(list => allLoans.push(...list));
 
     res.json({ results: allLoans, total: allLoans.length });
   } catch (error) {
@@ -43,11 +45,19 @@ router.get('/', cacheMiddleware(180), async (req, res) => {
   }
 });
 
-router.get('/:id', cacheMiddleware(300), async (req, res) => {
+// GET /api/loans/:id
+router.get('/:id', checkAuth, loadPluggyClient, cacheMiddleware(300), async (req, res) => {
   try {
-    const client = await createPluggyClient();
+    const client = req.pluggyClient;
     const response = await client.get(`/loans/${req.params.id}`);
-    res.json(response.data);
+    const loan = response.data;
+
+    // Verify ownership
+    if (!loan || !req.pluggyItemIds.includes(loan.itemId)) {
+      return res.status(403).json({ error: 'Acesso negado para este empréstimo' });
+    }
+
+    res.json(loan);
   } catch (error) {
     res.status(error.response?.status || 500).json(error.response?.data || { error: error.message });
   }

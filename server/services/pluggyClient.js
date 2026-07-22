@@ -1,8 +1,8 @@
 import axios from 'axios';
 import { getPluggyApiKey } from './tokenManager.js';
 
-export async function createPluggyClient() {
-  const apiKey = await getPluggyApiKey();
+export async function createPluggyClient(clientId, clientSecret) {
+  const apiKey = await getPluggyApiKey(clientId, clientSecret);
   
   const client = axios.create({
     baseURL: 'https://api.pluggy.ai',

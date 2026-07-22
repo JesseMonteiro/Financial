@@ -1,12 +1,12 @@
 import { Router } from 'express';
-import { createPluggyClient } from '../services/pluggyClient.js';
+import { checkAuth, loadPluggyClient } from '../middleware/auth.js';
 import { cacheMiddleware } from '../middleware/cache.js';
 
 const router = Router();
 
-router.get('/', cacheMiddleware(86400), async (req, res) => {
+router.get('/', checkAuth, loadPluggyClient, cacheMiddleware(86400), async (req, res) => {
   try {
-    const client = await createPluggyClient();
+    const client = req.pluggyClient;
     const { name, countries } = req.query;
     const params = { countries: countries || ['BR'] };
     if (name) params.name = name;
@@ -18,9 +18,9 @@ router.get('/', cacheMiddleware(86400), async (req, res) => {
   }
 });
 
-router.get('/:id', cacheMiddleware(86400), async (req, res) => {
+router.get('/:id', checkAuth, loadPluggyClient, cacheMiddleware(86400), async (req, res) => {
   try {
-    const client = await createPluggyClient();
+    const client = req.pluggyClient;
     const response = await client.get(`/connectors/${req.params.id}`);
     res.json(response.data);
   } catch (error) {

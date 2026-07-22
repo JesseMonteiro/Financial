@@ -1,44 +1,45 @@
 import { Router } from 'express';
-import { createPluggyClient } from '../services/pluggyClient.js';
+import { checkAuth, loadPluggyClient } from '../middleware/auth.js';
 import { cacheMiddleware } from '../middleware/cache.js';
-import { getItemIds, addItemId } from '../services/itemRegistry.js';
 
 const router = Router();
 
 // GET /api/investments
-router.get('/', cacheMiddleware(180), async (req, res) => {
+router.get('/', checkAuth, loadPluggyClient, cacheMiddleware(180), async (req, res) => {
   try {
-    const client = await createPluggyClient();
+    const client = req.pluggyClient;
     const { itemId, type } = req.query;
 
     let targetItemIds = [];
     if (itemId) {
+      if (!req.pluggyItemIds.includes(itemId)) {
+        return res.status(403).json({ error: 'Acesso negado para este item ID' });
+      }
       targetItemIds = [itemId];
     } else {
-      try {
-        const itemsRes = await client.get('/items');
-        const items = itemsRes.data.results || itemsRes.data || [];
-        if (Array.isArray(items) && items.length > 0) {
-          items.forEach(i => i.id && addItemId(i.id));
-        }
-      } catch (e) {}
-      targetItemIds = getItemIds();
+      targetItemIds = req.pluggyItemIds;
+    }
+
+    if (targetItemIds.length === 0) {
+      return res.json({ results: [], total: 0 });
     }
 
     const allInvestments = [];
-    for (const id of targetItemIds) {
+    const promises = targetItemIds.map(async (id) => {
       try {
         const params = { itemId: id };
         if (type) params.type = type;
         const response = await client.get('/investments', { params });
         const list = response.data.results || response.data || [];
-        if (Array.isArray(list)) {
-          allInvestments.push(...list);
-        }
+        return Array.isArray(list) ? list : [];
       } catch (e) {
         console.warn(`[Investments Proxy] Erro ao buscar investimentos do item ${id}:`, e.message);
+        return [];
       }
-    }
+    });
+
+    const results = await Promise.all(promises);
+    results.forEach(list => allInvestments.push(...list));
 
     res.json({ results: allInvestments, total: allInvestments.length });
   } catch (error) {
@@ -47,11 +48,18 @@ router.get('/', cacheMiddleware(180), async (req, res) => {
 });
 
 // GET /api/investments/:id
-router.get('/:id', cacheMiddleware(300), async (req, res) => {
+router.get('/:id', checkAuth, loadPluggyClient, cacheMiddleware(300), async (req, res) => {
   try {
-    const client = await createPluggyClient();
+    const client = req.pluggyClient;
     const response = await client.get(`/investments/${req.params.id}`);
-    res.json(response.data);
+    const investment = response.data;
+
+    // Verify ownership
+    if (!investment || !req.pluggyItemIds.includes(investment.itemId)) {
+      return res.status(403).json({ error: 'Acesso negado para este investimento' });
+    }
+
+    res.json(investment);
   } catch (error) {
     res.status(error.response?.status || 500).json(error.response?.data || { error: error.message });
   }

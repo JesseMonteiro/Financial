@@ -3,8 +3,7 @@ import { Plug, ShieldCheck, RefreshCw, AlertTriangle, CheckCircle2, Globe, Radio
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
-import { checkServerHealth, createConnectToken, fetchItems } from '../services/api';
-import axios from 'axios';
+import api, { checkServerHealth, createConnectToken, fetchItems } from '../services/api';
 
 export function ConnectBank() {
   const [health, setHealth] = useState(null);
@@ -46,7 +45,7 @@ export function ConnectBank() {
 
   const loadWebhooks = async () => {
     try {
-      const res = await axios.get('/api/webhooks/list');
+      const res = await api.get('/webhooks/list');
       setActiveWebhooks(res.data.results || res.data || []);
     } catch (e) {
       console.warn('Servidor sem chave Pluggy ou lista de webhooks vazia');
@@ -55,7 +54,7 @@ export function ConnectBank() {
 
   const loadHistory = async () => {
     try {
-      const res = await axios.get('/api/webhooks/history');
+      const res = await api.get('/webhooks/history');
       setHistory(res.data || []);
     } catch (e) {
       console.warn('Sem histórico de webhooks');
@@ -66,7 +65,32 @@ export function ConnectBank() {
     try {
       const data = await createConnectToken();
       if (data.accessToken) {
-        alert(`Pluggy Connect Token gerado com sucesso!\nToken: ${data.accessToken.slice(0, 20)}...`);
+        if (!window.PluggyConnect) {
+          throw new Error('O SDK do Pluggy Connect não foi carregado corretamente. Recarregue a página.');
+        }
+
+        const pluggyConnect = new window.PluggyConnect({
+          connectToken: data.accessToken,
+          includeSandbox: true,
+          onSuccess: async (itemData) => {
+            console.log('[Pluggy Connect Success]', itemData);
+            try {
+              // Registra a nova conexão (itemId) vinculando-a ao usuário logado no Supabase
+              await api.post('/items/register', { itemId: itemData.item.id });
+              loadRealItems();
+            } catch (err) {
+              console.error('[ConnectBank] Falha ao registrar itemId no servidor:', err);
+              alert('Erro ao registrar a conexão no seu perfil do FinanceHub.');
+            }
+          },
+          onError: (error) => {
+            console.error('[Pluggy Connect Error]', error);
+          },
+          onClose: () => {
+            console.log('[Pluggy Connect Closed]');
+          }
+        });
+        pluggyConnect.init();
       }
     } catch (err) {
       alert(err.message);
@@ -79,7 +103,7 @@ export function ConnectBank() {
     setStatusMsg(null);
 
     try {
-      const res = await axios.post('/api/webhooks/register', {
+      const res = await api.post('/webhooks/register', {
         url: webhookUrl,
         event: webhookEvent
       });
@@ -97,7 +121,7 @@ export function ConnectBank() {
 
   const handleDeleteWebhook = async (id) => {
     try {
-      await axios.delete(`/api/webhooks/${id}`);
+      await api.delete(`/webhooks/${id}`);
       loadWebhooks();
     } catch (err) {
       alert('Erro ao remover webhook');

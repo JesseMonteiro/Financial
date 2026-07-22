@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { createPluggyClient } from '../services/pluggyClient.js';
+import { checkAuth, loadPluggyClient } from '../middleware/auth.js';
 import { cacheMiddleware, clearCache } from '../middleware/cache.js';
 
 const router = Router();
@@ -28,7 +28,7 @@ router.post('/', (req, res) => {
 
   // Quando dados novos chegam, invalida o cache do servidor para refletir no app
   if (['item/updated', 'item/created', 'transactions/created', 'transactions/updated'].includes(payload.event)) {
-    clearCache();
+    clearCache(); // Invalida todo o cache para forçar recarga
   }
 
   // A Pluggy espera retorno HTTP 200 OK para confirmar o recebimento
@@ -38,16 +38,16 @@ router.post('/', (req, res) => {
 /**
  * 2. GET /api/webhooks/history (Lista eventos recebidos recentemente)
  */
-router.get('/history', (req, res) => {
+router.get('/history', checkAuth, (req, res) => {
   res.json(receivedEvents);
 });
 
 /**
  * 3. GET /api/webhooks/list (Lista webhooks cadastrados na API da Pluggy)
  */
-router.get('/list', async (req, res) => {
+router.get('/list', checkAuth, loadPluggyClient, async (req, res) => {
   try {
-    const client = await createPluggyClient();
+    const client = req.pluggyClient;
     const response = await client.get('/webhooks');
     res.json(response.data);
   } catch (error) {
@@ -59,7 +59,7 @@ router.get('/list', async (req, res) => {
  * 4. POST /api/webhooks/register (Registra um novo Webhook na Pluggy)
  * Body esperado: { url: "https://sua-url-publica.ngrok-free.app/api/webhooks", event: "all" }
  */
-router.post('/register', async (req, res) => {
+router.post('/register', checkAuth, loadPluggyClient, async (req, res) => {
   try {
     const { url, event = 'all' } = req.body;
 
@@ -74,7 +74,7 @@ router.post('/register', async (req, res) => {
       });
     }
 
-    const client = await createPluggyClient();
+    const client = req.pluggyClient;
     const response = await client.post('/webhooks', {
       url,
       event // "all", "item/created", "item/updated", "transactions/created", etc.
@@ -93,9 +93,9 @@ router.post('/register', async (req, res) => {
 /**
  * 5. DELETE /api/webhooks/:id (Remove um Webhook cadastrado)
  */
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', checkAuth, loadPluggyClient, async (req, res) => {
   try {
-    const client = await createPluggyClient();
+    const client = req.pluggyClient;
     await client.delete(`/webhooks/${req.params.id}`);
     res.json({ success: true, message: 'Webhook removido com sucesso' });
   } catch (error) {

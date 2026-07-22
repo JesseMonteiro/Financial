@@ -17,12 +17,16 @@ import {
   ShieldCheck,
   HandCoins,
   PlusCircle,
-  Activity
+  Activity,
+  LogOut
 } from 'lucide-react';
 import { useSettingsStore } from '../../stores/settingsStore';
+import { useAuthStore } from '../../stores/authStore';
+
 
 export function Sidebar({ collapsed, onToggle }) {
   const { theme } = useSettingsStore();
+  const { user, signOut } = useAuthStore();
 
   const navItems = [
     { label: 'Visão Geral', path: '/', icon: LayoutDashboard },
@@ -129,38 +133,61 @@ export function Sidebar({ collapsed, onToggle }) {
       </nav>
 
       {/* User Footer Profile */}
-      {!collapsed && (
+      <div style={{
+        padding: collapsed ? '1.25rem 0.5rem' : '1rem 1.25rem',
+        borderTop: '1px solid var(--border-color)',
+        display: 'flex',
+        flexDirection: collapsed ? 'column' : 'row',
+        alignItems: 'center',
+        gap: '0.75rem',
+        justifyContent: 'center'
+      }}>
         <div style={{
-          padding: '1rem 1.25rem',
-          borderTop: '1px solid var(--border-color)',
+          width: 36,
+          height: 36,
+          borderRadius: '50%',
+          backgroundColor: 'var(--primary)',
+          color: '#fff',
           display: 'flex',
           alignItems: 'center',
-          gap: '0.75rem'
-        }}>
-          <div style={{
-            width: 36,
-            height: 36,
-            borderRadius: '50%',
-            backgroundColor: 'var(--primary)',
-            color: '#fff',
+          justifyContent: 'center',
+          fontWeight: 600,
+          fontSize: 'var(--font-size-sm)',
+          flexShrink: 0
+        }} title={user?.email}>
+          {user?.user_metadata?.full_name?.charAt(0).toUpperCase() || user?.email?.charAt(0).toUpperCase() || 'U'}
+        </div>
+        
+        {!collapsed && (
+          <div style={{ flex: 1, overflow: 'hidden' }}>
+            <p style={{ fontSize: 'var(--font-size-sm)', fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', margin: 0 }}>
+              {user?.user_metadata?.full_name || 'Usuário'}
+            </p>
+            <span style={{ fontSize: '10px', color: 'var(--text-muted)', display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {user?.email}
+            </span>
+          </div>
+        )}
+
+        <button
+          onClick={signOut}
+          style={{
+            border: 'none',
+            background: 'transparent',
+            cursor: 'pointer',
+            color: 'var(--danger)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            fontWeight: 600,
-            fontSize: 'var(--font-size-sm)'
-          }}>
-            FH
-          </div>
-          <div style={{ flex: 1, overflow: 'hidden' }}>
-            <p style={{ fontSize: 'var(--font-size-sm)', fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              Usuário Local
-            </p>
-            <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--success)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-              ● Conectado ao Pluggy
-            </span>
-          </div>
-        </div>
-      )}
+            padding: '0.4rem',
+            borderRadius: 'var(--radius-md)',
+            transition: 'background var(--transition-fast)',
+          }}
+          title="Sair da Conta"
+        >
+          <LogOut size={18} />
+        </button>
+      </div>
     </aside>
   );
 }

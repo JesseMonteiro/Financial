@@ -1,25 +1,66 @@
 import { Router } from 'express';
-import { createPluggyClient } from '../services/pluggyClient.js';
-import { cacheMiddleware, clearCache } from '../middleware/cache.js';
+import { checkAuth, loadPluggyClient } from '../middleware/auth.js';
+import { cacheMiddleware, clearUserCache } from '../middleware/cache.js';
 
 const router = Router();
 
 // GET /api/items
-router.get('/', cacheMiddleware(300), async (req, res) => {
+router.get('/', checkAuth, loadPluggyClient, cacheMiddleware(300), async (req, res) => {
   try {
-    const client = await createPluggyClient();
+    const client = req.pluggyClient;
+    const userItemIds = req.pluggyItemIds;
+
+    if (userItemIds.length === 0) {
+      return res.json({ results: [], total: 0 });
+    }
+
     const response = await client.get('/items');
-    res.json(response.data);
+    const items = response.data.results || response.data || [];
+    const filteredItems = items.filter(i => userItemIds.includes(i.id));
+
+    res.json({ results: filteredItems, total: filteredItems.length });
   } catch (error) {
     res.status(error.response?.status || 500).json(error.response?.data || { error: error.message });
   }
 });
 
-// GET /api/items/:id
-router.get('/:id', cacheMiddleware(60), async (req, res) => {
+// POST /api/items/register (Links a connected item ID to user profile)
+router.post('/register', checkAuth, loadPluggyClient, async (req, res) => {
   try {
-    const client = await createPluggyClient();
-    const response = await client.get(`/items/${req.params.id}`);
+    const { itemId } = req.body;
+    if (!itemId) {
+      return res.status(400).json({ error: 'itemId é obrigatório' });
+    }
+
+    const currentItemIds = req.pluggyItemIds || [];
+    if (!currentItemIds.includes(itemId)) {
+      const updatedItemIds = [...currentItemIds, itemId];
+      const { error } = await req.supabase
+        .from('profiles')
+        .update({ pluggy_item_ids: updatedItemIds })
+        .eq('id', req.user.id);
+
+      if (error) throw error;
+      clearUserCache(req.user.id);
+      return res.json({ success: true, message: 'Item registrado com sucesso', itemIds: updatedItemIds });
+    }
+
+    res.json({ success: true, message: 'Item já estava registrado', itemIds: currentItemIds });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET /api/items/:id
+router.get('/:id', checkAuth, loadPluggyClient, cacheMiddleware(60), async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!req.pluggyItemIds.includes(id)) {
+      return res.status(403).json({ error: 'Acesso negado para este item ID' });
+    }
+
+    const client = req.pluggyClient;
+    const response = await client.get(`/items/${id}`);
     res.json(response.data);
   } catch (error) {
     res.status(error.response?.status || 500).json(error.response?.data || { error: error.message });
@@ -27,11 +68,16 @@ router.get('/:id', cacheMiddleware(60), async (req, res) => {
 });
 
 // PATCH /api/items/:id (Force refresh)
-router.patch('/:id', async (req, res) => {
+router.patch('/:id', checkAuth, loadPluggyClient, async (req, res) => {
   try {
-    const client = await createPluggyClient();
-    const response = await client.patch(`/items/${req.params.id}`, req.body);
-    clearCache();
+    const { id } = req.params;
+    if (!req.pluggyItemIds.includes(id)) {
+      return res.status(403).json({ error: 'Acesso negado para este item ID' });
+    }
+
+    const client = req.pluggyClient;
+    const response = await client.patch(`/items/${id}`, req.body);
+    clearUserCache(req.user.id);
     res.json(response.data);
   } catch (error) {
     res.status(error.response?.status || 500).json(error.response?.data || { error: error.message });
@@ -39,11 +85,29 @@ router.patch('/:id', async (req, res) => {
 });
 
 // DELETE /api/items/:id
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', checkAuth, loadPluggyClient, async (req, res) => {
   try {
-    const client = await createPluggyClient();
-    await client.delete(`/items/${req.params.id}`);
-    clearCache();
+    const { id } = req.params;
+    if (!req.pluggyItemIds.includes(id)) {
+      return res.status(403).json({ error: 'Acesso negado para este item ID' });
+    }
+
+    const client = req.pluggyClient;
+    try {
+      await client.delete(`/items/${id}`);
+    } catch (err) {
+      console.warn(`[Items delete] Erro ao remover da Pluggy (provavelmente já deletado): ${err.message}`);
+    }
+
+    const updatedItemIds = req.pluggyItemIds.filter(item => item !== id);
+    const { error } = await req.supabase
+      .from('profiles')
+      .update({ pluggy_item_ids: updatedItemIds })
+      .eq('id', req.user.id);
+
+    if (error) throw error;
+
+    clearUserCache(req.user.id);
     res.json({ success: true, message: 'Conexão removida com sucesso' });
   } catch (error) {
     res.status(error.response?.status || 500).json(error.response?.data || { error: error.message });
@@ -51,10 +115,15 @@ router.delete('/:id', async (req, res) => {
 });
 
 // POST /api/items/connect-token (Create connect token for Pluggy Connect Widget)
-router.post('/connect-token', async (req, res) => {
+router.post('/connect-token', checkAuth, loadPluggyClient, async (req, res) => {
   try {
-    const client = await createPluggyClient();
+    const client = req.pluggyClient;
     const { itemId } = req.body;
+
+    if (itemId && !req.pluggyItemIds.includes(itemId)) {
+      return res.status(403).json({ error: 'Acesso negado para este item ID' });
+    }
+
     const response = await client.post('/connect_token', itemId ? { itemId } : {});
     res.json(response.data);
   } catch (error) {

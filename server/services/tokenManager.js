@@ -2,38 +2,41 @@ import axios from 'axios';
 import dotenv from 'dotenv';
 dotenv.config();
 
-let cachedApiKey = null;
-let tokenExpiresAt = null;
+const tokenCache = new Map();
 
-export async function getPluggyApiKey() {
-  const clientId = process.env.PLUGGY_CLIENT_ID;
-  const clientSecret = process.env.PLUGGY_CLIENT_SECRET;
+export async function getPluggyApiKey(clientId, clientSecret) {
+  const cid = clientId || process.env.PLUGGY_CLIENT_ID;
+  const secret = clientSecret || process.env.PLUGGY_CLIENT_SECRET;
 
-  if (!clientId || !clientSecret) {
-    console.warn('[Pluggy Auth] PLUGGY_CLIENT_ID or PLUGGY_CLIENT_SECRET not configured in .env');
+  if (!cid || !secret) {
+    console.warn('[Pluggy Auth] PLUGGY_CLIENT_ID ou PLUGGY_CLIENT_SECRET não configurados.');
     return null;
   }
 
-  // Return cached token if still valid (with 5 min safety buffer)
-  if (cachedApiKey && tokenExpiresAt && Date.now() < tokenExpiresAt - 5 * 60 * 1000) {
-    return cachedApiKey;
+  const cacheKey = `${cid}:${secret}`;
+  const cached = tokenCache.get(cacheKey);
+
+  // Retorna o token em cache se ainda for válido (com 5 min de margem de segurança)
+  if (cached && Date.now() < cached.expiresAt - 5 * 60 * 1000) {
+    return cached.apiKey;
   }
 
   try {
-    console.log('[Pluggy Auth] Requesting new API Key from Pluggy...');
+    console.log(`[Pluggy Auth] Requisitando nova chave de API da Pluggy para ${cid.slice(0, 8)}...`);
     const response = await axios.post('https://api.pluggy.ai/auth', {
-      clientId,
-      clientSecret,
+      clientId: cid,
+      clientSecret: secret,
     });
 
-    cachedApiKey = response.data.apiKey;
-    // Pluggy API keys expire in 2 hours (7200 seconds)
-    tokenExpiresAt = Date.now() + 7200 * 1000;
-    console.log('[Pluggy Auth] Successfully obtained Pluggy API Key');
+    const apiKey = response.data.apiKey;
+    const expiresAt = Date.now() + 7200 * 1000; // Pluggy API keys expire in 2 hours
 
-    return cachedApiKey;
+    tokenCache.set(cacheKey, { apiKey, expiresAt });
+    console.log(`[Pluggy Auth] Chave obtida com sucesso para ${cid.slice(0, 8)}`);
+
+    return apiKey;
   } catch (error) {
     console.error('[Pluggy Auth Error]', error.response?.data || error.message);
-    throw new Error('Falha ao autenticar com Pluggy.ai. Verifique suas credenciais no arquivo .env.');
+    throw new Error('Falha ao autenticar com Pluggy.ai. Verifique as credenciais.');
   }
 }
