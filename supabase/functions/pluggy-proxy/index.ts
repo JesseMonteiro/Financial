@@ -311,7 +311,7 @@ Deno.serve(async (req: Request) => {
     .maybeSingle();
 
   if (profileError) return errorResponse(`Profile fetch error: ${profileError.message}`, 500);
-  const itemIds = profile?.pluggy_item_ids || [];
+  let itemIds = profile?.pluggy_item_ids || [];
   
   if (resource === 'items' && actionOrId === 'register' && method === 'POST') {
     const itemIdToRegister = (body as { itemId?: string })?.itemId;
@@ -333,6 +333,27 @@ Deno.serve(async (req: Request) => {
   if (!clientId || !clientSecret) {
     return errorResponse('PLUGGY_CLIENT_ID or PLUGGY_CLIENT_SECRET not configured for this user or globally', 500);
   }
+
+  // --- AUTOMATIC SYNC FOR CUSTOM CREDENTIALS ---
+  // Se o usuário estiver usando as próprias chaves, ele é dono do workspace inteiro.
+  // Vamos buscar todos os itens disponíveis na Pluggy e permitir acesso a eles automaticamente,
+  // evitando que ele perca conexões antigas.
+  if (profile?.pluggy_client_id && profile?.pluggy_client_id !== Deno.env.get('PLUGGY_CLIENT_ID')) {
+    try {
+      const itemsData = await pluggyJson({ clientId, clientSecret } as PluggyClient, '/items') as { results?: { id: string }[] };
+      const allWorkspaceItemIds = (itemsData.results || []).map(i => i.id);
+      
+      // Update profile in background if there are new items not in profile yet
+      const missingItems = allWorkspaceItemIds.filter(id => !itemIds.includes(id));
+      if (missingItems.length > 0) {
+        itemIds = Array.from(new Set([...itemIds, ...allWorkspaceItemIds]));
+        supabaseClient.from('profiles').update({ pluggy_item_ids: itemIds }).eq('id', user.id).then();
+      }
+    } catch (e) {
+      console.error('Failed to sync custom workspace items:', e);
+    }
+  }
+
   const clientConfig: PluggyClient = { clientId, clientSecret, itemIds };
 
   try {
