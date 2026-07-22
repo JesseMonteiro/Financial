@@ -7,7 +7,7 @@ export {
   getStoredManualTransactions, saveStoredManualTransaction, deleteStoredManualTransaction,
   getProfileSettings, updateProfileSettings,
   getCustomAccountNames, saveCustomAccountNames,
-  getPluggyCredentials, savePluggyCredentials
+  getPluggyCredentials, savePluggyCredentials, getPluggyItemIds
 } from './supabaseStorage.js';
 
 const DB_NAME = 'FinanceHub_DB';

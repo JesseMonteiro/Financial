@@ -267,3 +267,19 @@ export async function savePluggyCredentials(clientId, clientSecret) {
     
   if (error) console.error('Error saving pluggy credentials:', error);
 }
+
+export async function getPluggyItemIds() {
+  const userId = await getCurrentUserId();
+  if (!userId) return [];
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('pluggy_item_ids')
+    .eq('id', userId)
+    .single();
+
+  if (error) {
+    console.error('Error fetching pluggy item ids:', error);
+    return [];
+  }
+  return Array.isArray(data?.pluggy_item_ids) ? data.pluggy_item_ids.filter(Boolean) : [];
+}

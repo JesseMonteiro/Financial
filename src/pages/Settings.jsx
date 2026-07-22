@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Settings as SettingsIcon, Moon, Sun, Palette, LayoutGrid, Check, MessageSquare } from 'lucide-react';
+import { Settings as SettingsIcon, Moon, Sun, Palette, LayoutGrid, Check, MessageSquare, Link2 } from 'lucide-react';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { useSettingsStore } from '../stores/settingsStore';
-import { getPluggyCredentials, savePluggyCredentials } from '../services/storage';
+import { getPluggyCredentials, savePluggyCredentials, getPluggyItemIds } from '../services/storage';
 import { supabase } from '../services/supabaseClient';
-import { generateTelegramLinkToken } from '../services/api';
+import { generateTelegramLinkToken, syncItemIds } from '../services/api';
 
 export function Settings() {
   const { 
@@ -29,13 +29,21 @@ export function Settings() {
   const [savingCreds, setSavingCreds] = useState(false);
   const [credsMsg, setCredsMsg] = useState(null);
 
+  const [pluggyItemIdsText, setPluggyItemIdsText] = useState('');
+  const [savingItems, setSavingItems] = useState(false);
+  const [itemsMsg, setItemsMsg] = useState(null);
+
   useEffect(() => {
     async function loadCreds() {
-      const creds = await getPluggyCredentials();
+      const [creds, itemIds] = await Promise.all([
+        getPluggyCredentials(),
+        getPluggyItemIds(),
+      ]);
       if (creds) {
         setPluggyClientId(creds.pluggyClientId || '');
         setPluggyClientSecret(creds.pluggyClientSecret || '');
       }
+      setPluggyItemIdsText((itemIds || []).join('\n'));
     }
     loadCreds();
   }, []);
@@ -50,6 +58,27 @@ export function Settings() {
       setCredsMsg({ type: 'danger', text: 'Erro ao salvar credenciais.' });
     } finally {
       setSavingCreds(false);
+    }
+  };
+
+  const handleSaveItemIds = async () => {
+    setSavingItems(true);
+    setItemsMsg(null);
+    try {
+      const parsed = pluggyItemIdsText
+        .split(/[\s,;]+/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const data = await syncItemIds(parsed);
+      setPluggyItemIdsText((data.itemIds || parsed).join('\n'));
+      setItemsMsg({
+        type: 'success',
+        text: data.message || `${(data.itemIds || parsed).length} conexão(ões) vinculada(s).`,
+      });
+    } catch (e) {
+      setItemsMsg({ type: 'danger', text: e.message || 'Erro ao vincular conexões.' });
+    } finally {
+      setSavingItems(false);
     }
   };
 
@@ -306,6 +335,47 @@ export function Settings() {
               fontWeight: 500
             }}>
               {credsMsg.text}
+            </div>
+          )}
+        </div>
+      </Card>
+
+      <Card
+        title="Conexões Pluggy (Item IDs)"
+        subtitle="Cole os Item IDs das conexões já existentes no dashboard da Pluggy (um por linha). Sem esses IDs o painel não consegue listar as contas."
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', marginTop: '1rem' }}>
+          <div>
+            <label style={{ fontSize: 'var(--font-size-sm)', fontWeight: 600, display: 'block', marginBottom: '0.4rem' }}>
+              Item IDs vinculados
+            </label>
+            <textarea
+              className="input"
+              rows={6}
+              placeholder={"xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx\nxxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"}
+              value={pluggyItemIdsText}
+              onChange={(e) => setPluggyItemIdsText(e.target.value)}
+              style={{ fontFamily: 'monospace', fontSize: 'var(--font-size-sm)', resize: 'vertical' }}
+            />
+            <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
+              No dashboard Pluggy, abra cada conexão e copie o ID (UUID). Também aceita separados por vírgula.
+            </p>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <Button icon={Link2} onClick={handleSaveItemIds} disabled={savingItems}>
+              {savingItems ? 'Vinculando...' : 'Vincular conexões'}
+            </Button>
+          </div>
+          {itemsMsg && (
+            <div style={{
+              padding: '0.5rem 0.75rem',
+              borderRadius: 'var(--radius-md)',
+              backgroundColor: itemsMsg.type === 'success' ? 'var(--success-bg)' : 'var(--danger-bg)',
+              color: itemsMsg.type === 'success' ? 'var(--success)' : 'var(--danger)',
+              fontSize: 'var(--font-size-sm)',
+              fontWeight: 500
+            }}>
+              {itemsMsg.text}
             </div>
           )}
         </div>

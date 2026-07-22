@@ -50,6 +50,37 @@ router.post('/register', checkAuth, loadPluggyClient, async (req, res) => {
   }
 });
 
+// POST /api/items/sync (Replace linked item IDs from Settings)
+router.post('/sync', checkAuth, loadPluggyClient, async (req, res) => {
+  try {
+    const raw = req.body?.itemIds;
+    let incoming = [];
+    if (Array.isArray(raw)) {
+      incoming = raw.filter((id) => typeof id === 'string' && id.length > 0);
+    } else if (typeof raw === 'string') {
+      incoming = raw
+        .split(/[\s,;]+/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+    }
+
+    const uniqueIds = [...new Set(incoming)];
+    const { error } = await req.supabase
+      .from('profiles')
+      .upsert({ id: req.user.id, pluggy_item_ids: uniqueIds }, { onConflict: 'id' });
+
+    if (error) throw error;
+    clearUserCache(req.user.id);
+    res.json({
+      success: true,
+      message: `${uniqueIds.length} conexão(ões) vinculada(s) ao perfil.`,
+      itemIds: uniqueIds,
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // GET /api/items/:id
 router.get('/:id', checkAuth, loadPluggyClient, cacheMiddleware(60), async (req, res) => {
   try {

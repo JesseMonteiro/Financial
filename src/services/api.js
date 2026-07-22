@@ -142,6 +142,16 @@ export async function fetchItems() {
   }
 }
 
+export async function syncItemIds(itemIds) {
+  try {
+    const res = await api.post('/items/sync', { itemIds });
+    return res.data;
+  } catch (err) {
+    const message = err.response?.data?.error || err.message || 'Falha ao vincular conexões Pluggy';
+    throw new Error(message);
+  }
+}
+
 export async function createConnectToken(itemId) {
   try {
     const res = await api.post('/items/connect-token', { itemId });

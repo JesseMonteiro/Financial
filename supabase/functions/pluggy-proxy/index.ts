@@ -361,11 +361,11 @@ Deno.serve(async (req: Request) => {
 
   const { data: profile } = await supabaseClient
     .from('profiles')
-    .select('pluggy_item_ids')
+    .select('pluggy_item_ids, pluggy_client_id, pluggy_client_secret')
     .eq('id', user.id)
     .maybeSingle();
 
-  const itemIds = asItemIdList(profile?.pluggy_item_ids);
+  let itemIds = asItemIdList(profile?.pluggy_item_ids);
 
   if (resource === 'items' && actionOrId === 'register' && method === 'POST') {
     const itemIdToRegister = (body as { itemId?: string })?.itemId;
@@ -386,11 +386,42 @@ Deno.serve(async (req: Request) => {
     });
   }
 
-  const clientId = Deno.env.get('PLUGGY_CLIENT_ID');
-  const clientSecret = Deno.env.get('PLUGGY_CLIENT_SECRET');
+  // Replace the full set of linked item IDs (used by Settings to paste existing Pluggy connections)
+  if (resource === 'items' && actionOrId === 'sync' && method === 'POST') {
+    const raw = (body as { itemIds?: unknown })?.itemIds;
+    const incoming = Array.isArray(raw)
+      ? asItemIdList(raw)
+      : typeof raw === 'string'
+        ? asItemIdList(
+            raw
+              .split(/[\s,;]+/)
+              .map((s) => s.trim())
+              .filter(Boolean)
+          )
+        : [];
+
+    const uniqueIds = Array.from(new Set(incoming));
+    const { error: updateErr } = await supabaseClient
+      .from('profiles')
+      .upsert({ id: user.id, pluggy_item_ids: uniqueIds }, { onConflict: 'id' });
+
+    if (updateErr) return errorResponse(`Failed to sync items: ${updateErr.message}`, 500);
+    itemIds = uniqueIds;
+    return jsonResponse({
+      success: true,
+      message: `${uniqueIds.length} conexão(ões) vinculada(s) ao perfil.`,
+      itemIds: uniqueIds,
+    });
+  }
+
+  const clientId = profile?.pluggy_client_id || Deno.env.get('PLUGGY_CLIENT_ID');
+  const clientSecret = profile?.pluggy_client_secret || Deno.env.get('PLUGGY_CLIENT_SECRET');
 
   if (!clientId || !clientSecret) {
-    return errorResponse('PLUGGY_CLIENT_ID or PLUGGY_CLIENT_SECRET not configured in Edge Function environment variables', 500);
+    return errorResponse(
+      'Credenciais Pluggy não configuradas. Defina Client ID/Secret em Configurações ou nas variáveis de ambiente da Edge Function.',
+      500
+    );
   }
 
   const clientConfig: PluggyClient = {
