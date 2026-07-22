@@ -1,0 +1,49 @@
+/* Custom Tooltip & Chart Styles */
+
+.custom-chart-tooltip {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 0.75rem 1rem;
+  box-shadow: var(--shadow-md);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  backdrop-filter: var(--backdrop-blur);
+}
+
+.custom-chart-tooltip .tooltip-title {
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+  color: var(--text-secondary);
+}
+
+.custom-chart-tooltip .tooltip-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: var(--font-size-sm);
+}
+
+.custom-chart-tooltip .tooltip-color {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.recharts-default-tooltip {
+  background-color: var(--bg-secondary) !important;
+  border-color: var(--border-color) !important;
+  border-radius: var(--radius-md) !important;
+  color: var(--text-primary) !important;
+}
+
+.recharts-cartesian-grid-horizontal line,
+.recharts-cartesian-grid-vertical line {
+  stroke: var(--border-color);
+  stroke-dasharray: 4 4;
+}
+
+.recharts-legend-item-text {
+  color: var(--text-secondary) !important;
+  font-size: var(--font-size-xs) !important;
+}
