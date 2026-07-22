@@ -28,7 +28,7 @@ router.get('/', checkAuth, loadPluggyClient, cacheMiddleware(300), async (req, r
 router.post('/register', checkAuth, loadPluggyClient, async (req, res) => {
   try {
     const { itemId } = req.body;
-    if (!itemId) {
+    if (!itemId || typeof itemId !== 'string') {
       return res.status(400).json({ error: 'itemId é obrigatório' });
     }
 
@@ -37,8 +37,7 @@ router.post('/register', checkAuth, loadPluggyClient, async (req, res) => {
       const updatedItemIds = [...currentItemIds, itemId];
       const { error } = await req.supabase
         .from('profiles')
-        .update({ pluggy_item_ids: updatedItemIds })
-        .eq('id', req.user.id);
+        .upsert({ id: req.user.id, pluggy_item_ids: updatedItemIds }, { onConflict: 'id' });
 
       if (error) throw error;
       clearUserCache(req.user.id);
@@ -124,7 +123,12 @@ router.post('/connect-token', checkAuth, loadPluggyClient, async (req, res) => {
       return res.status(403).json({ error: 'Acesso negado para este item ID' });
     }
 
-    const response = await client.post('/connect_token', itemId ? { itemId } : {});
+    const payload = {
+      options: { clientUserId: req.user.id },
+    };
+    if (itemId) payload.itemId = itemId;
+
+    const response = await client.post('/connect_token', payload);
     res.json(response.data);
   } catch (error) {
     res.status(error.response?.status || 500).json(error.response?.data || { error: error.message });

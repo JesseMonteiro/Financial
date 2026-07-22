@@ -35,7 +35,10 @@ export async function loadPluggyClient(req, res, next) {
       .eq('id', req.user.id)
       .maybeSingle();
 
-    const pluggyItemIds = profile?.pluggy_item_ids || [];
+    const rawItemIds = profile?.pluggy_item_ids;
+    const pluggyItemIds = Array.isArray(rawItemIds)
+      ? rawItemIds.filter((id) => typeof id === 'string' && id.length > 0)
+      : [];
     const clientId = profile?.pluggy_client_id || null;
     const clientSecret = profile?.pluggy_client_secret || null;
 

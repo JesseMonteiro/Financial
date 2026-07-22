@@ -75,9 +75,20 @@ export function ConnectBank() {
           onSuccess: async (itemData) => {
             console.log('[Pluggy Connect Success]', itemData);
             try {
-              // Registra a nova conexão (itemId) vinculando-a ao usuário logado no Supabase
-              await api.post('/items/register', { itemId: itemData.item.id });
-              loadRealItems();
+              // Pluggy Connect may return { item: { id } } or the item object directly
+              const itemId =
+                itemData?.item?.id ||
+                itemData?.id ||
+                itemData?.itemId ||
+                null;
+
+              if (!itemId) {
+                throw new Error('Pluggy Connect não retornou o itemId da conexão.');
+              }
+
+              // Registra a nova conexão vinculando-a ao usuário logado no Supabase
+              await api.post('/items/register', { itemId });
+              await loadRealItems();
             } catch (err) {
               console.error('[ConnectBank] Falha ao registrar itemId no servidor:', err);
               alert('Erro ao registrar a conexão no seu perfil do FinanceHub.');
