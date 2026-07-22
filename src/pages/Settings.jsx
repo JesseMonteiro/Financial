@@ -218,7 +218,7 @@ export function Settings() {
                     <li>Seu Telegram será automaticamente vinculado e você receberá uma confirmação.</li>
                   </ol>
                   <a
-                    href={`https://t.me/FinanceHubJesseBot?start=${linkToken}`}
+                    href={`https://t.me/FinancialJesse_bot?start=${linkToken}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     style={{ textDecoration: 'none', marginTop: '0.5rem' }}
