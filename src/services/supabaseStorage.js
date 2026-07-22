@@ -236,3 +236,34 @@ export async function saveCustomAccountNames(names) {
     
   if (error) console.error('Error saving custom account names:', error);
 }
+
+// --- Custom Pluggy Credentials ---
+export async function getPluggyCredentials() {
+  const userId = await getCurrentUserId();
+  if (!userId) return null;
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('pluggy_client_id, pluggy_client_secret')
+    .eq('id', userId)
+    .single();
+    
+  if (error) {
+    console.error('Error fetching pluggy credentials:', error);
+    return null;
+  }
+  return toCamelCase(data);
+}
+
+export async function savePluggyCredentials(clientId, clientSecret) {
+  const userId = await getCurrentUserId();
+  if (!userId) return;
+  const { error } = await supabase
+    .from('profiles')
+    .update({
+      pluggy_client_id: clientId || null,
+      pluggy_client_secret: clientSecret || null
+    })
+    .eq('id', userId);
+    
+  if (error) console.error('Error saving pluggy credentials:', error);
+}

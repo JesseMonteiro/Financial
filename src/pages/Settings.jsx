@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Settings as SettingsIcon, Moon, Sun, Palette, LayoutGrid, Check, MessageSquare } from 'lucide-react';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { useSettingsStore } from '../stores/settingsStore';
+import { getPluggyCredentials, savePluggyCredentials } from '../services/storage';
 import { supabase } from '../services/supabaseClient';
 import { generateTelegramLinkToken } from '../services/api';
 
@@ -22,6 +23,35 @@ export function Settings() {
   const [linkToken, setLinkToken] = React.useState('');
   const [loadingToken, setLoadingToken] = React.useState(false);
   const [loadingStatus, setLoadingStatus] = React.useState(true);
+
+  const [pluggyClientId, setPluggyClientId] = useState('');
+  const [pluggyClientSecret, setPluggyClientSecret] = useState('');
+  const [savingCreds, setSavingCreds] = useState(false);
+  const [credsMsg, setCredsMsg] = useState(null);
+
+  useEffect(() => {
+    async function loadCreds() {
+      const creds = await getPluggyCredentials();
+      if (creds) {
+        setPluggyClientId(creds.pluggyClientId || '');
+        setPluggyClientSecret(creds.pluggyClientSecret || '');
+      }
+    }
+    loadCreds();
+  }, []);
+
+  const handleSaveCredentials = async () => {
+    setSavingCreds(true);
+    setCredsMsg(null);
+    try {
+      await savePluggyCredentials(pluggyClientId, pluggyClientSecret);
+      setCredsMsg({ type: 'success', text: 'Credenciais do Pluggy salvas com sucesso!' });
+    } catch (e) {
+      setCredsMsg({ type: 'danger', text: 'Erro ao salvar credenciais.' });
+    } finally {
+      setSavingCreds(false);
+    }
+  };
 
   const colors = [
     { name: 'Índigo Violeta', value: '#6366f1' },
@@ -229,6 +259,53 @@ export function Settings() {
                   </a>
                 </div>
               )}
+            </div>
+          )}
+        </div>
+      </Card>
+
+      {/* Credenciais do Pluggy */}
+      <Card title="Credenciais Pluggy.ai (Opcional)" subtitle="Configure suas próprias chaves de desenvolvedor do Pluggy para total isolamento. Se deixado em branco, a aplicação usará a chave padrão compartilhada.">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', marginTop: '1rem' }}>
+          <div>
+            <label style={{ fontSize: 'var(--font-size-sm)', fontWeight: 600, display: 'block', marginBottom: '0.4rem' }}>
+              Pluggy Client ID
+            </label>
+            <input
+              type="text"
+              placeholder="b10e0128-..."
+              value={pluggyClientId}
+              onChange={(e) => setPluggyClientId(e.target.value)}
+              className="input"
+            />
+          </div>
+          <div>
+            <label style={{ fontSize: 'var(--font-size-sm)', fontWeight: 600, display: 'block', marginBottom: '0.4rem' }}>
+              Pluggy Client Secret
+            </label>
+            <input
+              type="password"
+              placeholder="Sua senha do Pluggy"
+              value={pluggyClientSecret}
+              onChange={(e) => setPluggyClientSecret(e.target.value)}
+              className="input"
+            />
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <Button onClick={handleSaveCredentials} disabled={savingCreds}>
+              {savingCreds ? 'Salvando...' : 'Salvar Credenciais'}
+            </Button>
+          </div>
+          {credsMsg && (
+            <div style={{
+              padding: '0.5rem 0.75rem',
+              borderRadius: 'var(--radius-md)',
+              backgroundColor: credsMsg.type === 'success' ? 'var(--success-bg)' : 'var(--danger-bg)',
+              color: credsMsg.type === 'success' ? 'var(--success)' : 'var(--danger)',
+              fontSize: 'var(--font-size-sm)',
+              fontWeight: 500
+            }}>
+              {credsMsg.text}
             </div>
           )}
         </div>

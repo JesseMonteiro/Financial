@@ -159,8 +159,8 @@ export function ConnectBank() {
               </h3>
               <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--text-muted)' }}>
                 {health?.pluggyConfigured
-                  ? 'Sua API Key está ativa e sincronizada com suas contas bancárias reais.'
-                  : 'Para conectar seus bancos reais, adicione seu PLUGGY_CLIENT_ID e PLUGGY_CLIENT_SECRET no arquivo .env'}
+                  ? 'O servidor possui credenciais padrão ativas. Você também pode definir suas próprias chaves do Pluggy em Configurações para total isolamento.'
+                  : 'Para conectar, defina suas próprias chaves do Pluggy em Configurações, ou configure PLUGGY_CLIENT_ID e PLUGGY_CLIENT_SECRET no .env do servidor.'}
               </p>
             </div>
           </div>
