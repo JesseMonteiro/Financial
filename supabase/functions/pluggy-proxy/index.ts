@@ -1,14 +1,10 @@
 // Pluggy Proxy — Supabase Edge Function
-// Credentials (PLUGGY_CLIENT_ID / PLUGGY_CLIENT_SECRET / PLUGGY_ITEM_IDS)
-// are stored as Supabase secrets — never in source code.
-
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.8";
 
 const PLUGGY_API = 'https://api.pluggy.ai';
 
 // ─── In-memory token cache ───
-// We cache tokens PER client ID instead of a single global token.
 interface CachedToken {
   token: string;
   expiresAt: number;
@@ -33,42 +29,32 @@ function errorResponse(message: string, status = 500): Response {
   return jsonResponse({ error: message }, status);
 }
 
-// ─── Helper Types ───
 interface PluggyClient {
   clientId: string;
   clientSecret: string;
   itemIds: string[];
 }
 
-// ─── Pluggy Auth ───
 async function getPluggyApiKey(client: PluggyClient): Promise<string> {
   const { clientId, clientSecret } = client;
-
   const cached = tokenCache.get(clientId);
   if (cached && Date.now() < cached.expiresAt - 5 * 60 * 1000) {
     return cached.token;
   }
-
   const res = await fetch(`${PLUGGY_API}/auth`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ clientId, clientSecret }),
   });
-
   if (!res.ok) {
     const err = await res.text();
     throw new Error(`Pluggy auth failed: ${err}`);
   }
-
   const data = await res.json();
-  tokenCache.set(clientId, {
-    token: data.apiKey,
-    expiresAt: Date.now() + 7200 * 1000
-  });
+  tokenCache.set(clientId, { token: data.apiKey, expiresAt: Date.now() + 7200 * 1000 });
   return data.apiKey;
 }
 
-// ─── Pluggy HTTP helper ───
 async function pluggyFetch(
   client: PluggyClient,
   path: string,
@@ -105,28 +91,14 @@ async function pluggyJson(
   return res.json();
 }
 
-// ─── Route handlers ───
 async function handleAccounts(client: PluggyClient, url: URL, id?: string): Promise<Response> {
-  if (id) {
-    return jsonResponse(await pluggyJson(client, `/accounts/${id}`));
-  }
+  if (id) return jsonResponse(await pluggyJson(client, `/accounts/${id}`));
   const itemId = url.searchParams.get('itemId');
   const type = url.searchParams.get('type') ?? undefined;
+  let targetItemIds = itemId ? (client.itemIds.includes(itemId) ? [itemId] : []) : client.itemIds;
+  if (itemId && targetItemIds.length === 0) return errorResponse('Acesso negado para este item ID', 403);
+  if (targetItemIds.length === 0) return jsonResponse({ results: [], total: 0 });
   
-  let targetItemIds: string[] = [];
-  if (itemId) {
-    if (!client.itemIds.includes(itemId)) {
-      return errorResponse('Acesso negado para este item ID', 403);
-    }
-    targetItemIds = [itemId];
-  } else {
-    targetItemIds = client.itemIds;
-  }
-
-  if (targetItemIds.length === 0) {
-    return jsonResponse({ results: [], total: 0 });
-  }
-
   const all: unknown[] = [];
   for (const iid of targetItemIds) {
     try {
@@ -142,29 +114,21 @@ async function handleAccounts(client: PluggyClient, url: URL, id?: string): Prom
 async function handleTransactions(client: PluggyClient, url: URL, method: string, id?: string): Promise<Response> {
   if (method === 'PATCH' && id) return jsonResponse({ message: 'patch not supported in proxy mode' });
   if (id) return jsonResponse(await pluggyJson(client, `/transactions/${id}`));
-
   const accountId = url.searchParams.get('accountId');
   const from = url.searchParams.get('from') ?? undefined;
   const to = url.searchParams.get('to') ?? undefined;
   const cursor = url.searchParams.get('cursor') ?? undefined;
+  if (client.itemIds.length === 0) return jsonResponse({ results: [], total: 0 });
 
-  let targetItemIds = client.itemIds;
-  if (targetItemIds.length === 0) {
-    return jsonResponse({ results: [], total: 0 });
-  }
-
-  let accountIds: string[] = [];
-  if (accountId) {
-    accountIds = [accountId];
-  } else {
-    for (const iid of targetItemIds) {
+  let accountIds = accountId ? [accountId] : [];
+  if (!accountId) {
+    for (const iid of client.itemIds) {
       try {
         const d = await pluggyJson(client, '/accounts', { params: { itemId: iid } }) as { results?: { id: string }[] };
         accountIds.push(...(d.results || []).map(a => a.id));
       } catch (_) {}
     }
   }
-
   const all: unknown[] = [];
   for (const accId of accountIds) {
     try {
@@ -180,21 +144,9 @@ async function handleInvestments(client: PluggyClient, url: URL, id?: string): P
   if (id) return jsonResponse(await pluggyJson(client, `/investments/${id}`));
   const itemId = url.searchParams.get('itemId');
   const type = url.searchParams.get('type') ?? undefined;
-
-  let targetItemIds: string[] = [];
-  if (itemId) {
-    if (!client.itemIds.includes(itemId)) {
-      return errorResponse('Acesso negado para este item ID', 403);
-    }
-    targetItemIds = [itemId];
-  } else {
-    targetItemIds = client.itemIds;
-  }
-
-  if (targetItemIds.length === 0) {
-    return jsonResponse({ results: [], total: 0 });
-  }
-
+  let targetItemIds = itemId ? (client.itemIds.includes(itemId) ? [itemId] : []) : client.itemIds;
+  if (itemId && targetItemIds.length === 0) return errorResponse('Acesso negado para este item ID', 403);
+  if (targetItemIds.length === 0) return jsonResponse({ results: [], total: 0 });
   const all: unknown[] = [];
   for (const iid of targetItemIds) {
     try {
@@ -210,21 +162,9 @@ async function handleInvestments(client: PluggyClient, url: URL, id?: string): P
 async function handleLoans(client: PluggyClient, url: URL, id?: string): Promise<Response> {
   if (id) return jsonResponse(await pluggyJson(client, `/loans/${id}`));
   const itemId = url.searchParams.get('itemId');
-  
-  let targetItemIds: string[] = [];
-  if (itemId) {
-    if (!client.itemIds.includes(itemId)) {
-      return errorResponse('Acesso negado para este item ID', 403);
-    }
-    targetItemIds = [itemId];
-  } else {
-    targetItemIds = client.itemIds;
-  }
-
-  if (targetItemIds.length === 0) {
-    return jsonResponse({ results: [], total: 0 });
-  }
-
+  let targetItemIds = itemId ? (client.itemIds.includes(itemId) ? [itemId] : []) : client.itemIds;
+  if (itemId && targetItemIds.length === 0) return errorResponse('Acesso negado para este item ID', 403);
+  if (targetItemIds.length === 0) return jsonResponse({ results: [], total: 0 });
   const all: unknown[] = [];
   for (const iid of targetItemIds) {
     try {
@@ -249,11 +189,15 @@ async function handleConnectors(client: PluggyClient, url: URL, id?: string): Pr
   return jsonResponse(await pluggyJson(client, '/connectors', { params: { countries, name } }));
 }
 
-async function handleItems(client: PluggyClient, url: URL, method: string, body: unknown, id?: string, subPath?: string): Promise<Response> {
-  if (subPath === 'connect-token' && method === 'POST') {
+async function handleItems(client: PluggyClient, url: URL, method: string, body: unknown, idOrAction?: string): Promise<Response> {
+  if (idOrAction === 'connect-token' && method === 'POST') {
     const itemId = (body as { itemId?: string })?.itemId;
     return jsonResponse(await pluggyJson(client, '/connect_token', { method: 'POST', body: itemId ? { itemId } : {} }));
   }
+  if (idOrAction === 'register') {
+    return errorResponse('Use internal register logic', 400); 
+  }
+  const id = idOrAction;
   if (id && method === 'PATCH') {
     if (!client.itemIds.includes(id)) return errorResponse('Acesso negado', 403);
     return jsonResponse(await pluggyJson(client, `/items/${id}`, { method: 'PATCH', body }));
@@ -263,7 +207,6 @@ async function handleItems(client: PluggyClient, url: URL, method: string, body:
     await pluggyFetch(client, `/items/${id}`, { method: 'DELETE' });
     return jsonResponse({ success: true, message: 'Conexão removida com sucesso' });
   }
-  
   if (id) {
     if (!client.itemIds.includes(id)) return errorResponse('Acesso negado', 403);
     return jsonResponse(await pluggyJson(client, `/items/${id}`));
@@ -280,21 +223,38 @@ async function handleItems(client: PluggyClient, url: URL, method: string, body:
   return jsonResponse({ results, total: results.length });
 }
 
+async function handleWebhooks(client: PluggyClient, url: URL, method: string, body: unknown, action?: string): Promise<Response> {
+  if (method === 'GET' && action === 'list') {
+    return jsonResponse(await pluggyJson(client, '/webhooks'));
+  }
+  if (method === 'GET' && action === 'history') {
+    return jsonResponse([]);
+  }
+  if (method === 'POST' && action === 'register') {
+    const { url: webhookUrl, event = 'all' } = body as { url?: string; event?: string };
+    if (!webhookUrl) return errorResponse('URL é obrigatória', 400);
+    return jsonResponse(await pluggyJson(client, '/webhooks', { method: 'POST', body: { url: webhookUrl, event } }));
+  }
+  if (method === 'DELETE' && action) {
+    await pluggyFetch(client, `/webhooks/${action}`, { method: 'DELETE' });
+    return jsonResponse({ success: true });
+  }
+  return errorResponse('Invalid webhook action', 400);
+}
+
 // ─── Main router ───
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
-
   const url = new URL(req.url);
   let path = url.pathname.replace(/^\/pluggy-proxy/, '');
   if (!path.startsWith('/')) path = '/' + path;
 
   const segments = path.split('/').filter(Boolean);
   const resource = segments[0] ?? '';
-  const id = segments[1];
+  const actionOrId = segments[1];
   const subPath = segments[2];
   const method = req.method;
 
-  // -- Chatbot Webhook (Publicly accessible with specific Auth header) --
   if (resource === 'chatbot') {
     const action = segments[2];
     if (segments[1] === 'telegram' && action === 'link-token' && method === 'POST') {
@@ -317,8 +277,7 @@ Deno.serve(async (req: Request) => {
     return errorResponse(`Route /chatbot/${segments.join('/')} not found`, 404);
   }
   
-  // -- Webhooks Endpoint --
-  if (resource === 'webhooks' && method === 'POST') {
+  if (resource === 'webhooks' && method === 'POST' && !actionOrId) {
     return jsonResponse({ received: true });
   }
   
@@ -326,7 +285,6 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ status: 'ok', timestamp: new Date().toISOString() });
   }
 
-  // --- Auth Verification for all other routes ---
   const authHeader = req.headers.get('authorization');
   if (!authHeader) return errorResponse('Missing authorization header', 401);
   const token = authHeader.split(' ')[1];
@@ -341,13 +299,11 @@ Deno.serve(async (req: Request) => {
   const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
   if (authError || !user) return errorResponse('Invalid or expired authentication token', 401);
 
-  // --- Process Request Body early ---
   let body: unknown = {};
   if (['POST', 'PATCH', 'PUT'].includes(method)) {
     try { body = await req.json(); } catch (_) {}
   }
 
-  // --- Fetch Profile ---
   const { data: profile, error: profileError } = await supabaseClient
     .from('profiles')
     .select('pluggy_item_ids, pluggy_client_id, pluggy_client_secret')
@@ -355,11 +311,9 @@ Deno.serve(async (req: Request) => {
     .maybeSingle();
 
   if (profileError) return errorResponse(`Profile fetch error: ${profileError.message}`, 500);
-
   const itemIds = profile?.pluggy_item_ids || [];
   
-  // --- Custom Routes: Register Item ---
-  if (resource === 'items' && subPath === 'register' && method === 'POST') {
+  if (resource === 'items' && actionOrId === 'register' && method === 'POST') {
     const itemIdToRegister = (body as { itemId?: string })?.itemId;
     if (!itemIdToRegister) return errorResponse('itemId é obrigatório', 400);
 
@@ -373,31 +327,28 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ success: true, message: 'Item registrado com sucesso no perfil.' });
   }
 
-  // Set up credentials for API forwarding
   const clientId = profile?.pluggy_client_id || Deno.env.get('PLUGGY_CLIENT_ID');
   const clientSecret = profile?.pluggy_client_secret || Deno.env.get('PLUGGY_CLIENT_SECRET');
 
   if (!clientId || !clientSecret) {
     return errorResponse('PLUGGY_CLIENT_ID or PLUGGY_CLIENT_SECRET not configured for this user or globally', 500);
   }
-
   const clientConfig: PluggyClient = { clientId, clientSecret, itemIds };
 
-  // --- Pluggy API Routes ---
   try {
     switch (resource) {
-      case 'accounts':     return await handleAccounts(clientConfig, url, id);
-      case 'transactions': return await handleTransactions(clientConfig, url, method, id);
-      case 'investments':  return await handleInvestments(clientConfig, url, id);
-      case 'loans':        return await handleLoans(clientConfig, url, id);
-      case 'bills':        return await handleBills(clientConfig, url, id, subPath);
-      case 'connectors':   return await handleConnectors(clientConfig, url, id);
-      case 'items':        return await handleItems(clientConfig, url, method, body, id, subPath);
+      case 'accounts':     return await handleAccounts(clientConfig, url, actionOrId);
+      case 'transactions': return await handleTransactions(clientConfig, url, method, actionOrId);
+      case 'investments':  return await handleInvestments(clientConfig, url, actionOrId);
+      case 'loans':        return await handleLoans(clientConfig, url, actionOrId);
+      case 'bills':        return await handleBills(clientConfig, url, actionOrId, subPath);
+      case 'connectors':   return await handleConnectors(clientConfig, url, actionOrId);
+      case 'items':        return await handleItems(clientConfig, url, method, body, actionOrId);
+      case 'webhooks':     return await handleWebhooks(clientConfig, url, method, body, actionOrId);
       default:             return errorResponse(`Route /${resource} not found`, 404);
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    console.error(`[pluggy-proxy] Error on ${method} /${resource}:`, message);
     return errorResponse(message, 500);
   }
 });
