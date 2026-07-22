@@ -1,8 +1,10 @@
 import React from 'react';
-import { Settings as SettingsIcon, Moon, Sun, Palette, LayoutGrid, Check } from 'lucide-react';
+import { Settings as SettingsIcon, Moon, Sun, Palette, LayoutGrid, Check, MessageSquare } from 'lucide-react';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { useSettingsStore } from '../stores/settingsStore';
+import { supabase } from '../services/supabaseClient';
+import { generateTelegramLinkToken } from '../services/api';
 
 export function Settings() {
   const { 
@@ -16,6 +18,11 @@ export function Settings() {
     setAnimationsEnabled
   } = useSettingsStore();
 
+  const [telegramLinked, setTelegramLinked] = React.useState(false);
+  const [linkToken, setLinkToken] = React.useState('');
+  const [loadingToken, setLoadingToken] = React.useState(false);
+  const [loadingStatus, setLoadingStatus] = React.useState(true);
+
   const colors = [
     { name: 'Índigo Violeta', value: '#6366f1' },
     { name: 'Esmeralda', value: '#10b981' },
@@ -23,6 +30,29 @@ export function Settings() {
     { name: 'Púrpura', value: '#8b5cf6' },
     { name: 'Rosa Coral', value: '#f43f5e' },
   ];
+
+  React.useEffect(() => {
+    async function checkStatus() {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { data, error } = await supabase
+            .from('profiles')
+            .select('telegram_chat_id')
+            .eq('id', user.id)
+            .single();
+          if (data?.telegram_chat_id) {
+            setTelegramLinked(true);
+          }
+        }
+      } catch (err) {
+        console.error('Erro ao verificar status do Telegram:', err);
+      } finally {
+        setLoadingStatus(false);
+      }
+    }
+    checkStatus();
+  }, []);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
@@ -105,6 +135,102 @@ export function Settings() {
               <option value="spacious">Espaçoso</option>
             </select>
           </div>
+        </div>
+      </Card>
+
+      {/* Telegram Chatbot Connection */}
+      <Card title="Assistente do Telegram">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: '1rem' }}>
+          <div>
+            <h4 style={{ fontWeight: 600 }}>Integração com Assistente Inteligente</h4>
+            <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+              Consulte seu saldo, peça extrato ou registre despesas por áudio ou texto usando o Telegram e Inteligência Artificial.
+            </p>
+          </div>
+          
+          {loadingStatus ? (
+            <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--text-muted)' }}>Carregando status do assistente...</p>
+          ) : telegramLinked ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '1rem', backgroundColor: 'rgba(16, 185, 129, 0.1)', borderRadius: 'var(--radius-md)', border: '1px solid rgba(16, 185, 129, 0.2)' }}>
+              <div style={{ width: 10, height: 10, borderRadius: '50%', backgroundColor: '#10b981' }}></div>
+              <div>
+                <p style={{ fontSize: 'var(--font-size-sm)', fontWeight: 600, color: 'var(--text-primary)' }}>Telegram Conectado!</p>
+                <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>Seu chatbot está pronto para receber comandos.</p>
+              </div>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                style={{ marginLeft: 'auto' }}
+                onClick={async () => {
+                  if (confirm("Deseja realmente desconectar o Telegram?")) {
+                    try {
+                      const { data: { user } } = await supabase.auth.getUser();
+                      if (user) {
+                        const { error } = await supabase
+                          .from('profiles')
+                          .update({ telegram_chat_id: null })
+                          .eq('id', user.id);
+                        if (error) throw error;
+                        setTelegramLinked(false);
+                      }
+                    } catch (e) {
+                      alert("Erro ao desconectar: " + e.message);
+                    }
+                  }
+                }}
+              >
+                Desconectar
+              </Button>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '1rem', backgroundColor: 'var(--bg-card-hover)', borderRadius: 'var(--radius-md)' }}>
+                <div>
+                  <p style={{ fontSize: 'var(--font-size-sm)', fontWeight: 600 }}>Telegram Não Vinculado</p>
+                  <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>Gere um token de pareamento para ativar o assistente.</p>
+                </div>
+                <Button
+                  variant="primary"
+                  onClick={async () => {
+                    setLoadingToken(true);
+                    try {
+                      const token = await generateTelegramLinkToken();
+                      setLinkToken(token);
+                    } catch (err) {
+                      alert(err.message);
+                    } finally {
+                      setLoadingToken(false);
+                    }
+                  }}
+                  disabled={loadingToken}
+                  style={{ marginLeft: 'auto' }}
+                >
+                  {loadingToken ? 'Gerando...' : 'Gerar Código'}
+                </Button>
+              </div>
+              
+              {linkToken && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', padding: '1.25rem', border: '1px dashed var(--border-color)', borderRadius: 'var(--radius-md)', backgroundColor: 'var(--bg-body)' }}>
+                  <p style={{ fontSize: 'var(--font-size-sm)', fontWeight: 600 }}>Siga os passos abaixo para conectar:</p>
+                  <ol style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)', display: 'flex', flexDirection: 'column', gap: '0.5rem', paddingLeft: '1.25rem', margin: 0 }}>
+                    <li>Clique no botão abaixo para abrir o chat com o Bot.</li>
+                    <li>Clique em <b>Começar</b> ou envie o comando gerado: <code style={{ fontSize: 'var(--font-size-sm)', color: 'var(--primary-color)', backgroundColor: 'rgba(99, 102, 241, 0.1)', padding: '2px 6px', borderRadius: '4px', fontFamily: 'monospace' }}>/start {linkToken}</code></li>
+                    <li>Seu Telegram será automaticamente vinculado e você receberá uma confirmação.</li>
+                  </ol>
+                  <a
+                    href={`https://t.me/FinanceHubJesseBot?start=${linkToken}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ textDecoration: 'none', marginTop: '0.5rem' }}
+                  >
+                    <Button variant="primary" style={{ width: '100%', display: 'flex', gap: '0.5rem', alignItems: 'center', justifyContent: 'center' }} icon={MessageSquare}>
+                      Abrir Bot no Telegram
+                    </Button>
+                  </a>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </Card>
     </div>

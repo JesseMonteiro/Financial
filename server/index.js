@@ -11,6 +11,7 @@ import billsRoutes from './routes/bills.js';
 import connectorsRoutes from './routes/connectors.js';
 import itemsRoutes from './routes/items.js';
 import webhooksRoutes from './routes/webhooks.js';
+import chatbotRoutes from './routes/chatbot.js';
 import { clearCache } from './middleware/cache.js';
 
 dotenv.config();
@@ -38,6 +39,7 @@ app.use('/api/bills', billsRoutes);
 app.use('/api/connectors', connectorsRoutes);
 app.use('/api/items', itemsRoutes);
 app.use('/api/webhooks', webhooksRoutes);
+app.use('/api/chatbot', chatbotRoutes);
 
 // Cache flush endpoint
 app.post('/api/cache/clear', (req, res) => {

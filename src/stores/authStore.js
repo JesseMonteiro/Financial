@@ -71,7 +71,9 @@ export const useAuthStore = create((set, get) => ({
     if (!error) {
       set({ user: null, session: null });
       // Redireciona e recarrega para limpar todos os estados dos stores do Zustand da memória
-      window.location.href = '/login';
+      const base = import.meta.env.BASE_URL || '/';
+      const redirectPath = base.endsWith('/') ? `${base}login` : `${base}/login`;
+      window.location.href = redirectPath;
     }
     set({ loading: false, error: error?.message || null });
   },

@@ -151,6 +151,16 @@ export async function createConnectToken(itemId) {
   }
 }
 
+export async function generateTelegramLinkToken() {
+  try {
+    const res = await api.post('/chatbot/telegram/link-token');
+    return res.data?.token || null;
+  } catch (err) {
+    console.error('Erro ao gerar token do telegram:', err);
+    throw new Error('Falha ao gerar o token de vinculação do Telegram.');
+  }
+}
+
 export async function checkServerHealth() {
   try {
     const res = await api.get('/health');
