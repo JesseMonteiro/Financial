@@ -8,7 +8,8 @@ import { useAccountStore } from '../stores/accountStore';
 import { useReceivableStore } from '../stores/receivableStore';
 import { useCreditDataStore } from '../stores/creditDataStore';
 import { formatCurrency, formatDate } from '../utils/formatters';
-import { detectSubscriptions, isExpenseTx } from '../utils/analytics';
+import { isExpenseTx } from '../utils/analytics';
+import { detectSubscriptions, groupSubscriptionsByKind } from '../utils/subscriptions';
 import { formatDueMonthShort, buildCreditCardBills } from '../utils/creditBillPeriod';
 
 const FREQ_LABEL = {
@@ -44,7 +45,23 @@ export function Subscriptions() {
     if (creditIds.length) loadForAccounts(creditIds);
   }, [creditIds.join(',')]);
 
-  const subscriptions = useMemo(() => detectSubscriptions(transactions), [transactions]);
+  const allExpenseSources = useMemo(() => {
+    const { transactions: cardTxs } = getMerged(creditIds);
+    const seen = new Set();
+    const merged = [];
+    [...transactions, ...(cardTxs || [])].forEach((t) => {
+      const id = t?.id;
+      if (id != null) {
+        if (seen.has(id)) return;
+        seen.add(id);
+      }
+      merged.push(t);
+    });
+    return merged;
+  }, [transactions, creditIds, getMerged, transactionsByAccount]);
+
+  const subscriptions = useMemo(() => detectSubscriptions(allExpenseSources), [allExpenseSources]);
+  const groupedSubscriptions = useMemo(() => groupSubscriptionsByKind(subscriptions), [subscriptions]);
   const monthlyTotal = useMemo(
     () => subscriptions.reduce((s, r) => s + (r.monthlyEquivalent || 0), 0),
     [subscriptions]
@@ -65,7 +82,7 @@ export function Subscriptions() {
           title: sub.name,
           amount: sub.amount,
           type: 'subscription',
-          meta: FREQ_LABEL[sub.frequency] || sub.frequency,
+          meta: sub.subscriptionKindLabel || FREQ_LABEL[sub.frequency] || sub.frequency,
         });
       }
     });
@@ -174,7 +191,7 @@ export function Subscriptions() {
         <div>
           <h1 style={{ fontSize: 'var(--font-size-2xl)', fontWeight: 700 }}>Assinaturas & Agenda</h1>
           <p style={{ color: 'var(--text-muted)', fontSize: 'var(--font-size-sm)' }}>
-            Recorrências detectadas nas transações e vencimentos dos próximos 45 dias.
+            Assinaturas detectadas nas compras (streaming, telecom, serviços…) e vencimentos dos próximos 45 dias.
           </p>
         </div>
       </div>
@@ -188,7 +205,7 @@ export function Subscriptions() {
             {formatCurrency(monthlyTotal)}
           </h2>
           <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>
-            {subscriptions.length} recorrência(s) detectada(s)
+            {subscriptions.length} assinatura(s) · {groupedSubscriptions.length} categoria(s)
           </span>
         </Card>
         <Card className="col-4">
@@ -244,58 +261,78 @@ export function Subscriptions() {
       </div>
 
       {tab === 'subscriptions' && (
-        <Card title={`Recorrências (${subscriptions.length})`}>
+        <>
           {subscriptions.length === 0 ? (
-            <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
-              <Info size={32} style={{ marginBottom: 8 }} />
-              <p>Nenhuma assinatura detectada ainda. Conecte contas com histórico de cobranças recorrentes.</p>
-            </div>
+            <Card title="Assinaturas">
+              <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                <Info size={32} style={{ marginBottom: 8 }} />
+                <p>
+                  Nenhuma assinatura detectada ainda. Conecte contas com cobranças recorrentes de streaming,
+                  telecom ou serviços digitais.
+                </p>
+              </div>
+            </Card>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem', marginTop: '0.5rem' }}>
-              {subscriptions.map((sub) => (
-                <div
-                  key={sub.id}
-                  className="list-row"
-                  style={{ padding: '0.85rem 1rem', background: 'var(--bg-tertiary)', borderRadius: 'var(--radius-md)' }}
-                >
-                  <div className="list-row-main" style={{ gap: '0.75rem', minWidth: 0 }}>
+            groupedSubscriptions.map((group) => (
+              <Card
+                key={group.kind}
+                title={
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    {group.label}
+                    <Badge variant="neutral">{group.items.length}</Badge>
+                    <span style={{ fontWeight: 500, fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>
+                      ~{formatCurrency(group.monthlyTotal)}/mês
+                    </span>
+                  </span>
+                }
+              >
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem', marginTop: '0.5rem' }}>
+                  {group.items.map((sub) => (
                     <div
-                      style={{
-                        width: 36,
-                        height: 36,
-                        borderRadius: 'var(--radius-md)',
-                        background: 'var(--primary-light)',
-                        color: 'var(--primary)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        flexShrink: 0,
-                      }}
+                      key={sub.id}
+                      className="list-row"
+                      style={{ padding: '0.85rem 1rem', background: 'var(--bg-tertiary)', borderRadius: 'var(--radius-md)' }}
                     >
-                      <Repeat size={18} />
-                    </div>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                        <h3 style={{ fontWeight: 600, fontSize: 'var(--font-size-sm)', margin: 0 }}>{sub.name}</h3>
-                        <Badge variant="info">{FREQ_LABEL[sub.frequency] || sub.frequency}</Badge>
-                        {sub.isManual && <Badge variant="neutral">Manual</Badge>}
+                      <div className="list-row-main" style={{ gap: '0.75rem', minWidth: 0 }}>
+                        <div
+                          style={{
+                            width: 36,
+                            height: 36,
+                            borderRadius: 'var(--radius-md)',
+                            background: 'var(--primary-light)',
+                            color: 'var(--primary)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            flexShrink: 0,
+                          }}
+                        >
+                          <Repeat size={18} />
+                        </div>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                            <h3 style={{ fontWeight: 600, fontSize: 'var(--font-size-sm)', margin: 0 }}>{sub.name}</h3>
+                            <Badge variant="info">{FREQ_LABEL[sub.frequency] || sub.frequency}</Badge>
+                            {sub.isManual && <Badge variant="neutral">Manual</Badge>}
+                          </div>
+                          <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>
+                            {sub.category} · {sub.occurrences} ocorrências · próxima {formatDate(sub.nextDate)}
+                          </span>
+                        </div>
                       </div>
-                      <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>
-                        {sub.category} · {sub.occurrences} ocorrências · próxima {formatDate(sub.nextDate)}
-                      </span>
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontWeight: 700 }}>{formatCurrency(sub.amount)}</div>
+                        <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                          ~{formatCurrency(sub.monthlyEquivalent)}/mês
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                  <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontWeight: 700 }}>{formatCurrency(sub.amount)}</div>
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                      ~{formatCurrency(sub.monthlyEquivalent)}/mês
-                    </div>
-                  </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              </Card>
+            ))
           )}
-        </Card>
+        </>
       )}
 
       {tab === 'calendar' && (

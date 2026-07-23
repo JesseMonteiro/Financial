@@ -329,14 +329,6 @@ export function expensesByMerchant(transactions = [], { limit = 10, ym } = {}) {
     .slice(0, limit);
 }
 
-function monthlyEquivalentFor(amount, frequency = 'monthly') {
-  const n = Number(amount) || 0;
-  if (frequency === 'weekly') return Number((n * 4.33).toFixed(2));
-  if (frequency === 'yearly') return Number((n / 12).toFixed(2));
-  if (frequency === 'bimonthly') return Number((n / 2).toFixed(2));
-  return Number(n.toFixed(2));
-}
-
 /** Sankey nodes/links: Income → Categories (top categories + Outros) */
 export function buildCashflowSankey(transactions = [], ym = currentYm(), topN = 6) {
   const flow = monthCashflow(transactions, ym);
@@ -411,104 +403,8 @@ export function dailyExpenseHeatmap(transactions = [], ym = currentYm()) {
   }));
 }
 
-/**
- * Detect recurring subscriptions from expense transactions.
- * Groups by normalized merchant; requires ≥2 occurrences with similar amount.
- */
-export function detectSubscriptions(transactions = [], { minOccurrences = 2, amountTolerance = 0.15 } = {}) {
-  const expenses = transactions.filter(isExpenseTx);
-  const groups = {};
-
-  expenses.forEach((t) => {
-    const raw = merchantName(t)
-      .toUpperCase()
-      .replace(/\s+/g, ' ')
-      .replace(/\d{1,2}\/\d{1,2}/g, '')
-      .trim();
-    const key = raw.slice(0, 40) || 'OUTROS';
-    if (!groups[key]) groups[key] = [];
-    groups[key].push(t);
-  });
-
-  const results = [];
-  Object.entries(groups).forEach(([key, txs]) => {
-    if (txs.length < minOccurrences) return;
-    const amounts = txs.map((t) => Math.abs(Number(t.amount) || 0)).sort((a, b) => a - b);
-    const median = amounts[Math.floor(amounts.length / 2)];
-    const similar = txs.filter((t) => {
-      const a = Math.abs(Number(t.amount) || 0);
-      return median === 0 ? a === 0 : Math.abs(a - median) / median <= amountTolerance;
-    });
-    if (similar.length < minOccurrences) return;
-
-    const dates = similar
-      .map((t) => new Date(t.date))
-      .filter((d) => !Number.isNaN(d.getTime()))
-      .sort((a, b) => a - b);
-    if (dates.length < 2) return;
-
-    const gaps = [];
-    for (let i = 1; i < dates.length; i++) {
-      gaps.push((dates[i] - dates[i - 1]) / (1000 * 60 * 60 * 24));
-    }
-    const avgGap = gaps.reduce((s, g) => s + g, 0) / gaps.length;
-    let frequency = 'monthly';
-    if (avgGap <= 10) frequency = 'weekly';
-    else if (avgGap >= 300) frequency = 'yearly';
-    else if (avgGap > 40 && avgGap < 80) frequency = 'bimonthly';
-
-    // Skip one-offs that just happened twice by chance with huge gap variance
-    if (avgGap > 100 && frequency === 'monthly') return;
-
-    const lastDate = dates[dates.length - 1];
-    const nextDate = new Date(lastDate);
-    if (frequency === 'weekly') nextDate.setDate(nextDate.getDate() + 7);
-    else if (frequency === 'yearly') nextDate.setFullYear(nextDate.getFullYear() + 1);
-    else if (frequency === 'bimonthly') nextDate.setMonth(nextDate.getMonth() + 2);
-    else nextDate.setMonth(nextDate.getMonth() + 1);
-
-    const sample = similar[similar.length - 1];
-    results.push({
-      id: key,
-      name: merchantName(sample),
-      amount: Number(median.toFixed(2)),
-      frequency,
-      occurrences: similar.length,
-      lastDate: lastDate.toISOString(),
-      nextDate: nextDate.toISOString(),
-      category: translateCategory(sample.category),
-      monthlyEquivalent: monthlyEquivalentFor(median, frequency),
-    });
-  });
-
-  // Also include explicit manual recurrings
-  transactions
-    .filter((t) => t.isManual && t.isRecurring && isExpenseTx(t))
-    .forEach((t) => {
-      const name = t.originalDescription || t.description;
-      const already = results.some(
-        (r) => r.name.toLowerCase().includes(String(name).toLowerCase().slice(0, 20))
-      );
-      if (already) return;
-      const amount = Math.abs(Number(t.amount) || 0);
-      const frequency = t.frequency || 'monthly';
-      const next = new Date(t.date);
-      results.push({
-        id: `manual_${t.id}`,
-        name,
-        amount,
-        frequency,
-        occurrences: 1,
-        lastDate: t.date,
-        nextDate: next.toISOString(),
-        category: translateCategory(t.category),
-        monthlyEquivalent: monthlyEquivalentFor(amount, frequency),
-        isManual: true,
-      });
-    });
-
-  return results.sort((a, b) => b.monthlyEquivalent - a.monthlyEquivalent);
-}
+// Subscription detection lives in ./subscriptions.js (re-exported for existing imports)
+export { detectSubscriptions, monthlyEquivalentFor } from './subscriptions.js';
 
 export function weekBounds(now = new Date()) {
   const end = new Date(now);
