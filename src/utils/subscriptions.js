@@ -43,8 +43,8 @@ const MERCHANT_CATALOG = [
   // Streaming
   { kind: 'streaming', keywords: ['AMAZON PRIME', 'PRIME VIDEO', 'APPLE TV', 'YOUTUBE PREMIUM', 'YOUTUBE MUSIC'] },
   { kind: 'streaming', keywords: ['NETFLIX', 'HBO', 'MAX COM', 'DISNEY', 'SPOTIFY', 'GLOBOPLAY', 'PARAMOUNT', 'CRUNCHYROLL', 'DEEZER', 'TIDAL', 'APPLE MUSIC'] },
-  // Telecom
-  { kind: 'telecom', keywords: ['BRISANET', 'STARLINK', 'VIVO', 'CLARO', 'TIM ', ' TIM', ' OI ', 'OI FIBRA', 'SKY ', 'NET VIRTUA', 'OI FIXO'] },
+  // Telecom (short names matched as whole words — see matchesKeyword)
+  { kind: 'telecom', keywords: ['BRISANET', 'STARLINK', 'VIVO', 'CLARO', 'TIM', 'OI', 'OI FIBRA', 'SKY', 'NET VIRTUA', 'OI FIXO'] },
   // Digital services
   { kind: 'servicos_digitais', keywords: ['APPLE.COM/BILL', 'APPLE BILL', 'APPLE.COM', 'ICLOUD', 'OPENAI', 'CHATGPT', 'CURSOR'] },
   { kind: 'servicos_digitais', keywords: ['MICROSOFT', 'ADOBE', 'DROPBOX', 'GITHUB', 'GOOGLE ONE', 'GOOGLE STORAGE', 'GOOGLE *', 'PLAYSTATION', 'XBOX', 'NINTENDO'] },
@@ -86,6 +86,17 @@ const MERCHANT_BLOCKLIST = [
   'TED ',
   'PIX ',
   'SAQUE',
+  // Loans / vehicle financing (not subscriptions)
+  'SOCIEDADE DE CREDITO',
+  'FINANCIAMENTO E INVESTIMENTO',
+  'CREDITO, FINANCIAMENTO',
+  'CREDITO FINANCIAMENTO',
+  'FINANCIAMENTOS',
+  'FINANCIAMENTO DE VEICULO',
+  'FINANCIAMENTO VEICULO',
+  'CREDITO DIRETO AO CONSUMIDOR',
+  ' EMPRESTIMO',
+  'EMPRESTIMOS',
 ];
 
 /** Pluggy categories that are never subscriptions */
@@ -146,6 +157,18 @@ function isBlockedMerchant(blob) {
 }
 
 /**
+ * Match catalog keywords on word boundaries so short tokens like TIM/OI/SKY
+ * do not hit substrings (e.g. TIM inside INVESTIMENTO).
+ */
+function matchesKeyword(blob, keyword) {
+  const needle = normalizeText(keyword);
+  if (!needle) return false;
+  const escaped = needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const re = new RegExp(`(?:^|[^A-Z0-9])${escaped}(?:[^A-Z0-9]|$)`);
+  return re.test(blob);
+}
+
+/**
  * Classify a transaction as a subscription candidate.
  * @returns {{ kind: string, label: string, fromCatalog: boolean } | null}
  */
@@ -160,8 +183,7 @@ export function classifySubscription(tx) {
 
   for (const entry of MERCHANT_CATALOG) {
     for (const kw of entry.keywords) {
-      const needle = normalizeText(kw);
-      if (needle && blob.includes(needle)) {
+      if (matchesKeyword(blob, kw)) {
         return {
           kind: entry.kind,
           label: SUBSCRIPTION_KIND_LABELS[entry.kind] || entry.kind,
