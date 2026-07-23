@@ -122,17 +122,47 @@ export function getDueMonthKey(tx, officialBills = [], forecastToDueOffset = 0) 
   return 'Outros';
 }
 
-function isBillSettled(bill) {
+/**
+ * Settled when payments[] cover the total, OR a payment tx on a later cycle
+ * matches the bill total (Nubank often posts payment on the *next* statement).
+ */
+export function isBillSettled(bill, opts = {}) {
   if (!bill) return false;
-  const paid = (bill.payments || []).reduce((s, p) => s + (Number(p.amount) || 0), 0);
   const total = Number(bill.totalAmount) || 0;
-  if ((bill.payments || []).length === 0) return false;
-  // Allow small rounding differences
-  return paid >= total - 0.05;
+  const payments = bill.payments || [];
+  if (payments.length) {
+    const paid = payments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+    if (paid >= total - 0.05) return true;
+  }
+
+  const { transactions = [], officialBills = [], forecastToDueOffset = 0 } = opts;
+  if (!total || !transactions.length) return false;
+
+  const dueYm = ymFromIso(bill.dueDate);
+  if (!dueYm) return false;
+  const billDueDate = String(bill.dueDate).slice(0, 10);
+  const billMap = billMapFromList(officialBills);
+  const nextYm = ymAdd(dueYm, 1);
+
+  for (const t of transactions) {
+    if (!isBillPayment(t)) continue;
+    const amt = Math.abs(Number(t.amount) || 0);
+    if (Math.abs(amt - total) > 0.05) continue;
+    const tDue = getDueMonthKey(t, billMap, forecastToDueOffset);
+    const tDate = String(t.date || '').slice(0, 10);
+    if (tDue === nextYm || tDue > dueYm || (tDate && tDate >= billDueDate)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /**
  * Due month of the currently open (or next) bill.
+ *
+ * When official bills exist, never reopen a cycle Pluggy already listed —
+ * PENDING that maps into a closed due month is ignored (stale forecast).
+ * Open = earliest PENDING after latest official due, else latestOfficial + 1.
  */
 export function resolveOpenDueMonthKey({
   transactions = [],
@@ -140,30 +170,52 @@ export function resolveOpenDueMonthKey({
   forecastToDueOffset = 0,
   today = new Date(),
 } = {}) {
+  const billMap = billMapFromList(officialBills);
+  const todayIso = today.toISOString().slice(0, 10);
+  const settleOpts = { transactions, officialBills, forecastToDueOffset };
+
+  const sortedBillDues = officialBills
+    .map((b) => ymFromIso(b.dueDate))
+    .filter(Boolean)
+    .sort();
+  const latestOfficialDue = sortedBillDues.at(-1) || null;
+
+  // Rare: unpaid official bill still current (dueDate >= today)
+  const unpaidOfficial = officialBills
+    .filter(
+      (b) =>
+        b.dueDate &&
+        !isBillSettled(b, settleOpts) &&
+        String(b.dueDate).slice(0, 10) >= todayIso
+    )
+    .map((b) => ymFromIso(b.dueDate))
+    .filter(Boolean)
+    .sort();
+  if (unpaidOfficial.length) return unpaidOfficial[0];
+
   const pendingDueMonths = new Set();
   for (const t of transactions) {
     if (t.status !== 'PENDING') continue;
     if (isBillPayment(t)) continue;
-    const due = getDueMonthKey(t, officialBills, forecastToDueOffset);
-    if (due && due !== 'Outros') pendingDueMonths.add(due);
+    const due = getDueMonthKey(t, billMap, forecastToDueOffset);
+    if (!due || due === 'Outros') continue;
+    // Never reopen a cycle Pluggy already closed as an official bill
+    if (latestOfficialDue && due <= latestOfficialDue) continue;
+    pendingDueMonths.add(due);
   }
   const pendingSorted = [...pendingDueMonths].sort();
   if (pendingSorted.length) return pendingSorted[0];
 
-  const todayIso = today.toISOString().slice(0, 10);
-  const unpaidFuture = officialBills
-    .filter((b) => b.dueDate && !isBillSettled(b) && String(b.dueDate).slice(0, 10) >= todayIso)
-    .map((b) => ymFromIso(b.dueDate))
-    .filter(Boolean)
-    .sort();
-  if (unpaidFuture.length) return unpaidFuture[0];
+  if (latestOfficialDue) return ymAdd(latestOfficialDue, 1);
 
-  const latestDue = officialBills
-    .map((b) => ymFromIso(b.dueDate))
-    .filter(Boolean)
-    .sort()
-    .at(-1);
-  if (latestDue) return ymAdd(latestDue, 1);
+  // No official bills: any PENDING, then calendar month
+  for (const t of transactions) {
+    if (t.status !== 'PENDING' || isBillPayment(t)) continue;
+    const due = getDueMonthKey(t, billMap, forecastToDueOffset);
+    if (due && due !== 'Outros') pendingDueMonths.add(due);
+  }
+  const anyPending = [...pendingDueMonths].sort();
+  if (anyPending.length) return anyPending[0];
 
   const y = today.getFullYear();
   const m = String(today.getMonth() + 1).padStart(2, '0');
@@ -190,9 +242,64 @@ export function buildCreditCardBills({
   const offsetCache = {};
   const globalOffset = inferForecastToDueOffset(transactions, officialBills);
 
+  // Open due first — needed to remap stale PENDING out of closed cycles
+  const accountIds = [
+    ...new Set([
+      ...creditCards.map((c) => c.id),
+      ...transactions.map((t) => t.accountId).filter(Boolean),
+    ]),
+  ];
+  const openByAccount = {};
+  const latestOfficialByAccount = {};
+  for (const accountId of accountIds) {
+    const offset = offsetForAccount(accountId, transactions, officialBills, offsetCache);
+    const acctBills = officialBills.filter((b) => b.accountId === accountId);
+    openByAccount[accountId] = resolveOpenDueMonthKey({
+      transactions: transactions.filter((t) => t.accountId === accountId),
+      officialBills: acctBills,
+      forecastToDueOffset: offset,
+      today,
+    });
+    latestOfficialByAccount[accountId] =
+      acctBills
+        .map((b) => ymFromIso(b.dueDate))
+        .filter(Boolean)
+        .sort()
+        .at(-1) || null;
+  }
+  const openCandidates = Object.values(openByAccount);
+  const openDueKey = (openCandidates.length
+    ? openCandidates
+    : [
+        resolveOpenDueMonthKey({
+          transactions,
+          officialBills,
+          forecastToDueOffset: globalOffset,
+          today,
+        }),
+      ]
+  ).sort()[0];
+
   const dueKeyForTx = (t) => {
     const offset = offsetForAccount(t.accountId, transactions, officialBills, offsetCache);
-    return getDueMonthKey(t, billMap, offset);
+    let key = getDueMonthKey(t, billMap, offset);
+    const openForCard = openByAccount[t.accountId] || openDueKey;
+    const latestOfficial = latestOfficialByAccount[t.accountId];
+    // PENDING without billId that still map into a closed official cycle
+    // belong to the open bill (wrong/stale billForecastDate from Pluggy)
+    if (
+      t.status === 'PENDING' &&
+      !isBillPayment(t) &&
+      !(t.creditCardMetadata?.billId || t.billId) &&
+      latestOfficial &&
+      key &&
+      key !== 'Outros' &&
+      key <= latestOfficial &&
+      openForCard
+    ) {
+      return openForCard;
+    }
+    return key;
   };
 
   const map = {};
@@ -226,36 +333,6 @@ export function buildCreditCardBills({
     }
     map[key].items.push(t);
   }
-
-  // Open due: earliest among per-card open keys (when consolidating)
-  const accountIds = [
-    ...new Set([
-      ...creditCards.map((c) => c.id),
-      ...transactions.map((t) => t.accountId).filter(Boolean),
-    ]),
-  ];
-  const openByAccount = {};
-  for (const accountId of accountIds) {
-    const offset = offsetForAccount(accountId, transactions, officialBills, offsetCache);
-    openByAccount[accountId] = resolveOpenDueMonthKey({
-      transactions: transactions.filter((t) => t.accountId === accountId),
-      officialBills: officialBills.filter((b) => b.accountId === accountId),
-      forecastToDueOffset: offset,
-      today,
-    });
-  }
-  const openCandidates = Object.values(openByAccount);
-  const openDueKey = (openCandidates.length
-    ? openCandidates
-    : [
-        resolveOpenDueMonthKey({
-          transactions,
-          officialBills,
-          forecastToDueOffset: globalOffset,
-          today,
-        }),
-      ]
-  ).sort()[0];
 
   if (!map[openDueKey]) {
     map[openDueKey] = {
@@ -339,7 +416,15 @@ export function buildCreditCardBills({
         totalAmount += Number(official.totalAmount) || 0;
         hasOfficial = true;
         dueDate = String(official.dueDate).slice(0, 10);
-        if (!isBillSettled(official)) isPaid = false;
+        if (
+          !isBillSettled(official, {
+            transactions,
+            officialBills,
+            forecastToDueOffset: globalOffset,
+          })
+        ) {
+          isPaid = false;
+        }
       } else if (dueYm === (openByAccount[card.id] || openDueKey) && card.id) {
         // Open cycle without official bill: Pluggy account.balance is the source of truth
         const cardAcc = creditCards.find((c) => c.id === card.id);
