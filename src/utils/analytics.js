@@ -73,17 +73,66 @@ function normalizeDesc(text) {
     .trim();
 }
 
+/** Calendar day YYYY-MM-DD from a Pluggy ISO date (date part only, no TZ shift). */
+function txDay(tx) {
+  const raw = String(tx?.date || '');
+  return raw.length >= 10 ? raw.slice(0, 10) : '';
+}
+
 /**
- * True when a bank-account expense looks like an automatic debit
- * (scheduled PENDING or classic "débito aut" / convênio patterns).
- * Excludes manuals, credit cards, and fatura payments (already counted elsewhere).
+ * True credit-card statement payments (avoid double-counting faturas).
+ * Intentionally narrower than isBillPayment — do NOT treat every "PAGAMENTO *"
+ * as fatura (loan/financing auto-debits often start with PAGAMENTO).
+ */
+function isCreditCardFaturaPayment(tx) {
+  const d = normalizeDesc(tx?.descriptionRaw || tx?.description);
+  return (
+    d.includes('PAGAMENTO DE FATURA') ||
+    d.includes('PAGAMENTO RECEBIDO') ||
+    d.includes('PAGAMENTO ON LINE') ||
+    d.includes('PAGAMENTO ONLINE') ||
+    d.includes('PAGTO FATURA') ||
+    d.includes('PAGAMENTO FATURA')
+  );
+}
+
+function isBankOutflow(tx) {
+  if (!tx) return false;
+  if (tx.type === 'CREDIT' || tx.type === 'CREDIT_INCOME') return false;
+  return Number(tx.amount) < 0 || tx.type === 'DEBIT';
+}
+
+function matchesAutomaticDebitDescription(tx) {
+  const d = normalizeDesc(tx?.descriptionRaw || tx?.description);
+  if (!d) return false;
+  return (
+    d.includes('DEBITO AUT') ||
+    d.includes('DEB AUT') ||
+    d.includes('DEB.AUT') ||
+    d.includes('DEBITO AUTOMATICO') ||
+    d.includes('DEBITO AUTOM') ||
+    d.includes('DEBITO EM CONTA') ||
+    d.includes('AGENDADO') ||
+    d.includes('PROGRAMADO') ||
+    d.includes('SOCIEDADE DE CREDITO') ||
+    d.includes('FINANCIAMENTO E INVESTIMENTO') ||
+    d.includes('CREDITO, FINANCIAMENTO') ||
+    /\bPROV\b/.test(d)
+  );
+}
+
+/**
+ * True when a bank-account expense is an automatic/scheduled debit.
+ * Includes PENDING, future-dated outflows (agendados), and classic debito-aut patterns.
+ * Does not use isBillPayment — that regex drops legitimate "PAGAMENTO SANTANDER…" loans.
  *
  * @param {object} tx
- * @param {{ bankAccountIds?: Set<string>|string[] }} [opts]
+ * @param {{ bankAccountIds?: Set<string>|string[], now?: Date }} [opts]
  */
-export function isAutomaticDebitTx(tx, { bankAccountIds } = {}) {
+export function isAutomaticDebitTx(tx, { bankAccountIds, now = new Date() } = {}) {
   if (!tx || tx.isManual) return false;
-  if (!isExpenseTx(tx)) return false;
+  if (!isBankOutflow(tx)) return false;
+  if (isCreditCardFaturaPayment(tx)) return false;
 
   if (bankAccountIds) {
     const ids = bankAccountIds instanceof Set ? bankAccountIds : new Set(bankAccountIds);
@@ -92,30 +141,44 @@ export function isAutomaticDebitTx(tx, { bankAccountIds } = {}) {
 
   if (tx.status === 'PENDING') return true;
 
-  if (tx.operationType === 'CONVENIO_ARRECADACAO') return true;
+  const day = txDay(tx);
+  const today = now.toISOString().slice(0, 10);
+  // Future-dated bank outflow = scheduled commitment (ex.: financiamento dia 29)
+  if (day && day >= today) return true;
 
-  const d = normalizeDesc(tx.descriptionRaw || tx.description);
-  return (
-    d.includes('DEBITO AUT') ||
-    d.includes('DEB AUT') ||
-    d.includes('DEB.AUT') ||
-    d.includes('DEBITO AUTOMATICO') ||
-    d.includes('DEBITO AUTOM') ||
-    d.includes('DEBITO EM CONTA')
-  );
+  if (
+    tx.operationType === 'CONVENIO_ARRECADACAO' ||
+    tx.operationType === 'OPERACAO_CREDITO'
+  ) {
+    return true;
+  }
+
+  return matchesAutomaticDebitDescription(tx);
+}
+
+/** Whether the debit is still outstanding (scheduled / not settled yet). */
+export function isAutomaticDebitPending(tx, now = new Date()) {
+  if (!tx) return false;
+  if (tx.status === 'PENDING') return true;
+  const day = txDay(tx);
+  const today = now.toISOString().slice(0, 10);
+  return Boolean(day && day >= today);
 }
 
 /**
  * Automatic debits from connected bank accounts for a calendar month (YYYY-MM).
  * @param {object[]} transactions
  * @param {string} ym
- * @param {{ bankAccountIds?: Set<string>|string[] }} [opts]
+ * @param {{ bankAccountIds?: Set<string>|string[], now?: Date }} [opts]
  */
 export function automaticDebitsForMonth(transactions = [], ym, opts = {}) {
   if (!ym) return [];
-  return transactions.filter(
-    (t) => isAutomaticDebitTx(t, opts) && String(t.date || '').startsWith(ym)
-  );
+  return transactions.filter((t) => {
+    if (!isAutomaticDebitTx(t, opts)) return false;
+    const day = txDay(t);
+    if (day.startsWith(ym)) return true;
+    return ymFromDate(t.date) === ym;
+  });
 }
 
 export function filterTransactions(transactions = [], { accountId, category, fromYm, toYm, fromDate, toDate } = {}) {

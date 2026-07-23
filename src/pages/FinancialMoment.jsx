@@ -19,7 +19,7 @@ import {
   MONTHS_PT,
 } from '../utils/creditBillPeriod';
 import { resolveMonthSalary, withSavedMonthSalary } from '../utils/monthSalary';
-import { automaticDebitsForMonth } from '../utils/analytics';
+import { automaticDebitsForMonth, isAutomaticDebitPending } from '../utils/analytics';
 import { 
   ChevronLeft, 
   ChevronRight, 
@@ -281,7 +281,7 @@ export function FinancialMoment() {
       ...t,
       accountName: bankAccountNameById[t.accountId] || 'Conta conectada',
       amountAbs: Math.abs(Number(t.amount) || 0),
-      isPending: t.status === 'PENDING',
+      isPending: isAutomaticDebitPending(t),
     }));
     const automaticDebitsTotal = activeAutomaticDebits.reduce((s, t) => s + t.amountAbs, 0);
 
@@ -680,7 +680,7 @@ export function FinancialMoment() {
               {/* Automatic Debits from connected bank accounts */}
               <Card
                 title="Débito Automático"
-                subtitle="Despesas agendadas (PENDING) e débitos automáticos das contas bancárias conectadas neste mês."
+                subtitle="Despesas agendadas e débitos automáticos das contas bancárias conectadas neste mês (inclui financiamentos futuros)."
               >
                 {activeMonthData.activeAutomaticDebits.length === 0 ? (
                   <p style={{ color: 'var(--text-muted)', fontSize: 'var(--font-size-xs)', textAlign: 'center', padding: '1rem' }}>
