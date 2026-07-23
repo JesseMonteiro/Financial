@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { supabase } from './supabaseClient.js';
+import { cachedFetch, cacheClearAll } from './clientCache.js';
 
 // In production (GitHub Pages) calls go to the Supabase Edge Function.
 // Locally, Vite proxies /api → localhost:3001 (vite.config.js proxy setting).
@@ -25,126 +26,195 @@ api.interceptors.request.use(async (config) => {
   return config;
 });
 
-
-
-export async function fetchAccounts(itemId) {
+async function cacheScope() {
   try {
-    const res = await api.get('/accounts', { params: itemId ? { itemId } : {} });
-    const data = res.data;
-    if (data && Array.isArray(data.results)) {
-      return data.results;
-    }
-    if (Array.isArray(data)) {
-      return data;
-    }
-    return [];
-  } catch (err) {
-    console.warn('[API Error] Falha ao buscar contas:', err.message);
-    return [];
+    const { data: { session } } = await supabase.auth.getSession();
+    return session?.user?.id || 'anon';
+  } catch {
+    return 'anon';
   }
 }
 
-export async function fetchTransactions(params = {}) {
-  try {
-    const res = await api.get('/transactions', { params });
-    const data = res.data;
-    if (data && Array.isArray(data.results)) {
-      return data;
-    }
-    if (Array.isArray(data)) {
-      return { results: data, next: null };
-    }
-    return { results: [], next: null };
-  } catch (err) {
-    console.warn('[API Error] Falha ao buscar transações:', err.message);
-    return { results: [], next: null };
-  }
+function cacheKey(scope, parts) {
+  return `${scope}:${parts.join(':')}`;
 }
 
-export async function fetchBills(accountId) {
-  try {
-    const res = await api.get('/bills', { params: accountId ? { accountId } : {} });
-    const data = res.data;
-    if (data && Array.isArray(data.results)) {
-      return data.results;
-    }
-    if (Array.isArray(data)) {
-      return data;
-    }
-    return [];
-  } catch (err) {
-    console.warn('[API Error] Falha ao buscar faturas:', err.message);
-    return [];
-  }
+/** Bust client API cache (e.g. manual sync / logout). */
+export function clearApiCache() {
+  cacheClearAll();
 }
 
-export async function fetchInvestments(itemId) {
-  try {
-    const res = await api.get('/investments', { params: itemId ? { itemId } : {} });
-    const data = res.data;
-    if (data && Array.isArray(data.results)) {
-      return data.results;
-    }
-    if (Array.isArray(data)) {
-      return data;
-    }
-    return [];
-  } catch (err) {
-    console.warn('[API Error] Falha ao buscar investimentos:', err.message);
-    return [];
-  }
+export async function fetchAccounts(itemId, { force = false } = {}) {
+  const scope = await cacheScope();
+  const key = cacheKey(scope, ['accounts', itemId || 'all']);
+  return cachedFetch(
+    key,
+    async () => {
+      try {
+        const res = await api.get('/accounts', { params: itemId ? { itemId } : {} });
+        const data = res.data;
+        if (data && Array.isArray(data.results)) return data.results;
+        if (Array.isArray(data)) return data;
+        return [];
+      } catch (err) {
+        console.warn('[API Error] Falha ao buscar contas:', err.message);
+        return [];
+      }
+    },
+    { force }
+  );
 }
 
-export async function fetchLoans(itemId) {
-  try {
-    const res = await api.get('/loans', { params: itemId ? { itemId } : {} });
-    const data = res.data;
-    if (data && Array.isArray(data.results)) {
-      return data.results;
-    }
-    if (Array.isArray(data)) {
-      return data;
-    }
-    return [];
-  } catch (err) {
-    console.warn('[API Error] Falha ao buscar empréstimos:', err.message);
-    return [];
-  }
+export async function fetchTransactions(params = {}, { force = false } = {}) {
+  const scope = await cacheScope();
+  const { accountId, from, to, cursor, ...rest } = params || {};
+  const key = cacheKey(scope, [
+    'transactions',
+    accountId || 'all',
+    from || '',
+    to || '',
+    cursor || '',
+    JSON.stringify(rest),
+  ]);
+  return cachedFetch(
+    key,
+    async () => {
+      try {
+        const res = await api.get('/transactions', { params });
+        const data = res.data;
+        if (data && Array.isArray(data.results)) return data;
+        if (Array.isArray(data)) return { results: data, next: null };
+        return { results: [], next: null };
+      } catch (err) {
+        console.warn('[API Error] Falha ao buscar transações:', err.message);
+        return { results: [], next: null };
+      }
+    },
+    { force }
+  );
 }
 
-export async function fetchCategories() {
-  try {
-    const res = await api.get('/categories');
-    const data = res.data;
-    return data?.results || data || [];
-  } catch (err) {
-    return [];
-  }
+export async function fetchBills(accountId, { force = false } = {}) {
+  const scope = await cacheScope();
+  const key = cacheKey(scope, ['bills', accountId || 'all']);
+  return cachedFetch(
+    key,
+    async () => {
+      try {
+        const res = await api.get('/bills', { params: accountId ? { accountId } : {} });
+        const data = res.data;
+        if (data && Array.isArray(data.results)) return data.results;
+        if (Array.isArray(data)) return data;
+        return [];
+      } catch (err) {
+        console.warn('[API Error] Falha ao buscar faturas:', err.message);
+        return [];
+      }
+    },
+    { force }
+  );
 }
 
-export async function fetchConnectors() {
-  try {
-    const res = await api.get('/connectors');
-    const data = res.data;
-    return data?.results || data || [];
-  } catch (err) {
-    return [];
-  }
+export async function fetchInvestments(itemId, { force = false } = {}) {
+  const scope = await cacheScope();
+  const key = cacheKey(scope, ['investments', itemId || 'all']);
+  return cachedFetch(
+    key,
+    async () => {
+      try {
+        const res = await api.get('/investments', { params: itemId ? { itemId } : {} });
+        const data = res.data;
+        if (data && Array.isArray(data.results)) return data.results;
+        if (Array.isArray(data)) return data;
+        return [];
+      } catch (err) {
+        console.warn('[API Error] Falha ao buscar investimentos:', err.message);
+        return [];
+      }
+    },
+    { force }
+  );
 }
 
-export async function fetchItems() {
-  try {
-    const res = await api.get('/items');
-    const data = res.data;
-    return data?.results || data || [];
-  } catch (err) {
-    return [];
-  }
+export async function fetchLoans(itemId, { force = false } = {}) {
+  const scope = await cacheScope();
+  const key = cacheKey(scope, ['loans', itemId || 'all']);
+  return cachedFetch(
+    key,
+    async () => {
+      try {
+        const res = await api.get('/loans', { params: itemId ? { itemId } : {} });
+        const data = res.data;
+        if (data && Array.isArray(data.results)) return data.results;
+        if (Array.isArray(data)) return data;
+        return [];
+      } catch (err) {
+        console.warn('[API Error] Falha ao buscar empréstimos:', err.message);
+        return [];
+      }
+    },
+    { force }
+  );
+}
+
+export async function fetchCategories({ force = false } = {}) {
+  const scope = await cacheScope();
+  const key = cacheKey(scope, ['categories']);
+  return cachedFetch(
+    key,
+    async () => {
+      try {
+        const res = await api.get('/categories');
+        const data = res.data;
+        return data?.results || data || [];
+      } catch (err) {
+        return [];
+      }
+    },
+    { force }
+  );
+}
+
+export async function fetchConnectors({ force = false } = {}) {
+  const scope = await cacheScope();
+  const key = cacheKey(scope, ['connectors']);
+  return cachedFetch(
+    key,
+    async () => {
+      try {
+        const res = await api.get('/connectors');
+        const data = res.data;
+        return data?.results || data || [];
+      } catch (err) {
+        return [];
+      }
+    },
+    { force }
+  );
+}
+
+export async function fetchItems({ force = false } = {}) {
+  const scope = await cacheScope();
+  const key = cacheKey(scope, ['items']);
+  return cachedFetch(
+    key,
+    async () => {
+      try {
+        const res = await api.get('/items');
+        const data = res.data;
+        return data?.results || data || [];
+      } catch (err) {
+        return [];
+      }
+    },
+    { force }
+  );
 }
 
 export async function syncItemIds(itemIds) {
   try {
     const res = await api.post('/items/sync', { itemIds });
+    clearApiCache();
     return res.data;
   } catch (err) {
     const message = err.response?.data?.error || err.message || 'Falha ao vincular conexões Pluggy';

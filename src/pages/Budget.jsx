@@ -20,7 +20,7 @@ import { ProgressBar } from '../components/ui/ProgressBar';
 import { useBudgetStore } from '../stores/budgetStore';
 import { useAccountStore } from '../stores/accountStore';
 import { useReceivableStore } from '../stores/receivableStore';
-import { fetchTransactions, fetchBills } from '../services/api';
+import { useCreditDataStore } from '../stores/creditDataStore';
 import { formatCurrency } from '../utils/formatters';
 import { translateCategory } from '../utils/categories';
 import { getCategoryColor } from '../utils/colors';
@@ -54,12 +54,15 @@ function dueMonthLabel(ym) {
 
 export function Budget() {
   const { budgets, loadBudgets, updateBudget, deleteBudget } = useBudgetStore();
-  const { accounts, loadAccounts } = useAccountStore();
+  const { accounts, loadAccounts, loading: accountsLoading } = useAccountStore();
   const { receivables, loadReceivables } = useReceivableStore();
-
-  const [allTransactions, setAllTransactions] = useState([]);
-  const [officialBills, setOfficialBills] = useState([]);
-  const [loadingTx, setLoadingTx] = useState(true);
+  const {
+    loadForAccounts,
+    loading: creditLoading,
+    lastUpdatedByAccount,
+    transactionsByAccount,
+    billsByAccount,
+  } = useCreditDataStore();
 
   // Selected due month (current by default)
   const [selectedMonth, setSelectedMonth] = useState(currentDueMonthKey);
@@ -76,40 +79,29 @@ export function Budget() {
   // ── Load data ─────────────────────────────────────────────────────────────
   useEffect(() => { loadBudgets(); loadAccounts(); loadReceivables(); }, []);
 
-  useEffect(() => {
-    async function loadTxs() {
-      setLoadingTx(true);
-      try {
-        const creditAccounts = accounts.filter(a => a.type === 'CREDIT');
-        if (accounts.length === 0) { setLoadingTx(false); return; }
+  const accountIds = useMemo(() => accounts.map((a) => a.id), [accounts]);
 
-        let txs = [];
-        const bills = [];
-        for (const acc of creditAccounts) {
-          const [res, billsRes] = await Promise.all([
-            fetchTransactions({ accountId: acc.id }),
-            fetchBills(acc.id),
-          ]);
-          const results = (res.results || res || []).map(t => ({ ...t, accountId: t.accountId || acc.id }));
-          txs = txs.concat(results);
-          bills.push(...(billsRes || []).map(b => ({ ...b, accountId: acc.id })));
-        }
-        const bankAccounts = accounts.filter(a => a.type === 'BANK');
-        for (const acc of bankAccounts) {
-          const res = await fetchTransactions({ accountId: acc.id });
-          const results = (res.results || res || []).map(t => ({ ...t, accountId: t.accountId || acc.id }));
-          txs = txs.concat(results);
-        }
-        setAllTransactions(txs);
-        setOfficialBills(bills);
-      } catch (e) {
-        console.warn('[Budget] error loading transactions:', e);
-      } finally {
-        setLoadingTx(false);
-      }
-    }
-    if (accounts.length > 0) loadTxs();
-  }, [accounts]);
+  useEffect(() => {
+    if (accountsLoading) return;
+    if (!accountIds.length) return;
+    loadForAccounts(accountIds);
+  }, [accountIds.join(','), accountsLoading, loadForAccounts]);
+
+  const allTransactions = useMemo(() => {
+    const txs = [];
+    for (const id of accountIds) txs.push(...(transactionsByAccount[id] || []));
+    return txs;
+  }, [accountIds, transactionsByAccount]);
+
+  const officialBills = useMemo(() => {
+    const bills = [];
+    for (const id of accountIds) bills.push(...(billsByAccount[id] || []));
+    return bills;
+  }, [accountIds, billsByAccount]);
+
+  const hasCached =
+    accountIds.length === 0 || accountIds.every((id) => lastUpdatedByAccount[id]);
+  const loadingTx = accountIds.length > 0 && !hasCached && creditLoading;
 
   const forecastOffset = useMemo(
     () => inferForecastToDueOffset(

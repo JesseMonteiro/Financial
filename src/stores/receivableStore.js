@@ -4,17 +4,30 @@ import {
   saveStoredReceivable,
   deleteStoredReceivable,
 } from '../services/storage';
+import { CACHE_TTL_MS, isFreshTimestamp } from '../services/clientCache';
 
 export const useReceivableStore = create((set, get) => ({
   receivables: [],
   loading: false,
+  lastUpdated: null,
 
-  /** Carrega todos os recebíveis do IndexedDB */
-  loadReceivables: async () => {
-    set({ loading: true });
+  /** Carrega todos os recebíveis do IndexedDB / Supabase */
+  loadReceivables: async ({ force = false } = {}) => {
+    const { receivables, lastUpdated } = get();
+    if (
+      !force &&
+      receivables.length > 0 &&
+      isFreshTimestamp(lastUpdated, CACHE_TTL_MS)
+    ) {
+      return;
+    }
+
+    const silent = receivables.length > 0;
+    if (!silent) set({ loading: true });
+
     try {
       const data = await getStoredReceivables();
-      set({ receivables: data || [], loading: false });
+      set({ receivables: data || [], loading: false, lastUpdated: Date.now() });
     } catch (e) {
       console.error('[receivableStore] Erro ao carregar:', e);
       set({ receivables: [], loading: false });

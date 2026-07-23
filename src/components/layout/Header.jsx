@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
-import { Sun, Moon, RefreshCw, Bell, Search, Plug } from 'lucide-react';
+import { Sun, Moon, RefreshCw, Search } from 'lucide-react';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useAccountStore } from '../../stores/accountStore';
 import { useTransactionStore } from '../../stores/transactionStore';
 import { useInvestmentStore } from '../../stores/investmentStore';
+import { useCreditDataStore } from '../../stores/creditDataStore';
+import { clearApiCache } from '../../services/api';
 import { format } from 'date-fns';
 
 export function Header() {
@@ -11,15 +13,27 @@ export function Header() {
   const { loadAccounts, lastUpdated, loading: accLoading } = useAccountStore();
   const { loadTransactions, loading: txLoading } = useTransactionStore();
   const { loadInvestments, loading: invLoading } = useInvestmentStore();
+  const clearCreditData = useCreditDataStore((s) => s.clear);
 
   const isRefreshing = accLoading || txLoading || invLoading;
 
   const handleRefresh = async () => {
+    clearApiCache();
+    const accountIds = useAccountStore.getState().accounts.map((a) => a.id);
     await Promise.all([
-      loadAccounts(),
-      loadTransactions(),
-      loadInvestments()
+      loadAccounts({ force: true }),
+      loadTransactions({ force: true }),
+      loadInvestments({ force: true }),
     ]);
+    const ids =
+      accountIds.length > 0
+        ? accountIds
+        : useAccountStore.getState().accounts.map((a) => a.id);
+    if (ids.length) {
+      await useCreditDataStore.getState().loadForAccounts(ids, { force: true });
+    } else {
+      clearCreditData();
+    }
   };
 
   return (
@@ -67,7 +81,7 @@ export function Header() {
           disabled={isRefreshing}
           className="btn btn-secondary"
           style={{ padding: '0.4rem 0.75rem', fontSize: 'var(--font-size-xs)' }}
-          title="Sincronizar dados com Pluggy"
+          title="Forçar sincronização (ignora cache de 1h)"
         >
           <RefreshCw size={14} className={isRefreshing ? 'spin-slow' : ''} />
           {isRefreshing ? 'Atualizando...' : 'Sincronizar'}

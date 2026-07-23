@@ -1,11 +1,13 @@
 import { create } from 'zustand';
 import { fetchTransactions } from '../services/api';
 import { getStoredManualTransactions, saveStoredManualTransaction, deleteStoredManualTransaction } from '../services/storage';
+import { CACHE_TTL_MS, isFreshTimestamp } from '../services/clientCache';
 
 export const useTransactionStore = create((set, get) => ({
   transactions: [],
   loading: false,
   error: null,
+  lastUpdated: null,
   filters: {
     search: '',
     category: 'all',
@@ -20,18 +22,35 @@ export const useTransactionStore = create((set, get) => ({
     }));
   },
 
-  loadTransactions: async () => {
-    set({ loading: true, error: null });
+  /**
+   * @param {{ force?: boolean }} [opts]
+   */
+  loadTransactions: async ({ force = false } = {}) => {
+    const { transactions, lastUpdated } = get();
+    const hasPluggy = transactions.some((t) => !t.isManual);
+    if (
+      !force &&
+      hasPluggy &&
+      isFreshTimestamp(lastUpdated, CACHE_TTL_MS)
+    ) {
+      return;
+    }
+
+    const silent = transactions.length > 0;
+    if (!silent) set({ loading: true, error: null });
+    else set({ error: null });
+
     try {
       const [apiRes, manualTxs] = await Promise.all([
-        fetchTransactions(),
+        fetchTransactions({}, { force }),
         getStoredManualTransactions()
       ]);
       const apiList = apiRes.results || apiRes || [];
       
       set({
         transactions: [...apiList, ...manualTxs],
-        loading: false
+        loading: false,
+        lastUpdated: new Date(),
       });
     } catch (err) {
       set({ error: err.message, loading: false });

@@ -2,7 +2,7 @@ import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { useAccountStore } from '../stores/accountStore';
 import { useTransactionStore } from '../stores/transactionStore';
 import { useReceivableStore } from '../stores/receivableStore';
-import { fetchTransactions, fetchBills } from '../services/api';
+import { useCreditDataStore } from '../stores/creditDataStore';
 import { getLocalSetting, setLocalSetting, getMonthlySalaries, saveMonthlySalaries } from '../services/storage';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
@@ -38,10 +38,14 @@ export function FinancialMoment() {
   const { accounts, loadAccounts, loading: accountsLoading, lastUpdated: accountsUpdatedAt } = useAccountStore();
   const { transactions, loadTransactions, setManualPaid } = useTransactionStore();
   const { receivables, loadReceivables } = useReceivableStore();
+  const {
+    loadForAccounts,
+    loading: creditLoading,
+    lastUpdatedByAccount,
+    transactionsByAccount,
+    billsByAccount,
+  } = useCreditDataStore();
 
-  const [cardBills, setCardBills] = useState([]);
-  const [cardTransactions, setCardTransactions] = useState([]);
-  const [loadingCards, setLoadingCards] = useState(true);
   const [selectedMonth, setSelectedMonth] = useState('');
   
   // Salary state
@@ -75,39 +79,32 @@ export function FinancialMoment() {
   }, []);
 
   const creditCards = useMemo(() => accounts.filter(a => a.type === 'CREDIT'), [accounts]);
+  const cardIds = useMemo(() => creditCards.map((c) => c.id), [creditCards]);
 
-  // Load official bills + credit transactions for all cards
   useEffect(() => {
-    async function loadBills() {
-      if (accountsLoading) return;
-      if (creditCards.length === 0) {
-        setLoadingCards(false);
-        return;
-      }
-      setLoadingCards(true);
-      try {
-        const allBills = [];
-        const allTxs = [];
-        for (const card of creditCards) {
-          const [billsRes, txRes] = await Promise.all([
-            fetchBills(card.id),
-            fetchTransactions({ accountId: card.id }),
-          ]);
-          allBills.push(...(billsRes || []).map(b => ({ ...b, accountId: card.id })));
-          allTxs.push(...((txRes.results || txRes || []).map(t => ({ ...t, accountId: t.accountId || card.id }))));
-        }
-        setCardBills(allBills);
-        setCardTransactions(allTxs);
-      } catch (e) {
-        console.warn('[FinancialMoment] Failed to load bills:', e);
-      } finally {
-        setLoadingCards(false);
-      }
-    }
-    loadBills();
-  }, [creditCards, accounts.length, accountsLoading]);
+    if (accountsLoading) return;
+    if (!cardIds.length) return;
+    loadForAccounts(cardIds);
+  }, [cardIds.join(','), accountsLoading, loadForAccounts]);
 
-  const isPageLoading = accountsLoading || loadingCards || accountsUpdatedAt == null;
+  const cardBills = useMemo(() => {
+    const bills = [];
+    for (const id of cardIds) bills.push(...(billsByAccount[id] || []));
+    return bills;
+  }, [cardIds, billsByAccount]);
+
+  const cardTransactions = useMemo(() => {
+    const txs = [];
+    for (const id of cardIds) txs.push(...(transactionsByAccount[id] || []));
+    return txs;
+  }, [cardIds, transactionsByAccount]);
+
+  const hasCachedCardData =
+    cardIds.length === 0 || cardIds.every((id) => lastUpdatedByAccount[id]);
+  const isPageLoading =
+    accountsLoading ||
+    accountsUpdatedAt == null ||
+    (cardIds.length > 0 && !hasCachedCardData && creditLoading);
 
   const creditBillPeriod = useMemo(
     () =>
@@ -290,7 +287,7 @@ export function FinancialMoment() {
 
   const monthsStatus = useMemo(() => {
     const statuses = {};
-    if (creditCards.length === 0 && loadingCards) return statuses;
+    if (creditCards.length === 0 && creditLoading) return statuses;
 
     monthList.forEach(m => {
       const ym = m.ym;
@@ -327,7 +324,7 @@ export function FinancialMoment() {
     });
 
     return statuses;
-  }, [monthList, salaries, receivables, cardBills, creditBillPeriod, transactions, creditCards, loadingCards]);
+  }, [monthList, salaries, receivables, cardBills, creditBillPeriod, transactions, creditCards, creditLoading]);
 
   const monthIndex = monthList.findIndex(m => m.ym === selectedMonth);
   const handlePrev = () => {

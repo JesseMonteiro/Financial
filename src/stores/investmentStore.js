@@ -1,16 +1,37 @@
 import { create } from 'zustand';
 import { fetchInvestments } from '../services/api';
+import { CACHE_TTL_MS, isFreshTimestamp } from '../services/clientCache';
 
 export const useInvestmentStore = create((set, get) => ({
   investments: [],
   loading: false,
   error: null,
+  lastUpdated: null,
 
-  loadInvestments: async () => {
-    set({ loading: true, error: null });
+  /**
+   * @param {{ force?: boolean }} [opts]
+   */
+  loadInvestments: async ({ force = false } = {}) => {
+    const { investments, lastUpdated } = get();
+    if (
+      !force &&
+      investments.length > 0 &&
+      isFreshTimestamp(lastUpdated, CACHE_TTL_MS)
+    ) {
+      return;
+    }
+
+    const silent = investments.length > 0;
+    if (!silent) set({ loading: true, error: null });
+    else set({ error: null });
+
     try {
-      const data = await fetchInvestments();
-      set({ investments: data || [], loading: false });
+      const data = await fetchInvestments(undefined, { force });
+      set({
+        investments: data || [],
+        loading: false,
+        lastUpdated: new Date(),
+      });
     } catch (err) {
       set({ error: err.message, loading: false });
     }

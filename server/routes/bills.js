@@ -19,7 +19,7 @@ async function fetchUserAccounts(client, itemIds) {
 }
 
 // GET /api/bills (List all bills for an account)
-router.get('/', checkAuth, loadPluggyClient, cacheMiddleware(180), async (req, res) => {
+router.get('/', checkAuth, loadPluggyClient, cacheMiddleware(3600), async (req, res) => {
   try {
     const client = req.pluggyClient;
     const { accountId } = req.query;
@@ -42,7 +42,7 @@ router.get('/', checkAuth, loadPluggyClient, cacheMiddleware(180), async (req, r
 });
 
 // GET /api/bills/:id
-router.get('/:id', checkAuth, loadPluggyClient, cacheMiddleware(300), async (req, res) => {
+router.get('/:id', checkAuth, loadPluggyClient, cacheMiddleware(3600), async (req, res) => {
   try {
     const client = req.pluggyClient;
     const response = await client.get(`/bills/${req.params.id}`);
@@ -65,7 +65,7 @@ router.get('/:id', checkAuth, loadPluggyClient, cacheMiddleware(300), async (req
 });
 
 // GET /api/bills/:id/transactions
-router.get('/:id/transactions', checkAuth, loadPluggyClient, cacheMiddleware(300), async (req, res) => {
+router.get('/:id/transactions', checkAuth, loadPluggyClient, cacheMiddleware(3600), async (req, res) => {
   try {
     const client = req.pluggyClient;
     

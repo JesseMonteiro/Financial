@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 import { supabase } from '../services/supabaseClient';
+import { cacheClearAll } from '../services/clientCache';
+import { useCreditDataStore } from './creditDataStore';
 
 export const useAuthStore = create((set, get) => ({
   user: null,
@@ -50,26 +52,13 @@ export const useAuthStore = create((set, get) => ({
     }
   },
 
-  signUp: async (email, password, fullName) => {
-    set({ loading: true, error: null });
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: {
-          full_name: fullName,
-        },
-      },
-    });
-    set({ loading: false, error: error?.message || null });
-    return { data, error };
-  },
-
   signOut: async () => {
     set({ loading: true, error: null });
     const { error } = await supabase.auth.signOut();
     if (!error) {
       set({ user: null, session: null });
+      cacheClearAll();
+      useCreditDataStore.getState().clear();
       // Redireciona e recarrega para limpar todos os estados dos stores do Zustand da memória
       const base = import.meta.env.BASE_URL || '/';
       const redirectPath = base.endsWith('/') ? `${base}login` : `${base}/login`;

@@ -1,8 +1,8 @@
 import NodeCache from 'node-cache';
 
-const cache = new NodeCache({ stdTTL: 300, checkperiod: 60 });
+const cache = new NodeCache({ stdTTL: 3600, checkperiod: 120 });
 
-export function cacheMiddleware(ttlSeconds = 300) {
+export function cacheMiddleware(ttlSeconds = 3600) {
   return (req, res, next) => {
     // Only cache GET requests
     if (req.method !== 'GET') {

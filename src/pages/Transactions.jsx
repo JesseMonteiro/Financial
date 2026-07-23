@@ -59,7 +59,7 @@ export function Transactions() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem' }}>
-          <Button variant="outline" icon={RefreshCw} onClick={loadTransactions}>Atualizar</Button>
+          <Button variant="outline" icon={RefreshCw} onClick={() => loadTransactions({ force: true })}>Atualizar</Button>
           <Button variant="outline" icon={Download} onClick={handleExportCSV}>Exportar CSV</Button>
         </div>
       </div>

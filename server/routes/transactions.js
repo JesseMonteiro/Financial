@@ -19,7 +19,7 @@ async function fetchUserAccounts(client, itemIds) {
 }
 
 // GET /api/transactions
-router.get('/', checkAuth, loadPluggyClient, cacheMiddleware(120), async (req, res) => {
+router.get('/', checkAuth, loadPluggyClient, cacheMiddleware(3600), async (req, res) => {
   try {
     const client = req.pluggyClient;
     const { accountId, from, to, cursor } = req.query;
@@ -74,7 +74,7 @@ router.get('/', checkAuth, loadPluggyClient, cacheMiddleware(120), async (req, r
 });
 
 // GET /api/transactions/:id
-router.get('/:id', checkAuth, loadPluggyClient, cacheMiddleware(300), async (req, res) => {
+router.get('/:id', checkAuth, loadPluggyClient, cacheMiddleware(3600), async (req, res) => {
   try {
     const client = req.pluggyClient;
     const response = await client.get(`/transactions/${req.params.id}`);

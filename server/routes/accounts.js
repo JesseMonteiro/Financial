@@ -5,7 +5,7 @@ import { cacheMiddleware } from '../middleware/cache.js';
 const router = Router();
 
 // GET /api/accounts
-router.get('/', checkAuth, loadPluggyClient, cacheMiddleware(180), async (req, res) => {
+router.get('/', checkAuth, loadPluggyClient, cacheMiddleware(3600), async (req, res) => {
   try {
     const client = req.pluggyClient;
     const { itemId, type } = req.query;
@@ -49,7 +49,7 @@ router.get('/', checkAuth, loadPluggyClient, cacheMiddleware(180), async (req, r
 });
 
 // GET /api/accounts/:id
-router.get('/:id', checkAuth, loadPluggyClient, cacheMiddleware(300), async (req, res) => {
+router.get('/:id', checkAuth, loadPluggyClient, cacheMiddleware(3600), async (req, res) => {
   try {
     const client = req.pluggyClient;
     const response = await client.get(`/accounts/${req.params.id}`);

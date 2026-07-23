@@ -1,21 +1,20 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Mail, Lock, User, Eye, EyeOff, ArrowRight, Wallet, Loader2 } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff, ArrowRight, Wallet, Loader2 } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
 import './Login.css';
 
 export function Login() {
-  const [mode, setMode] = useState('signin'); // signin, signup, reset
+  const [mode, setMode] = useState('signin'); // signin | reset
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [fullName, setFullName] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [localError, setLocalError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
   const navigate = useNavigate();
-  const { signIn, signUp, resetPassword, loading } = useAuthStore();
+  const { signIn, resetPassword, loading } = useAuthStore();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -39,19 +38,6 @@ export function Login() {
         } else {
           navigate('/');
         }
-      } else if (mode === 'signup') {
-        if (!password || !fullName) {
-          setLocalError('Preencha todos os campos.');
-          return;
-        }
-        const { error } = await signUp(email, password, fullName);
-        if (error) {
-          setLocalError(error.message || 'Erro ao criar conta.');
-        } else {
-          setSuccessMsg('Conta criada! Verifique seu email.');
-          setMode('signin');
-          setPassword('');
-        }
       } else if (mode === 'reset') {
         const { error } = await resetPassword(email);
         if (error) {
@@ -61,18 +47,18 @@ export function Login() {
           setMode('signin');
         }
       }
-    } catch (err) {
+    } catch {
       setLocalError('Ocorreu um erro inesperado.');
     }
   };
 
   return (
     <div className="login-page-container">
-      <motion.div 
+      <motion.div
         className="login-card"
         initial={{ opacity: 0, y: 30 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, ease: "easeOut" }}
+        transition={{ duration: 0.5, ease: 'easeOut' }}
       >
         <div className="login-header">
           <div className="login-logo">
@@ -82,28 +68,9 @@ export function Login() {
           <p className="login-subtitle">Assuma o controle do seu dinheiro</p>
         </div>
 
-        {mode !== 'reset' && (
-          <div className="login-tabs">
-            <button 
-              className={`login-tab ${mode === 'signin' ? 'active' : ''}`}
-              onClick={() => { setMode('signin'); setLocalError(''); setSuccessMsg(''); }}
-              type="button"
-            >
-              Entrar
-            </button>
-            <button 
-              className={`login-tab ${mode === 'signup' ? 'active' : ''}`}
-              onClick={() => { setMode('signup'); setLocalError(''); setSuccessMsg(''); }}
-              type="button"
-            >
-              Criar conta
-            </button>
-          </div>
-        )}
-
         {mode === 'reset' && (
           <div className="login-tabs">
-            <button 
+            <button
               className="login-tab active"
               onClick={() => { setMode('signin'); setLocalError(''); setSuccessMsg(''); }}
               type="button"
@@ -115,7 +82,7 @@ export function Login() {
 
         <AnimatePresence mode="wait">
           {localError && (
-            <motion.div 
+            <motion.div
               key="error"
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: 'auto' }}
@@ -126,7 +93,7 @@ export function Login() {
             </motion.div>
           )}
           {successMsg && (
-            <motion.div 
+            <motion.div
               key="success"
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: 'auto' }}
@@ -139,47 +106,31 @@ export function Login() {
         </AnimatePresence>
 
         <form className="login-form" onSubmit={handleSubmit}>
-          {mode === 'signup' && (
-            <motion.div 
-              className="input-group"
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-            >
-              <User className="input-icon" size={20} />
-              <input 
-                type="text" 
-                className="login-input" 
-                placeholder="Nome completo"
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-              />
-            </motion.div>
-          )}
-
           <div className="input-group">
             <Mail className="input-icon" size={20} />
-            <input 
-              type="email" 
-              className="login-input" 
+            <input
+              type="email"
+              className="login-input"
               placeholder="Email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              autoComplete="email"
             />
           </div>
 
           {mode !== 'reset' && (
             <div className="input-group">
               <Lock className="input-icon" size={20} />
-              <input 
-                type={showPassword ? "text" : "password"} 
-                className="login-input" 
+              <input
+                type={showPassword ? 'text' : 'password'}
+                className="login-input"
                 placeholder="Senha"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                autoComplete="current-password"
               />
-              <button 
-                type="button" 
+              <button
+                type="button"
                 className="password-toggle"
                 onClick={() => setShowPassword(!showPassword)}
               >
@@ -190,8 +141,8 @@ export function Login() {
 
           {mode === 'signin' && (
             <div className="login-options">
-              <button 
-                type="button" 
+              <button
+                type="button"
                 className="forgot-password-link"
                 onClick={() => { setMode('reset'); setLocalError(''); setSuccessMsg(''); }}
               >
@@ -200,8 +151,8 @@ export function Login() {
             </div>
           )}
 
-          <button 
-            type="submit" 
+          <button
+            type="submit"
             className="login-button"
             disabled={loading}
           >
@@ -209,9 +160,7 @@ export function Login() {
               <Loader2 className="spinner" size={20} />
             ) : (
               <>
-                {mode === 'signin' && 'Entrar'}
-                {mode === 'signup' && 'Criar conta'}
-                {mode === 'reset' && 'Enviar email'}
+                {mode === 'signin' ? 'Entrar' : 'Enviar email'}
                 <ArrowRight size={20} />
               </>
             )}

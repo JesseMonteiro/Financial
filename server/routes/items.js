@@ -5,7 +5,7 @@ import { cacheMiddleware, clearUserCache } from '../middleware/cache.js';
 const router = Router();
 
 // GET /api/items
-router.get('/', checkAuth, loadPluggyClient, cacheMiddleware(300), async (req, res) => {
+router.get('/', checkAuth, loadPluggyClient, cacheMiddleware(3600), async (req, res) => {
   try {
     const client = req.pluggyClient;
     const userItemIds = req.pluggyItemIds;
@@ -82,7 +82,7 @@ router.post('/sync', checkAuth, loadPluggyClient, async (req, res) => {
 });
 
 // GET /api/items/:id
-router.get('/:id', checkAuth, loadPluggyClient, cacheMiddleware(60), async (req, res) => {
+router.get('/:id', checkAuth, loadPluggyClient, cacheMiddleware(3600), async (req, res) => {
   try {
     const { id } = req.params;
     if (!req.pluggyItemIds.includes(id)) {

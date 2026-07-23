@@ -16,7 +16,7 @@ import { Badge } from '../components/ui/Badge';
 import { ProgressBar } from '../components/ui/ProgressBar';
 import { PageLoadingSkeleton, Skeleton, SkeletonList } from '../components/ui/Skeleton';
 import { useAccountStore } from '../stores/accountStore';
-import { fetchTransactions, fetchBills } from '../services/api';
+import { useCreditDataStore } from '../stores/creditDataStore';
 import { formatCurrency, formatDate } from '../utils/formatters';
 import { translateCategory } from '../utils/categories';
 import { getCategoryColor } from '../utils/colors';
@@ -36,9 +36,13 @@ import {
 export function CreditCards() {
   const { accounts, loadAccounts, loading: accountsLoading, lastUpdated: accountsUpdatedAt } = useAccountStore();
   const { receivables, loadReceivables } = useReceivableStore();
-  const [cardTransactions, setCardTransactions] = useState([]);
-  const [officialBills, setOfficialBills] = useState([]);
-  const [loadingData, setLoadingData] = useState(true);
+  const {
+    loadForAccounts,
+    loading: creditLoading,
+    lastUpdatedByAccount,
+    transactionsByAccount,
+    billsByAccount,
+  } = useCreditDataStore();
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
 
@@ -55,54 +59,38 @@ export function CreditCards() {
     ? null
     : (creditCards.find(c => c.id === selectedCardId) || creditCards[0] || null);
 
-  // ── Load card data (supports single or all cards) ──────────────────────────
-  useEffect(() => {
-    async function load() {
-      // Wait for accounts to finish loading before treating "no cards" as final
-      if (accountsLoading) return;
-      if (creditCards.length === 0) {
-        setLoadingData(false);
-        return;
-      }
-      setLoadingData(true);
-      try {
-        if (selectedCardId === 'all') {
-          // Consolidated mode: fetch transactions and bills for ALL cards
-          const allTxs = [];
-          const allBillsList = [];
-          for (const card of creditCards) {
-            const [txRes, billsRes] = await Promise.all([
-              fetchTransactions({ accountId: card.id }),
-              fetchBills(card.id)
-            ]);
-            const txs = (txRes.results || txRes || []).map(t => ({ ...t, accountId: t.accountId || card.id }));
-            const bills = (billsRes || []).map(b => ({ ...b, accountId: card.id }));
-            allTxs.push(...txs);
-            allBillsList.push(...bills);
-          }
-          setCardTransactions(allTxs);
-          setOfficialBills(allBillsList);
-        } else if (activeCard?.id) {
-          const [txRes, billsRes] = await Promise.all([
-            fetchTransactions({ accountId: activeCard.id }),
-            fetchBills(activeCard.id)
-          ]);
-          setCardTransactions((txRes.results || txRes || []).map(t => ({
-            ...t,
-            accountId: t.accountId || activeCard.id,
-          })));
-          setOfficialBills((billsRes || []).map(b => ({ ...b, accountId: activeCard.id })));
-        }
-      } catch (e) {
-        console.warn('[CreditCards] load error:', e);
-      } finally {
-        setLoadingData(false);
-      }
-    }
-    load();
-  }, [selectedCardId, activeCard?.id, accounts.length, accountsLoading, creditCards.length]);
+  const cardIdsForLoad = useMemo(() => {
+    if (selectedCardId === 'all') return creditCards.map((c) => c.id);
+    return activeCard?.id ? [activeCard.id] : [];
+  }, [selectedCardId, creditCards, activeCard?.id]);
 
-  const isPageLoading = accountsLoading || loadingData || accountsUpdatedAt == null;
+  // ── Load card data (shared 1h cache) ───────────────────────────────────────
+  useEffect(() => {
+    if (accountsLoading) return;
+    if (cardIdsForLoad.length === 0) return;
+    loadForAccounts(cardIdsForLoad);
+  }, [cardIdsForLoad.join(','), accountsLoading, loadForAccounts]);
+
+  const cardTransactions = useMemo(() => {
+    const txs = [];
+    for (const id of cardIdsForLoad) txs.push(...(transactionsByAccount[id] || []));
+    return txs;
+  }, [cardIdsForLoad, transactionsByAccount]);
+
+  const officialBills = useMemo(() => {
+    const bills = [];
+    for (const id of cardIdsForLoad) bills.push(...(billsByAccount[id] || []));
+    return bills;
+  }, [cardIdsForLoad, billsByAccount]);
+
+  const hasCachedCardData =
+    cardIdsForLoad.length === 0 ||
+    cardIdsForLoad.every((id) => lastUpdatedByAccount[id]);
+  const loadingData = cardIdsForLoad.length > 0 && !hasCachedCardData && creditLoading;
+  const isPageLoading =
+    accountsLoading ||
+    accountsUpdatedAt == null ||
+    loadingData;
 
   // ── Card metrics (Consolidated vs Individual) ──────────────────────────────
   const totalDebtAllCards = creditCards.reduce((acc, c) => acc + Math.abs(c.balance || 0), 0);
