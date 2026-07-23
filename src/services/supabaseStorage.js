@@ -212,28 +212,57 @@ export async function updateProfileSettings(updates) {
 // --- Custom Account Names ---
 export async function getCustomAccountNames() {
   const userId = await getCurrentUserId();
-  if (!userId) return {};
+  if (!userId) return readLocalCustomAccountNames();
+
   const { data, error } = await supabase
     .from('profiles')
     .select('custom_account_names')
     .eq('id', userId)
     .single();
-    
+
   if (error) {
     console.error('Error fetching custom account names:', error);
+    return readLocalCustomAccountNames();
+  }
+
+  const fromDb = data?.custom_account_names && typeof data.custom_account_names === 'object'
+    ? data.custom_account_names
+    : {};
+
+  // One-time heal: old renames may still live only in localStorage
+  const fromLocal = readLocalCustomAccountNames();
+  if (Object.keys(fromDb).length === 0 && Object.keys(fromLocal).length > 0) {
+    await saveCustomAccountNames(fromLocal);
+    return fromLocal;
+  }
+
+  return fromDb;
+}
+
+function readLocalCustomAccountNames() {
+  try {
+    const raw = localStorage.getItem('financehub_custom_account_names');
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
     return {};
   }
-  return data?.custom_account_names || {};
 }
 
 export async function saveCustomAccountNames(names) {
+  const safe = names && typeof names === 'object' ? names : {};
+  try {
+    localStorage.setItem('financehub_custom_account_names', JSON.stringify(safe));
+  } catch (_) { /* ignore quota */ }
+
   const userId = await getCurrentUserId();
   if (!userId) return;
   const { error } = await supabase
     .from('profiles')
-    .update({ custom_account_names: names })
+    .update({ custom_account_names: safe })
     .eq('id', userId);
-    
+
   if (error) console.error('Error saving custom account names:', error);
 }
 

@@ -301,6 +301,7 @@ interface TelegramProfile {
   pluggy_item_ids?: unknown;
   pluggy_client_id?: string | null;
   pluggy_client_secret?: string | null;
+  custom_account_names?: Record<string, string> | null;
 }
 
 function resolvePluggyCredentials(profile: TelegramProfile): { clientId: string; clientSecret: string } | null {
@@ -311,6 +312,15 @@ function resolvePluggyCredentials(profile: TelegramProfile): { clientId: string;
   const envSecret = Deno.env.get('PLUGGY_CLIENT_SECRET');
   if (envId && envSecret) return { clientId: envId, clientSecret: envSecret };
   return null;
+}
+
+/** Prefer the name the user set in Accounts/Cards over Pluggy's raw name. */
+function accountDisplayName(profile: TelegramProfile, account: { id?: string; name?: string }): string {
+  const custom = profile.custom_account_names;
+  if (custom && account?.id && custom[account.id]) {
+    return String(custom[account.id]);
+  }
+  return account?.name || 'Conta';
 }
 
 async function sendTelegramMessage(chatId: string, text: string): Promise<void> {
@@ -473,7 +483,7 @@ async function buildBankBalanceText(profile: TelegramProfile, supabase: ReturnTy
     for (const acc of bankAccounts) {
       const bal = Number(acc.balance || 0);
       bankTotal += bal;
-      text += `• *${acc.name}*: ${formatMoney(bal)}\n`;
+      text += `• *${accountDisplayName(profile, acc)}*: ${formatMoney(bal)}\n`;
     }
     text += `\n💵 *Total em contas:* ${formatMoney(bankTotal)}`;
   } else {
@@ -575,13 +585,13 @@ async function buildCreditBillsText(profile: TelegramProfile): Promise<string> {
       ? `\n  Última paga: ${summary.lastPaidTitle} (${formatMoney(summary.lastPaidTotal || 0)})`
       : '';
 
-    text += `• *${acc.name}*${last4}\n`;
+    text += `• *${accountDisplayName(profile, acc)}*${last4}\n`;
     text += `  ${summary.openTitle} (em aberto): *${formatMoney(summary.openTotal)}*${due}`;
     text += `\n  ${summary.openItemCount} lançamentos${limit}${available}${lastPaid}\n\n`;
   }
 
   text += `🧾 *Total em faturas abertas:* ${formatMoney(creditDebt)}`;
-  text += `\n\n_Valor = saldo devedor atual do cartão (ciclo aberto). Fatura fechada não entra aqui._`;
+  text += `\n\n_Valor = soma dos lançamentos da *próxima fatura* (ciclo aberto), não a dívida total do cartão._`;
   text += `\n_Para saldo de contas, diga "saldo" ou /saldo._`;
   return text;
 }

@@ -28,6 +28,15 @@ function resolvePluggyCredentials(profile) {
   return null;
 }
 
+/** Prefer the name the user set in Accounts/Cards over Pluggy's raw name. */
+function accountDisplayName(profile, account) {
+  const custom = profile?.custom_account_names;
+  if (custom && typeof custom === 'object' && account?.id && custom[account.id]) {
+    return String(custom[account.id]);
+  }
+  return account?.name || 'Conta';
+}
+
 // Helper para enviar mensagens para o Telegram
 async function sendTelegramMessage(chatId, text) {
   const token = process.env.TELEGRAM_BOT_TOKEN;
@@ -311,7 +320,7 @@ async function fetchUserBalancesText(profile, supabase) {
       bankAccounts.forEach(acc => {
         const bal = Number(acc.balance || 0);
         bankTotal += bal;
-        text += `• *${acc.name}*: ${money(bal)}\n`;
+        text += `• *${accountDisplayName(profile, acc)}*: ${money(bal)}\n`;
       });
       text += `\n💵 *Total em contas:* ${money(bankTotal)}`;
     } else {
@@ -373,13 +382,13 @@ async function fetchUserCreditBillsText(profile) {
         ? `\n  Última paga: ${summary.lastPaidTitle} (${money(summary.lastPaidTotal || 0)})`
         : '';
 
-      text += `• *${acc.name}*${last4}\n`;
+      text += `• *${accountDisplayName(profile, acc)}*${last4}\n`;
       text += `  ${summary.openTitle} (em aberto): *${money(summary.openTotal)}*${due}`;
       text += `\n  ${summary.openItemCount} lançamentos${limit}${available}${lastPaid}\n\n`;
     }
 
     text += `🧾 *Total em faturas abertas:* ${money(creditDebt)}`;
-    text += `\n\n_Valor = saldo devedor atual do cartão (ciclo aberto). Fatura fechada não entra aqui._`;
+    text += `\n\n_Valor = soma dos lançamentos da *próxima fatura* (ciclo aberto), não a dívida total do cartão._`;
     text += `\n_Para saldo de contas, diga "saldo" ou /saldo._`;
     return text;
   } catch (err) {

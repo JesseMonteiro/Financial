@@ -22,3 +22,4 @@
 
 - Aplicar offset 0 (Nubank) em Santander desloca a fatura aberta um mês para trás.
 - Inferir offset só com poucas amostras; preferir perfil `santander` + confirmação por pares billId.
+- Pluggy pode enviar **várias parcelas futuras** (`2/12`, `3/12`, …) com o **mesmo** `billForecastDate` do ciclo aberto. Sem redistribuir, o total da fatura aberta vira a dívida de todos os meses. A função `redistributeStackedInstallments` espalha por número da parcela.

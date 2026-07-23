@@ -11,8 +11,9 @@ Cada banco envia metadados de fatura de forma diferente. A lógica canônica viv
 2. **`billForecastDate` ≠ due month** em alguns conectores — usar `inferForecastToDueOffset` ou o offset do perfil.
 3. **`account.balance` em cartão** muitas vezes é **dívida total** (`creditLimit − availableCreditLimit`), **não** o valor da fatura aberta. Preferir soma dos lançamentos do ciclo aberto.
 4. **Pagamento** pode aparecer na fatura **seguinte** (Nubank) ou em `bill.payments[]` da fatura paga.
-5. **Parcelas**: Pluggy pode enviar as próximas como `PENDING` **e** omitir algumas. Projetar só o que falta; nunca duplicar `N/M` já presente.
+5. **Parcelas**: Pluggy pode enviar as próximas como `PENDING` **e** omitir algumas. Projetar só o que falta; nunca duplicar `N/M` já presente. Se várias parcelas da mesma série vierem com o **mesmo** `billForecastDate`, redistribuir (`redistributeStackedInstallments`) para não somar todos os meses na fatura aberta.
 6. Fatura **oficial liquidada** (`payments[]` ou pagamento no ciclo seguinte) nunca é `CURRENT_OPEN`.
+7. **Telegram `/faturas`**: usar `summarizeCardOpenBill` → total do ciclo aberto, **nunca** `account.balance` (dívida total).
 
 ## Conectores documentados
 
