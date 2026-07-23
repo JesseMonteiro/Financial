@@ -232,7 +232,7 @@ export function CreditCards() {
   }, [sortedBillKeys, billsData]);
 
   // Badge helpers
-  function billBadge(bill, key) {
+  function billBadge(bill) {
     if (!bill || bill.type === 'FUTURE') return { variant: 'info', text: 'Projetada' };
     if (bill.type === 'CURRENT_OPEN') return { variant: 'warning', text: 'Em Aberto' };
     if (bill.isPaid) return { variant: 'success', text: 'Paga' };
@@ -332,7 +332,7 @@ export function CreditCards() {
             {formatCurrency(currentOpenTotal)}
           </h2>
           <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>
-            Vence em {formatDueMonthShort(currentOpenKey)} • {currentOpenBill?.items?.filter(t => !isBillPayment(t)).length || 0} compras
+            Vence em {formatDueMonthShort(currentOpenKey, currentOpenBill?.dueDate)} • {currentOpenBill?.items?.filter(t => !isBillPayment(t) && !t.isProjected).length || 0} compras
           </span>
         </Card>
 
@@ -411,7 +411,7 @@ export function CreditCards() {
             const displayAmount = bill?.total || 0;
 
             const title = formatDueMonthTitle(k);
-            const dueStr = formatDueMonthShort(k);
+            const dueStr = formatDueMonthShort(k, bill?.dueDate);
 
             let borderColor = 'var(--border-color)';
             if (bill?.type === 'CURRENT_OPEN') borderColor = 'var(--warning)';
@@ -510,7 +510,7 @@ export function CreditCards() {
                 {formatCurrency(currentSelectedBill.total)}
               </h3>
               <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                Vencimento: {formatDueMonthShort(activeSelectedKey)} {currentSelectedBill.dueDate ? `(${currentSelectedBill.dueDate})` : ''}
+                Vencimento: {formatDueMonthShort(activeSelectedKey, currentSelectedBill.dueDate)} {currentSelectedBill.dueDate ? `(${currentSelectedBill.dueDate})` : ''}
               </span>
             </div>
             <div style={{ textAlign: 'right' }}>

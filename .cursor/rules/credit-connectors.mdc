@@ -1,0 +1,14 @@
+---
+description: Credit-card Pluggy data differs by bank — follow connector guides
+globs: src/utils/creditBillPeriod.js,src/utils/creditConnectors/**,src/pages/CreditCards.jsx,supabase/functions/pluggy-proxy/creditBillPeriod.ts
+---
+
+# Credit connector coding
+
+Before changing bill/open-cycle logic, read `docs/connectors/README.md` and the guide for the bank involved.
+
+- Never use `account.balance` as open-bill total when it equals `creditLimit − availableCreditLimit` (total outstanding).
+- Index by **due month**, not calendar purchase month.
+- Deduplicate installment projections against real `PENDING`/`POSTED` with the same `N/M`.
+- Keep `src/utils/creditConnectors/profiles.js` in sync with `docs/connectors/*.md`.
+- Edge copy: `supabase/functions/pluggy-proxy/creditBillPeriod.ts` (+ `creditConnectors/`).

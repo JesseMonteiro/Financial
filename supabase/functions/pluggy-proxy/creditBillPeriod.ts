@@ -1,12 +1,16 @@
 /**
  * Canonical credit-card bill period helpers.
  *
- * Pluggy `billForecastDate` semantics differ by connector:
- * - Nubank / Mercado Pago: forecast month === due month (offset 0)
- * - Santander (typical): forecast month === due month − 1 (offset 1)
+ * Pluggy semantics differ by bank — see docs/connectors/ and
+ * src/utils/creditConnectors/profiles.js.
  *
  * We always index UI buckets by **due month** (YYYY-MM of bill.dueDate).
  */
+
+import {
+  resolveConnectorProfile,
+  balanceLooksLikeTotalOutstanding,
+} from './creditConnectors/profiles.ts';
 
 export const MONTHS_PT = [
   'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
@@ -34,7 +38,12 @@ export function formatDueMonthTitle(dueYm) {
   return `Fatura ${MONTHS_PT[m - 1]} de ${y}`;
 }
 
-export function formatDueMonthShort(dueYm) {
+/** @param {string} dueYm @param {string} [dueDateIso] real due date when known */
+export function formatDueMonthShort(dueYm, dueDateIso) {
+  if (dueDateIso && String(dueDateIso).length >= 10) {
+    const [y, m, d] = String(dueDateIso).slice(0, 10).split('-');
+    return `${d}/${m}/${y}`;
+  }
   if (!dueYm || dueYm === 'Outros') return '';
   const [y, m] = dueYm.split('-');
   return `10/${m}/${y}`;
@@ -51,6 +60,93 @@ function billMapFromList(officialBills = []) {
     if (b?.id) map[b.id] = b;
   }
   return map;
+}
+
+/** Infer due YYYY-MM-DD for a due-month from the latest official bill's day. */
+export function inferDueDateForMonth(dueYm, officialBills = []) {
+  if (!dueYm || dueYm === 'Outros') return null;
+  const sorted = officialBills
+    .filter((b) => b?.dueDate)
+    .sort((a, b) => String(a.dueDate).localeCompare(String(b.dueDate)));
+  const day = sorted.length
+    ? String(sorted.at(-1).dueDate).slice(8, 10)
+    : '10';
+  return `${dueYm}-${day}`;
+}
+
+/**
+ * Fingerprint for an installment series (dedupe real vs projected).
+ * Amount is intentionally excluded — Pluggy sometimes drifts by R$ 0.01.
+ */
+export function installmentSeriesKey(tx) {
+  const meta = tx?.creditCardMetadata || {};
+  if (meta.purchaseId) return `pid:${meta.purchaseId}`;
+  const total = meta.totalInstallments || tx?.totalInstallmentsCount;
+  if (!total) return null;
+  return `${normalizeInstallmentDesc(tx.description)}|${total}`;
+}
+
+export function normalizeInstallmentDesc(description) {
+  return String(description || '')
+    .replace(/\s*\(?\s*Parcela\s+\d+\s*\/\s*\d+\s*\)?\s*$/i, '')
+    .replace(/\s*\d+\s*\/\s*\d+\s*$/i, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toUpperCase();
+}
+
+export function installmentNumberOf(tx) {
+  return (
+    tx?.creditCardMetadata?.installmentNumber ||
+    tx?.currentInstallment ||
+    null
+  );
+}
+
+export function installmentTotalOf(tx) {
+  return (
+    tx?.creditCardMetadata?.totalInstallments ||
+    tx?.totalInstallmentsCount ||
+    null
+  );
+}
+
+/** True if a real (or projected) tx already represents series installment n. */
+export function hasInstallmentNumber(transactions, seriesKey, n) {
+  for (const t of transactions) {
+    if (isBillPayment(t)) continue;
+    if (installmentSeriesKey(t) !== seriesKey) continue;
+    if (installmentNumberOf(t) === n) return true;
+  }
+  return false;
+}
+
+export function sumCycleCharges(items = [], { includeProjected = false } = {}) {
+  return items
+    .filter((t) => !isBillPayment(t) && (includeProjected || !t.isProjected))
+    .reduce((s, t) => s + Math.abs(Number(t.amount) || 0), 0);
+}
+
+/**
+ * Open-bill total: never use outstanding debt disguised as balance.
+ */
+export function resolveOpenBillTotal(account, cycleItems = [], profile) {
+  const cycleSum = sumCycleCharges(cycleItems, { includeProjected: true });
+  const preferCycle =
+    (profile?.openTotalSource || 'cycle_charges') === 'cycle_charges' ||
+    balanceLooksLikeTotalOutstanding(account) ||
+    profile?.balanceMeaning === 'total_outstanding';
+
+  if (preferCycle && cycleSum > 0) return cycleSum;
+  if (account?.balance != null && !preferCycle) {
+    return Math.abs(Number(account.balance) || 0);
+  }
+  if (cycleSum > 0) return cycleSum;
+  // Last resort: only if balance is NOT total outstanding
+  if (account?.balance != null && !balanceLooksLikeTotalOutstanding(account)) {
+    return Math.abs(Number(account.balance) || 0);
+  }
+  return cycleSum;
 }
 
 /**
@@ -222,6 +318,19 @@ export function resolveOpenDueMonthKey({
   return `${y}-${m}`;
 }
 
+/**
+ * If open key still points at a settled official bill, advance to next month.
+ */
+export function ensureOpenNotSettled(openDueKey, officialBills, settleOpts) {
+  let key = openDueKey;
+  for (let i = 0; i < 24; i++) {
+    const official = officialBills.find((b) => ymFromIso(b.dueDate) === key);
+    if (!official || !isBillSettled(official, settleOpts)) return key;
+    key = ymAdd(key, 1);
+  }
+  return key;
+}
+
 function offsetForAccount(accountId, transactions, officialBills, cache) {
   if (cache[accountId] != null) return cache[accountId];
   const txs = transactions.filter((t) => !accountId || t.accountId === accountId);
@@ -254,12 +363,20 @@ export function buildCreditCardBills({
   for (const accountId of accountIds) {
     const offset = offsetForAccount(accountId, transactions, officialBills, offsetCache);
     const acctBills = officialBills.filter((b) => b.accountId === accountId);
-    openByAccount[accountId] = resolveOpenDueMonthKey({
-      transactions: transactions.filter((t) => t.accountId === accountId),
+    const acctTxs = transactions.filter((t) => t.accountId === accountId);
+    const settleOpts = {
+      transactions: acctTxs,
+      officialBills: acctBills,
+      forecastToDueOffset: offset,
+    };
+    let openKey = resolveOpenDueMonthKey({
+      transactions: acctTxs,
       officialBills: acctBills,
       forecastToDueOffset: offset,
       today,
     });
+    openKey = ensureOpenNotSettled(openKey, acctBills, settleOpts);
+    openByAccount[accountId] = openKey;
     latestOfficialByAccount[accountId] =
       acctBills
         .map((b) => ymFromIso(b.dueDate))
@@ -268,7 +385,7 @@ export function buildCreditCardBills({
         .at(-1) || null;
   }
   const openCandidates = Object.values(openByAccount);
-  const openDueKey = (openCandidates.length
+  let openDueKey = (openCandidates.length
     ? openCandidates
     : [
         resolveOpenDueMonthKey({
@@ -279,6 +396,11 @@ export function buildCreditCardBills({
         }),
       ]
   ).sort()[0];
+  openDueKey = ensureOpenNotSettled(openDueKey, officialBills, {
+    transactions,
+    officialBills,
+    forecastToDueOffset: globalOffset,
+  });
 
   const dueKeyForTx = (t) => {
     const offset = offsetForAccount(t.accountId, transactions, officialBills, offsetCache);
@@ -328,7 +450,7 @@ export function buildCreditCardBills({
         dueMonthKey: key,
         items: [],
         total: 0,
-        dueDate: key === 'Outros' ? null : `${key}-10`,
+        dueDate: key === 'Outros' ? null : inferDueDateForMonth(key, officialBills),
       };
     }
     map[key].items.push(t);
@@ -339,51 +461,71 @@ export function buildCreditCardBills({
       dueMonthKey: openDueKey,
       items: [],
       total: 0,
-      dueDate: `${openDueKey}-10`,
+      dueDate: inferDueDateForMonth(openDueKey, officialBills),
     };
   }
 
-  // Project installments using per-tx due keys
-  const openItems = map[openDueKey]?.items || [];
-  const installmentsSource = [
-    ...openItems.filter((t) => !t.isProjected),
-    ...transactions.filter(
-      (t) =>
-        t.status === 'PENDING' &&
-        t.creditCardMetadata?.totalInstallments &&
-        t.creditCardMetadata?.installmentNumber < t.creditCardMetadata.totalInstallments
-    ),
-  ];
-  const seenInst = new Set();
-  for (const t of installmentsSource) {
-    if (seenInst.has(t.id)) continue;
-    seenInst.add(t.id);
-    const meta = t.creditCardMetadata;
-    if (!meta?.totalInstallments || !meta?.installmentNumber) continue;
-    if (meta.installmentNumber >= meta.totalInstallments) continue;
-    const baseDue = dueKeyForTx(t);
-    if (!baseDue || baseDue === 'Outros') continue;
-    const remaining = meta.totalInstallments - meta.installmentNumber;
-    for (let step = 1; step <= remaining; step++) {
-      const futureDue = ymAdd(baseDue, step);
+  // Project missing installments only (never duplicate real N/M; never invent past cycles)
+  const series = new Map();
+  for (const t of transactions) {
+    if (t.isProjected || isBillPayment(t)) continue;
+    const total = installmentTotalOf(t);
+    const num = installmentNumberOf(t);
+    if (!total || !num) continue;
+    const key = installmentSeriesKey(t);
+    if (!key) continue;
+    const due = dueKeyForTx(t);
+    if (!due || due === 'Outros') continue;
+    let entry = series.get(key);
+    if (!entry) {
+      entry = {
+        total,
+        maxNum: 0,
+        maxDue: due,
+        sample: t,
+        accountId: t.accountId,
+      };
+      series.set(key, entry);
+    }
+    if (num >= entry.maxNum) {
+      entry.maxNum = num;
+      entry.maxDue = due;
+      entry.sample = t;
+    }
+  }
+
+  for (const [seriesKey, entry] of series) {
+    const { total, maxNum, maxDue, sample, accountId } = entry;
+    const openFor = openByAccount[accountId] || openDueKey;
+    for (let n = maxNum + 1; n <= total; n++) {
+      if (hasInstallmentNumber(transactions, seriesKey, n)) continue;
+      const futureDue = ymAdd(maxDue, n - maxNum);
+      // Do not project into already-closed cycles
+      if (futureDue < openFor) continue;
       if (!map[futureDue]) {
         map[futureDue] = {
           dueMonthKey: futureDue,
           items: [],
           total: 0,
-          dueDate: `${futureDue}-10`,
+          dueDate: inferDueDateForMonth(futureDue, officialBills),
         };
       }
-      const projId = `proj_${t.id}_${futureDue}`;
-      if (map[futureDue].items.some((e) => e.id === projId)) continue;
+      if (hasInstallmentNumber(map[futureDue].items, seriesKey, n)) continue;
+      const baseDesc = normalizeInstallmentDesc(sample.description);
       map[futureDue].items.push({
-        ...t,
-        id: projId,
-        description: `${t.description} (Parcela ${meta.installmentNumber + step}/${meta.totalInstallments})`,
-        currentInstallment: meta.installmentNumber + step,
-        totalInstallmentsCount: meta.totalInstallments,
+        ...sample,
+        id: `proj_${sample.id}_${n}`,
+        description: `${baseDesc} (Parcela ${n}/${total})`,
+        creditCardMetadata: {
+          ...(sample.creditCardMetadata || {}),
+          installmentNumber: n,
+          totalInstallments: total,
+        },
+        currentInstallment: n,
+        totalInstallmentsCount: total,
         isProjected: true,
-        date: `${futureDue}-10T00:00:00.000Z`,
+        status: 'PENDING',
+        date: `${inferDueDateForMonth(futureDue, officialBills)}T00:00:00.000Z`,
       });
     }
   }
@@ -401,15 +543,25 @@ export function buildCreditCardBills({
     let totalAmount = 0;
     let isPaid = true;
     let hasOfficial = false;
-    let dueDate = bucket.dueDate || `${dueYm}-10`;
+    let dueDate = bucket.dueDate || inferDueDateForMonth(dueYm, officialBills);
 
     const cardsForTotals = activeCards.length ? activeCards : [{ id: null }];
 
     for (const card of cardsForTotals) {
+      const cardAcc = card.id ? creditCards.find((c) => c.id === card.id) : null;
+      const profile = resolveConnectorProfile({
+        account: cardAcc,
+        connectorName: cardAcc?.connectorName || cardAcc?._connector,
+        connectorId: cardAcc?.connectorId || cardAcc?._connectorId,
+      });
       const official = officialBills.find(
         (b) =>
           (!card.id || b.accountId === card.id) &&
           ymFromIso(b.dueDate) === dueYm
+      );
+
+      const scopedItems = bucket.items.filter(
+        (t) => !card.id || !t.accountId || t.accountId === card.id
       );
 
       if (official) {
@@ -425,48 +577,34 @@ export function buildCreditCardBills({
         ) {
           isPaid = false;
         }
-      } else if (dueYm === (openByAccount[card.id] || openDueKey) && card.id) {
-        // Open cycle without official bill: Pluggy account.balance is the source of truth
-        const cardAcc = creditCards.find((c) => c.id === card.id);
-        if (cardAcc && cardAcc.balance != null) {
-          totalAmount += Math.abs(Number(cardAcc.balance) || 0);
-          isPaid = false;
-        } else {
-          const cardTxs = bucket.items.filter(
-            (t) => t.accountId === card.id && !isBillPayment(t) && !t.isProjected
-          );
-          totalAmount += cardTxs.reduce((s, t) => s + Math.abs(Number(t.amount) || 0), 0);
-          if (totalAmount > 0) isPaid = false;
-        }
-      } else if (dueYm === openDueKey && !card.id) {
-        const cardTxs = bucket.items.filter(
-          (t) => !isBillPayment(t) && !t.isProjected
-        );
-        totalAmount += cardTxs.reduce((s, t) => s + Math.abs(Number(t.amount) || 0), 0);
-        if (totalAmount > 0) isPaid = false;
+      } else if (dueYm === (openByAccount[card.id] || openDueKey)) {
+        const openTotal = resolveOpenBillTotal(cardAcc, scopedItems, profile);
+        totalAmount += openTotal;
+        if (openTotal > 0) isPaid = false;
       } else {
-        const cardTxs = bucket.items.filter(
-          (t) =>
-            (!card.id || t.accountId === card.id) &&
-            !isBillPayment(t) &&
-            (dueYm > openDueKey ? true : !t.isProjected)
-        );
-        const sumTxs = cardTxs.reduce((s, t) => s + Math.abs(Number(t.amount) || 0), 0);
+        // Past without official, or future: sum cycle charges (+ projections for future)
+        const includeProjected = dueYm > openDueKey;
+        const sumTxs = sumCycleCharges(scopedItems, { includeProjected });
         totalAmount += sumTxs;
         if (sumTxs > 0 && dueYm <= openDueKey) isPaid = false;
       }
     }
 
     if (!activeCards.length && !hasOfficial) {
-      totalAmount = bucket.items
-        .filter((t) => !isBillPayment(t) && !t.isProjected)
-        .reduce((s, t) => s + Math.abs(Number(t.amount) || 0), 0);
+      totalAmount = sumCycleCharges(bucket.items, {
+        includeProjected: dueYm > openDueKey || dueYm === openDueKey,
+      });
       if (totalAmount > 0 && dueYm <= openDueKey) isPaid = false;
     }
 
     let type = 'PAST';
     if (dueYm === openDueKey) type = 'CURRENT_OPEN';
     else if (dueYm > openDueKey) type = 'FUTURE';
+
+    // Settled official bill can never be "Em Aberto"
+    if (type === 'CURRENT_OPEN' && hasOfficial && isPaid) {
+      type = 'PAST';
+    }
 
     bills[dueYm] = {
       dueMonthKey: dueYm,
@@ -513,12 +651,13 @@ export function summarizeCardOpenBill(card, transactions = [], officialBills = [
     .reverse()
     .find((k) => built.bills[k]?.isPaid && built.bills[k]?.type === 'PAST');
   const lastPaid = lastPaidKey ? built.bills[lastPaidKey] : null;
+  const profile = resolveConnectorProfile({ account: card });
 
   return {
     openDueKey: built.openDueKey,
     openTitle: formatDueMonthTitle(built.openDueKey),
-    openTotal: Math.abs(Number(card.balance) || Number(open?.total) || 0),
-    openDueDate: open?.dueDate || `${built.openDueKey}-10`,
+    openTotal: resolveOpenBillTotal(card, open?.items || [], profile),
+    openDueDate: open?.dueDate || inferDueDateForMonth(built.openDueKey, bills),
     openItemCount: (open?.items || []).filter((t) => !t.isProjected && !isBillPayment(t)).length,
     lastPaidKey: lastPaidKey || null,
     lastPaidTitle: lastPaidKey ? formatDueMonthTitle(lastPaidKey) : null,
@@ -527,5 +666,6 @@ export function summarizeCardOpenBill(card, transactions = [], officialBills = [
     creditLimit: card.creditData?.creditLimit ?? null,
     availableLimit: card.creditData?.availableCreditLimit ?? null,
     forecastToDueOffset: built.forecastToDueOffset,
+    connectorProfileId: profile.id,
   };
 }
