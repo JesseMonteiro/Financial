@@ -7,6 +7,7 @@ export {
   getStoredManualTransactions, saveStoredManualTransaction, deleteStoredManualTransaction,
   getProfileSettings, updateProfileSettings,
   getCustomAccountNames, saveCustomAccountNames,
+  getMonthlySalaries, saveMonthlySalaries,
   getPluggyCredentials, savePluggyCredentials, getPluggyItemIds
 } from './supabaseStorage.js';
 

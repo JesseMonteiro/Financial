@@ -266,6 +266,69 @@ export async function saveCustomAccountNames(names) {
   if (error) console.error('Error saving custom account names:', error);
 }
 
+// --- Monthly salaries (Momento Financeiro) ---
+function readLocalMonthlySalaries() {
+  try {
+    const raw = localStorage.getItem('financehub_monthly_salaries');
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+export async function getMonthlySalaries() {
+  const userId = await getCurrentUserId();
+  const fromLocal = readLocalMonthlySalaries();
+  if (!userId) return fromLocal;
+
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('monthly_salaries')
+    .eq('id', userId)
+    .single();
+
+  if (error) {
+    console.error('Error fetching monthly salaries:', error);
+    return fromLocal;
+  }
+
+  const fromDb =
+    data?.monthly_salaries && typeof data.monthly_salaries === 'object'
+      ? data.monthly_salaries
+      : {};
+
+  // Heal: local has data, DB empty → sync up
+  if (Object.keys(fromDb).length === 0 && Object.keys(fromLocal).length > 0) {
+    await saveMonthlySalaries(fromLocal);
+    return fromLocal;
+  }
+
+  // Prefer DB, but merge any newer local-only months
+  const merged = { ...fromLocal, ...fromDb };
+  if (JSON.stringify(merged) !== JSON.stringify(fromDb)) {
+    await saveMonthlySalaries(merged);
+  }
+  return merged;
+}
+
+export async function saveMonthlySalaries(salaries) {
+  const safe = salaries && typeof salaries === 'object' ? salaries : {};
+  try {
+    localStorage.setItem('financehub_monthly_salaries', JSON.stringify(safe));
+  } catch (_) { /* ignore */ }
+
+  const userId = await getCurrentUserId();
+  if (!userId) return;
+  const { error } = await supabase
+    .from('profiles')
+    .update({ monthly_salaries: safe })
+    .eq('id', userId);
+
+  if (error) console.error('Error saving monthly salaries:', error);
+}
+
 // --- Custom Pluggy Credentials ---
 export async function getPluggyCredentials() {
   const userId = await getCurrentUserId();

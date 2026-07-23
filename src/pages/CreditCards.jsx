@@ -14,6 +14,7 @@ import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { ProgressBar } from '../components/ui/ProgressBar';
+import { PageLoadingSkeleton, Skeleton, SkeletonList } from '../components/ui/Skeleton';
 import { useAccountStore } from '../stores/accountStore';
 import { fetchTransactions, fetchBills } from '../services/api';
 import { formatCurrency, formatDate } from '../utils/formatters';
@@ -33,7 +34,7 @@ import {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function CreditCards() {
-  const { accounts, loadAccounts } = useAccountStore();
+  const { accounts, loadAccounts, loading: accountsLoading, lastUpdated: accountsUpdatedAt } = useAccountStore();
   const { receivables, loadReceivables } = useReceivableStore();
   const [cardTransactions, setCardTransactions] = useState([]);
   const [officialBills, setOfficialBills] = useState([]);
@@ -57,6 +58,8 @@ export function CreditCards() {
   // ── Load card data (supports single or all cards) ──────────────────────────
   useEffect(() => {
     async function load() {
+      // Wait for accounts to finish loading before treating "no cards" as final
+      if (accountsLoading) return;
       if (creditCards.length === 0) {
         setLoadingData(false);
         return;
@@ -96,8 +99,10 @@ export function CreditCards() {
         setLoadingData(false);
       }
     }
-    if (accounts.length > 0) load();
-  }, [selectedCardId, activeCard?.id, accounts.length]);
+    load();
+  }, [selectedCardId, activeCard?.id, accounts.length, accountsLoading, creditCards.length]);
+
+  const isPageLoading = accountsLoading || loadingData || accountsUpdatedAt == null;
 
   // ── Card metrics (Consolidated vs Individual) ──────────────────────────────
   const totalDebtAllCards = creditCards.reduce((acc, c) => acc + Math.abs(c.balance || 0), 0);
@@ -245,15 +250,39 @@ export function CreditCards() {
       {/* Page Header */}
       <div>
         <h1 style={{ fontSize: 'var(--font-size-2xl)', fontWeight: 700 }}>
-          {selectedCardId === 'all' ? 'Cartões de Crédito (Visão Consolidada)' : (activeCard?.name || 'Cartão de Crédito')}
+          {isPageLoading
+            ? 'Cartões de Crédito'
+            : selectedCardId === 'all'
+              ? 'Cartões de Crédito (Visão Consolidada)'
+              : (activeCard?.name || 'Cartão de Crédito')}
         </h1>
         <p style={{ color: 'var(--text-muted)', fontSize: 'var(--font-size-sm)' }}>
-          {selectedCardId === 'all'
-            ? `Soma consolidada de ${creditCards.length} cartões conectados • Sincronização em tempo real via Pluggy.ai`
-            : `${activeCard?.name || 'Cartão'} • Final ${activeCard?.number || '****'} • Titular: ${activeCard?.owner || '—'}`
+          {isPageLoading
+            ? 'Carregando faturas e limites…'
+            : selectedCardId === 'all'
+              ? `Soma consolidada de ${creditCards.length} cartões conectados • Sincronização em tempo real via Pluggy.ai`
+              : `${activeCard?.name || 'Cartão'} • Final ${activeCard?.number || '****'} • Titular: ${activeCard?.owner || '—'}`
           }
         </p>
       </div>
+
+      {isPageLoading ? (
+        <>
+          <div style={{ display: 'flex', gap: '0.75rem', overflow: 'hidden' }}>
+            {[1, 2, 3].map((i) => (
+              <Skeleton key={i} width={200} height={64} borderRadius="var(--radius-md)" />
+            ))}
+          </div>
+          <PageLoadingSkeleton
+            kpiCount={4}
+            showTimeline
+            showChart
+            showList
+            label="Carregando faturas dos cartões"
+          />
+        </>
+      ) : (
+      <>
 
       {/* Credit Card Selector Tabs */}
       {creditCards.length > 0 && (
@@ -546,7 +575,7 @@ export function CreditCards() {
           </div>
 
           {loadingData ? (
-            <p style={{ color: 'var(--text-muted)', padding: '2rem', textAlign: 'center' }}>Carregando faturas consolidadas...</p>
+            <SkeletonList rows={6} />
           ) : filteredTransactions.length === 0 ? (
             <p style={{ color: 'var(--text-muted)', padding: '2rem', textAlign: 'center' }}>
               Nenhuma compra para o filtro selecionado.
@@ -675,6 +704,8 @@ export function CreditCards() {
           )}
         </Card>
       </div>
+      </>
+      )}
     </div>
   );
 }

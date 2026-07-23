@@ -46,6 +46,8 @@
   );
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite linear;
+  pointer-events: none;
+  user-select: none;
 }
 
 .spin-slow {

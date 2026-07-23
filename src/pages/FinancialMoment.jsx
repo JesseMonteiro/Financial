@@ -3,18 +3,21 @@ import { useAccountStore } from '../stores/accountStore';
 import { useTransactionStore } from '../stores/transactionStore';
 import { useReceivableStore } from '../stores/receivableStore';
 import { fetchTransactions, fetchBills } from '../services/api';
-import { getLocalSetting, setLocalSetting } from '../services/storage';
+import { getLocalSetting, setLocalSetting, getMonthlySalaries, saveMonthlySalaries } from '../services/storage';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { ProgressBar } from '../components/ui/ProgressBar';
+import { PageLoadingSkeleton } from '../components/ui/Skeleton';
 import { formatCurrency, formatDate } from '../utils/formatters';
 import { translateCategory } from '../utils/categories';
 import {
   buildCreditCardBills,
   isBillPayment,
+  sumCycleCharges,
   MONTHS_PT,
 } from '../utils/creditBillPeriod';
+import { resolveMonthSalary, withSavedMonthSalary } from '../utils/monthSalary';
 import { 
   Activity, 
   ChevronLeft, 
@@ -30,7 +33,7 @@ import {
 } from 'lucide-react';
 
 export function FinancialMoment() {
-  const { accounts, loadAccounts } = useAccountStore();
+  const { accounts, loadAccounts, loading: accountsLoading, lastUpdated: accountsUpdatedAt } = useAccountStore();
   const { transactions, loadTransactions } = useTransactionStore();
   const { receivables, loadReceivables } = useReceivableStore();
 
@@ -45,15 +48,28 @@ export function FinancialMoment() {
 
   const timelineRef = useRef(null);
 
-  // Load stores
+  // Load stores + salaries (Supabase with localStorage heal)
   useEffect(() => {
     loadAccounts();
     loadTransactions();
     loadReceivables();
-    
-    // Load salaries from storage
-    const storedSalaries = getLocalSetting('monthly_salaries', {});
-    setSalaries(storedSalaries);
+
+    (async () => {
+      const stored = await getMonthlySalaries();
+      // Also pull legacy local-only key if getMonthlySalaries returned empty
+      const legacy = getLocalSetting('monthly_salaries', {});
+      const merged =
+        Object.keys(stored || {}).length > 0
+          ? stored
+          : legacy;
+      setSalaries(merged || {});
+      if (
+        Object.keys(legacy).length > 0 &&
+        Object.keys(stored || {}).length === 0
+      ) {
+        await saveMonthlySalaries(legacy);
+      }
+    })();
   }, []);
 
   const creditCards = useMemo(() => accounts.filter(a => a.type === 'CREDIT'), [accounts]);
@@ -61,6 +77,7 @@ export function FinancialMoment() {
   // Load official bills + credit transactions for all cards
   useEffect(() => {
     async function loadBills() {
+      if (accountsLoading) return;
       if (creditCards.length === 0) {
         setLoadingCards(false);
         return;
@@ -85,8 +102,10 @@ export function FinancialMoment() {
         setLoadingCards(false);
       }
     }
-    if (accounts.length > 0) loadBills();
-  }, [creditCards, accounts.length]);
+    loadBills();
+  }, [creditCards, accounts.length, accountsLoading]);
+
+  const isPageLoading = accountsLoading || loadingCards || accountsUpdatedAt == null;
 
   const creditBillPeriod = useMemo(
     () =>
@@ -127,7 +146,7 @@ export function FinancialMoment() {
   // Sync salary input when month or salaries change
   useEffect(() => {
     if (selectedMonth) {
-      const val = salaries[selectedMonth] !== undefined ? salaries[selectedMonth] : 5000;
+      const val = resolveMonthSalary(salaries, selectedMonth);
       setSalaryInput(String(val));
     }
   }, [selectedMonth, salaries]);
@@ -149,11 +168,45 @@ export function FinancialMoment() {
     }
   }, [selectedMonth]);
 
-  const handleSaveSalary = () => {
+  const handleSaveSalary = async () => {
     const num = parseFloat(salaryInput) || 0;
-    const updated = { ...salaries, [selectedMonth]: num };
+    const updated = withSavedMonthSalary(salaries, selectedMonth, num);
     setSalaries(updated);
     setLocalSetting('monthly_salaries', updated);
+    await saveMonthlySalaries(updated);
+  };
+
+  /** Amount for one card in a due-month — never use outstanding balance. */
+  const cardBillAmountForMonth = (card, ym) => {
+    const matchingBill = cardBills.find(
+      (b) => b.accountId === card.id && String(b.dueDate || '').startsWith(ym)
+    );
+    if (matchingBill) {
+      return {
+        amount: Number(matchingBill.totalAmount) || 0,
+        dueDate: matchingBill.dueDate,
+        isPaid: (matchingBill.payments || []).length > 0,
+        isFallback: false,
+      };
+    }
+
+    const periodBill = creditBillPeriod.bills[ym];
+    if (!periodBill) return null;
+
+    const openKey = creditBillPeriod.openDueKey;
+    const includeProjected = ym >= openKey;
+    const scoped = periodBill.items.filter(
+      (t) => (!t.accountId || t.accountId === card.id) && !isBillPayment(t)
+    );
+    const amount = sumCycleCharges(scoped, { includeProjected });
+    if (amount <= 0) return null;
+
+    return {
+      amount,
+      dueDate: periodBill.dueDate || `${ym}-10`,
+      isPaid: false,
+      isFallback: true,
+    };
   };
 
   // ── Calculation details for selected month ──
@@ -161,7 +214,7 @@ export function FinancialMoment() {
     if (!selectedMonth) return null;
     
     // 1. Incomes - Salary
-    const salary = salaries[selectedMonth] !== undefined ? salaries[selectedMonth] : 5000;
+    const salary = resolveMonthSalary(salaries, selectedMonth);
 
     // 2. Incomes - Receivables due in this month (format: YYYY-MM-DD starts with YYYY-MM)
     const activeReceivables = [];
@@ -190,45 +243,18 @@ export function FinancialMoment() {
     // 3. Expenses - Credit Card bills due in this month (canonical due-month index)
     const activeBills = [];
     let creditCardsTotal = 0;
-    const periodBill = creditBillPeriod.bills[selectedMonth];
 
     creditCards.forEach(card => {
-      const matchingBill = cardBills.find(b => b.accountId === card.id && b.dueDate?.startsWith(selectedMonth));
-      if (matchingBill) {
-        activeBills.push({
-          cardName: card.name,
-          dueDate: matchingBill.dueDate,
-          amount: matchingBill.totalAmount || 0,
-          isPaid: matchingBill.payments?.length > 0
-        });
-        creditCardsTotal += matchingBill.totalAmount || 0;
-      } else if (periodBill) {
-        const cardItems = periodBill.items.filter(
-          t => t.accountId === card.id && !isBillPayment(t) && !t.isProjected
-        );
-        let amount;
-        if (selectedMonth === creditBillPeriod.openDueKey) {
-          amount = Math.abs(Number(card.balance) || 0);
-        } else {
-          amount = cardItems.reduce((s, t) => s + Math.abs(t.amount || 0), 0);
-          if (selectedMonth > creditBillPeriod.openDueKey) {
-            const projected = periodBill.items.filter(
-              t => t.accountId === card.id && t.isProjected
-            );
-            amount += projected.reduce((s, t) => s + Math.abs(t.amount || 0), 0);
-          }
-        }
-        if (amount > 0) {
-          activeBills.push({
-            cardName: card.name,
-            dueDate: periodBill.dueDate || `${selectedMonth}-10`,
-            amount,
-            isPaid: false,
-            isFallback: true
-          });
-          creditCardsTotal += amount;
-        }
-      }
+      const bill = cardBillAmountForMonth(card, selectedMonth);
+      if (!bill) return;
+      activeBills.push({
+        cardName: card.name,
+        dueDate: bill.dueDate,
+        amount: bill.amount,
+        isPaid: bill.isPaid,
+        isFallback: bill.isFallback,
+      });
+      creditCardsTotal += bill.amount;
     });
 
     // 4. Expenses - Manual expenses dated in this month
@@ -261,7 +287,7 @@ export function FinancialMoment() {
 
     monthList.forEach(m => {
       const ym = m.ym;
-      const salary = salaries[ym] !== undefined ? salaries[ym] : 5000;
+      const salary = resolveMonthSalary(salaries, ym);
 
       let receivablesTotal = 0;
       receivables.forEach(r => {
@@ -275,21 +301,9 @@ export function FinancialMoment() {
       const entriesTotal = salary + receivablesTotal;
 
       let creditCardsTotal = 0;
-      const periodBill = creditBillPeriod.bills[ym];
       creditCards.forEach(card => {
-        const matchingBill = cardBills.find(b => b.accountId === card.id && b.dueDate?.startsWith(ym));
-        if (matchingBill) {
-          creditCardsTotal += matchingBill.totalAmount || 0;
-        } else if (periodBill) {
-          if (ym === creditBillPeriod.openDueKey) {
-            creditCardsTotal += Math.abs(Number(card.balance) || 0);
-          } else {
-            const cardItems = periodBill.items.filter(
-              t => t.accountId === card.id && !isBillPayment(t) && (ym > creditBillPeriod.openDueKey || !t.isProjected)
-            );
-            creditCardsTotal += cardItems.reduce((s, t) => s + Math.abs(t.amount || 0), 0);
-          }
-        }
+        const bill = cardBillAmountForMonth(card, ym);
+        if (bill) creditCardsTotal += bill.amount;
       });
 
       const manualExpensesTotal = transactions
@@ -345,6 +359,16 @@ export function FinancialMoment() {
       </div>
 
       {/* Month Seletor Tabs */}
+      {isPageLoading ? (
+        <PageLoadingSkeleton
+          kpiCount={3}
+          showTimeline
+          showChart={false}
+          showList
+          label="Consolidando faturas e movimentações do mês"
+        />
+      ) : (
+      <>
       <Card title="Seletor de Período">
         <div
           ref={timelineRef}
@@ -413,11 +437,7 @@ export function FinancialMoment() {
         </div>
       </Card>
 
-      {loadingCards ? (
-        <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '3rem' }}>
-          Consolidando faturas e movimentações do mês...
-        </p>
-      ) : activeMonthData && (
+      {activeMonthData && (
         <>
           {/* Summary KPIs */}
           <div className="dashboard-grid">
@@ -484,7 +504,7 @@ export function FinancialMoment() {
               </h2>
 
               {/* Salary Configuration */}
-              <Card title="Salário Mensal" subtitle="Informe seu salário líquido esperado para este mês.">
+              <Card title="Salário Mensal" subtitle="Salário líquido deste mês. Ao salvar, vira o padrão dos próximos meses.">
                 <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginTop: '0.5rem' }}>
                   <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '0.5rem', backgroundColor: 'var(--bg-tertiary)', padding: '0.4rem 0.75rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}>
                     <DollarSign size={16} style={{ color: 'var(--text-muted)' }} />
@@ -643,6 +663,8 @@ export function FinancialMoment() {
             </div>
           </div>
         </>
+      )}
+      </>
       )}
     </div>
   );
