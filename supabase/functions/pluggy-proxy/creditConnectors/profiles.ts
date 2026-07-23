@@ -77,6 +77,19 @@ export const CONNECTOR_PROFILES = [
     guidePath: 'docs/connectors/santander.md',
   },
   {
+    id: 'inter',
+    label: 'Banco Inter',
+    match: ({ account, connectorName }) => {
+      const blob = `${connectorName || ''} ${account?.name || ''} ${account?.marketingName || ''}`.toLowerCase();
+      return /\binter\b|banco\s*inter/.test(blob);
+    },
+    forecastToDueOffset: 0,
+    balanceMeaning: 'total_outstanding',
+    openTotalSource: 'cycle_charges',
+    paymentOftenOnNextCycle: true,
+    guidePath: 'docs/connectors/inter.md',
+  },
+  {
     id: 'meupluggy',
     label: 'MeuPluggy (sandbox)',
     match: ({ connectorName, connectorId }) =>

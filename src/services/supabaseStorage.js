@@ -159,6 +159,8 @@ export async function saveStoredManualTransaction(tx) {
   snakeTx.user_id = userId;
   delete snakeTx.is_manual;
   delete snakeTx.account_id;
+  // Ensure paid flag persists even if undefined on older clients
+  if (snakeTx.is_paid == null) snakeTx.is_paid = false;
   
   const { error } = await supabase
     .from('manual_transactions')

@@ -83,6 +83,8 @@ export const useTransactionStore = create((set, get) => ({
         isRecurring,
         isContinuous,
         parentId: isRecurring ? parentId : null,
+        isPaid: false,
+        paidAt: null,
         merchant: { name: 'Manual' }
       };
 
@@ -115,6 +117,23 @@ export const useTransactionStore = create((set, get) => ({
         }));
       }
     }
+  },
+
+  /** Mark a single manual installment/occurrence as paid (tracking only). */
+  setManualPaid: async (id, isPaid) => {
+    const { transactions } = get();
+    const tx = transactions.find((t) => t.id === id && t.isManual);
+    if (!tx) return;
+
+    const updated = {
+      ...tx,
+      isPaid: Boolean(isPaid),
+      paidAt: isPaid ? new Date().toISOString() : null,
+    };
+    await saveStoredManualTransaction(updated);
+    set((state) => ({
+      transactions: state.transactions.map((t) => (t.id === id ? updated : t)),
+    }));
   },
 
   getFilteredTransactions: () => {

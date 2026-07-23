@@ -6,10 +6,50 @@ import { Badge } from '../components/ui/Badge';
 import { formatCurrency, formatDate } from '../utils/formatters';
 import { translateCategory } from '../utils/categories';
 import { getCategoryColor } from '../utils/colors';
-import { Plus, Trash2, Calendar, DollarSign, Clock, HelpCircle } from 'lucide-react';
+import { Plus, Trash2, Calendar, DollarSign, Clock, HelpCircle, ChevronDown, ChevronRight, CheckCircle2 } from 'lucide-react';
+
+function PaidCheckbox({ checked, onChange, label = 'Pago' }) {
+  return (
+    <label
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '0.35rem',
+        cursor: 'pointer',
+        fontSize: '11px',
+        fontWeight: 600,
+        color: checked ? 'var(--success)' : 'var(--text-muted)',
+        userSelect: 'none',
+        whiteSpace: 'nowrap',
+      }}
+      title="Marcar como pago (apenas controle; não altera saldo)"
+    >
+      <input
+        type="checkbox"
+        checked={Boolean(checked)}
+        onChange={(e) => onChange(e.target.checked)}
+        style={{ width: 14, height: 14, cursor: 'pointer', accentColor: 'var(--success)' }}
+      />
+      {checked ? (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
+          <CheckCircle2 size={12} /> {label}
+        </span>
+      ) : (
+        label
+      )}
+    </label>
+  );
+}
 
 export function ManualExpenses() {
-  const { transactions, loadTransactions, addManualTransaction, deleteManualTransaction, loading } = useTransactionStore();
+  const {
+    transactions,
+    loadTransactions,
+    addManualTransaction,
+    deleteManualTransaction,
+    setManualPaid,
+    loading,
+  } = useTransactionStore();
 
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState('');
@@ -17,11 +57,12 @@ export function ManualExpenses() {
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   
   const [isRecurring, setIsRecurring] = useState(false);
-  const [isContinuous, setIsContinuous] = useState(false); // true = infinite recurrence
+  const [isContinuous, setIsContinuous] = useState(false);
   const [frequency, setFrequency] = useState('monthly');
   const [occurrences, setOccurrences] = useState('12');
 
   const [showAddForm, setShowAddForm] = useState(false);
+  const [expandedGroups, setExpandedGroups] = useState({});
 
   useEffect(() => {
     loadTransactions();
@@ -29,7 +70,6 @@ export function ManualExpenses() {
 
   const manualTxs = useMemo(() => transactions.filter(t => t.isManual === true), [transactions]);
 
-  // Group manual transactions for grouped display
   const groupedManualTxs = useMemo(() => {
     const groups = {};
     
@@ -37,7 +77,7 @@ export function ManualExpenses() {
       const key = tx.parentId || tx.id;
       if (!groups[key]) {
         groups[key] = {
-          id: tx.id, // reference ID for deletion
+          id: tx.id,
           parentId: tx.parentId,
           description: tx.originalDescription || tx.description?.replace(/ \(\d+\/\d+\)$/, '').replace(/ \(Recorrente\)$/, ''),
           amount: tx.amount,
@@ -46,20 +86,29 @@ export function ManualExpenses() {
           isRecurring: tx.isRecurring,
           isContinuous: tx.isContinuous,
           installmentsCount: 0,
+          paidCount: 0,
           allInstallments: []
         };
       }
       groups[key].allInstallments.push(tx);
       groups[key].installmentsCount += 1;
+      if (tx.isPaid) groups[key].paidCount += 1;
       
-      // Keep earliest date as display date
       if (new Date(tx.date) < new Date(groups[key].date)) {
         groups[key].date = tx.date;
       }
     });
 
+    Object.values(groups).forEach((g) => {
+      g.allInstallments.sort((a, b) => new Date(a.date) - new Date(b.date));
+    });
+
     return Object.values(groups);
   }, [manualTxs]);
+
+  const toggleExpanded = (key) => {
+    setExpandedGroups((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -69,14 +118,13 @@ export function ManualExpenses() {
       description,
       amount: parseFloat(amount),
       category,
-      date: new Date(date + 'T12:00:00.000Z'), // mid-day to avoid timezone shifting
+      date: new Date(date + 'T12:00:00.000Z'),
       isRecurring,
       isContinuous: isRecurring && isContinuous,
       frequency,
       occurrences: parseInt(occurrences, 10) || 12
     });
 
-    // Reset form
     setDescription('');
     setAmount('');
     setIsRecurring(false);
@@ -86,7 +134,6 @@ export function ManualExpenses() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
-      {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
           <h1 style={{ fontSize: 'var(--font-size-2xl)', fontWeight: 700 }}>Despesas Manuais</h1>
@@ -99,7 +146,6 @@ export function ManualExpenses() {
         </Button>
       </div>
 
-      {/* Add Expense Form */}
       {showAddForm && (
         <Card title="Nova Despesa Manual" subtitle="Informe os detalhes da despesa. Ela será mesclada ao seu orçamento e extrato de transações.">
           <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: '1rem' }}>
@@ -164,7 +210,6 @@ export function ManualExpenses() {
               </div>
             </div>
 
-            {/* Recurring Toggle */}
             <div style={{
               display: 'flex', flexDirection: 'column', gap: '0.75rem',
               backgroundColor: 'var(--bg-tertiary)', padding: '1rem', borderRadius: 'var(--radius-md)',
@@ -182,8 +227,6 @@ export function ManualExpenses() {
               
               {isRecurring && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: '0.5rem', paddingLeft: '1.5rem', borderLeft: '2px solid var(--border-color)' }}>
-                  
-                  {/* Recurrence Type Selector */}
                   <div style={{ display: 'flex', gap: '1.5rem' }}>
                     <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer', fontSize: 'var(--font-size-xs)' }}>
                       <input
@@ -256,8 +299,10 @@ export function ManualExpenses() {
         </Card>
       )}
 
-      {/* Manual Expenses List */}
-      <Card title="Despesas Cadastradas" subtitle="Visualização agrupada por série/categoria. A exclusão de uma despesa recorrente apagará todas as suas parcelas.">
+      <Card
+        title="Despesas Cadastradas"
+        subtitle="Marque Pago por ocorrência/parcela (só controle). Excluir uma série apaga todas as parcelas."
+      >
         {loading ? (
           <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '2rem' }}>Carregando despesas...</p>
         ) : groupedManualTxs.length === 0 ? (
@@ -268,64 +313,158 @@ export function ManualExpenses() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
             {groupedManualTxs
               .sort((a, b) => new Date(b.date) - new Date(a.date))
-              .map(group => (
-                <div
-                  key={group.parentId || group.id}
-                  style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    padding: '0.85rem 1rem', borderRadius: 'var(--radius-md)',
-                    backgroundColor: 'var(--bg-tertiary)', border: '1px solid var(--border-color)'
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                    <div style={{
-                      width: 36, height: 36, borderRadius: '50%',
-                      backgroundColor: 'var(--danger-bg)', color: 'var(--danger)',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center'
-                    }}>
-                      <DollarSign size={18} />
-                    </div>
-                    <div>
-                      <h4 style={{ fontWeight: 600, fontSize: 'var(--font-size-sm)', color: 'var(--text-primary)' }}>
-                        {group.description}
-                      </h4>
-                      <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', marginTop: '0.2rem', flexWrap: 'wrap' }}>
-                        <Badge variant="neutral" style={{ backgroundColor: getCategoryColor(group.category) + '11', color: getCategoryColor(group.category) }}>
-                          {translateCategory(group.category)}
-                        </Badge>
-                        {group.isRecurring && (
-                          <Badge variant={group.isContinuous ? 'info' : 'warning'}>
-                            <Clock size={10} style={{ marginRight: '2px' }} />
-                            {group.isContinuous ? 'Mensal Recorrente' : `${group.installmentsCount} parcelas`}
-                          </Badge>
+              .map(group => {
+                const groupKey = group.parentId || group.id;
+                const isSeries = group.installmentsCount > 1 || group.isRecurring;
+                const expanded = expandedGroups[groupKey] ?? isSeries;
+                const single = group.allInstallments[0];
+
+                return (
+                  <div
+                    key={groupKey}
+                    style={{
+                      borderRadius: 'var(--radius-md)',
+                      backgroundColor: 'var(--bg-tertiary)',
+                      border: '1px solid var(--border-color)',
+                      overflow: 'hidden',
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                        padding: '0.85rem 1rem', gap: '0.75rem',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: 1, minWidth: 0 }}>
+                        {isSeries ? (
+                          <button
+                            type="button"
+                            onClick={() => toggleExpanded(groupKey)}
+                            style={{
+                              border: 'none', background: 'transparent', cursor: 'pointer',
+                              color: 'var(--text-muted)', padding: 0, display: 'flex',
+                            }}
+                            aria-label={expanded ? 'Recolher parcelas' : 'Expandir parcelas'}
+                          >
+                            {expanded ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
+                          </button>
+                        ) : (
+                          <div style={{
+                            width: 36, height: 36, borderRadius: '50%',
+                            backgroundColor: 'var(--danger-bg)', color: 'var(--danger)',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                          }}>
+                            <DollarSign size={18} />
+                          </div>
                         )}
-                        <span style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '2px' }}>
-                          <Calendar size={12} /> Começa em {formatDate(group.date)}
-                        </span>
+                        <div style={{ minWidth: 0 }}>
+                          <h4 style={{ fontWeight: 600, fontSize: 'var(--font-size-sm)', color: 'var(--text-primary)' }}>
+                            {group.description}
+                          </h4>
+                          <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', marginTop: '0.2rem', flexWrap: 'wrap' }}>
+                            <Badge variant="neutral" style={{ backgroundColor: getCategoryColor(group.category) + '11', color: getCategoryColor(group.category) }}>
+                              {translateCategory(group.category)}
+                            </Badge>
+                            {group.isRecurring && (
+                              <Badge variant={group.isContinuous ? 'info' : 'warning'}>
+                                <Clock size={10} style={{ marginRight: '2px' }} />
+                                {group.isContinuous ? 'Mensal Recorrente' : `${group.installmentsCount} parcelas`}
+                              </Badge>
+                            )}
+                            {isSeries && (
+                              <Badge variant={group.paidCount === group.installmentsCount ? 'success' : 'neutral'}>
+                                {group.paidCount}/{group.installmentsCount} pagas
+                              </Badge>
+                            )}
+                            <span style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '2px' }}>
+                              <Calendar size={12} /> Começa em {formatDate(group.date)}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexShrink: 0 }}>
+                        {!isSeries && single && (
+                          <PaidCheckbox
+                            checked={single.isPaid}
+                            onChange={(v) => setManualPaid(single.id, v)}
+                          />
+                        )}
+                        <div style={{ textAlign: 'right' }}>
+                          <span style={{ fontWeight: 700, fontSize: 'var(--font-size-sm)', color: 'var(--danger)', display: 'block' }}>
+                            {formatCurrency(group.amount)}
+                          </span>
+                          {group.isRecurring && (
+                            <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+                              por ocorrência
+                            </span>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => deleteManualTransaction(group.id)}
+                          style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--text-muted)', padding: '0.25rem' }}
+                          title={group.isRecurring ? "Excluir toda a série recorrente" : "Excluir despesa"}
+                        >
+                          <Trash2 size={16} />
+                        </button>
                       </div>
                     </div>
+
+                    {isSeries && expanded && (
+                      <div style={{
+                        borderTop: '1px solid var(--border-color)',
+                        padding: '0.5rem 0.75rem 0.75rem',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '0.35rem',
+                        backgroundColor: 'var(--bg-secondary)',
+                      }}>
+                        {group.allInstallments.map((inst, idx) => (
+                          <div
+                            key={inst.id}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              gap: '0.75rem',
+                              padding: '0.5rem 0.65rem',
+                              borderRadius: 'var(--radius-sm)',
+                              backgroundColor: inst.isPaid ? 'var(--success-bg)' : 'var(--bg-tertiary)',
+                              border: `1px solid ${inst.isPaid ? 'rgba(16,185,129,0.35)' : 'var(--border-color)'}`,
+                              opacity: inst.isPaid ? 0.92 : 1,
+                            }}
+                          >
+                            <div style={{ minWidth: 0 }}>
+                              <span style={{
+                                fontSize: 'var(--font-size-xs)',
+                                fontWeight: 600,
+                                color: 'var(--text-primary)',
+                                textDecoration: inst.isPaid ? 'line-through' : 'none',
+                              }}>
+                                {group.isContinuous
+                                  ? `Ocorrência ${idx + 1}`
+                                  : `Parcela ${idx + 1}/${group.installmentsCount}`}
+                              </span>
+                              <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: 2 }}>
+                                Vence {formatDate(inst.date)}
+                                {inst.paidAt ? ` · marcado em ${formatDate(inst.paidAt)}` : ''}
+                              </div>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem', flexShrink: 0 }}>
+                              <span style={{ fontWeight: 700, fontSize: 'var(--font-size-xs)', color: 'var(--danger)' }}>
+                                {formatCurrency(inst.amount)}
+                              </span>
+                              <PaidCheckbox
+                                checked={inst.isPaid}
+                                onChange={(v) => setManualPaid(inst.id, v)}
+                              />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                    <div style={{ textAlign: 'right' }}>
-                      <span style={{ fontWeight: 700, fontSize: 'var(--font-size-sm)', color: 'var(--danger)', display: 'block' }}>
-                        {formatCurrency(group.amount)}
-                      </span>
-                      {group.isRecurring && (
-                        <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
-                          por ocorrência
-                        </span>
-                      )}
-                    </div>
-                    <button
-                      onClick={() => deleteManualTransaction(group.id)}
-                      style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--text-muted)', padding: '0.25rem' }}
-                      title={group.isRecurring ? "Excluir toda a série recorrente" : "Excluir despesa"}
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
           </div>
         )}
       </Card>

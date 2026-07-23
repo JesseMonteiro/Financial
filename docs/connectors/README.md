@@ -22,6 +22,7 @@ Cada banco envia metadados de fatura de forma diferente. A lógica canônica viv
 | Nubank | [nubank.md](./nubank.md) | 0 | Dívida total | Soma do ciclo |
 | Mercado Pago | [mercado-pago.md](./mercado-pago.md) | 0 | Dívida total | Soma do ciclo |
 | Santander | [santander.md](./santander.md) | 1 | Variável | Soma do ciclo |
+| Inter | [inter.md](./inter.md) | 0 | Dívida total | Soma do ciclo (`payments[]` costuma vazio) |
 | MeuPluggy | [meupluggy.md](./meupluggy.md) | inferir | Dívida total (sandbox) | Soma do ciclo |
 
 Ao conectar um banco novo: copiar o template de `nubank.md`, registrar o perfil em `profiles.js`, e validar com 1 ciclo fechado + 1 aberto contra o app do banco.

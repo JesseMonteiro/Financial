@@ -50,8 +50,19 @@ export function formatDueMonthShort(dueYm, dueDateIso) {
 }
 
 export function isBillPayment(tx) {
-  const d = (tx?.description || '').toUpperCase();
-  return d.includes('PAGAMENTO DE FATURA') || d.includes('PAGAMENTO RECEBIDO');
+  const d = (tx?.description || '').toUpperCase().replace(/\s+/g, ' ').trim();
+  // Nubank: "Pagamento recebido" / "Pagamento de fatura"
+  // Inter (OF): "PAGAMENTO ON LINE" / "PAGAMENTO ONLINE"
+  // Generic: PAGTO FATURA, PAGAMENTO FATURA
+  return (
+    d.includes('PAGAMENTO DE FATURA') ||
+    d.includes('PAGAMENTO RECEBIDO') ||
+    d.includes('PAGAMENTO ON LINE') ||
+    d.includes('PAGAMENTO ONLINE') ||
+    d.includes('PAGTO FATURA') ||
+    d.includes('PAGAMENTO FATURA') ||
+    /^PAGAMENTO\b/.test(d)
+  );
 }
 
 function billMapFromList(officialBills = []) {

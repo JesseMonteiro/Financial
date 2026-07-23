@@ -14,6 +14,7 @@ import { translateCategory } from '../utils/categories';
 import {
   buildCreditCardBills,
   isBillPayment,
+  isBillSettled,
   sumCycleCharges,
   MONTHS_PT,
 } from '../utils/creditBillPeriod';
@@ -29,12 +30,13 @@ import {
   PlusCircle, 
   ArrowUpRight, 
   Calendar,
-  Save
+  Save,
+  CheckCircle2
 } from 'lucide-react';
 
 export function FinancialMoment() {
   const { accounts, loadAccounts, loading: accountsLoading, lastUpdated: accountsUpdatedAt } = useAccountStore();
-  const { transactions, loadTransactions } = useTransactionStore();
+  const { transactions, loadTransactions, setManualPaid } = useTransactionStore();
   const { receivables, loadReceivables } = useReceivableStore();
 
   const [cardBills, setCardBills] = useState([]);
@@ -185,7 +187,12 @@ export function FinancialMoment() {
       return {
         amount: Number(matchingBill.totalAmount) || 0,
         dueDate: matchingBill.dueDate,
-        isPaid: (matchingBill.payments || []).length > 0,
+        // Inter often leaves payments[] empty; settle via payment txs too
+        isPaid: isBillSettled(matchingBill, {
+          transactions: cardTransactions,
+          officialBills: cardBills,
+          forecastToDueOffset: creditBillPeriod.forecastToDueOffset || 0,
+        }),
         isFallback: false,
       };
     }
@@ -619,38 +626,80 @@ export function FinancialMoment() {
               </Card>
 
               {/* Manual Expenses */}
-              <Card title="Despesas Manuais" subtitle="Despesas extras registradas manualmente para este período.">
+              <Card
+                title="Despesas Manuais"
+                subtitle="Marque Pago por ocorrência deste mês (só controle; não altera saldo)."
+              >
                 {activeMonthData.activeManual.length === 0 ? (
                   <p style={{ color: 'var(--text-muted)', fontSize: 'var(--font-size-xs)', textAlign: 'center', padding: '1rem' }}>
                     Nenhuma despesa manual registrada para este mês.
                   </p>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.5rem' }}>
-                    {activeMonthData.activeManual.map((m, i) => (
+                    {activeMonthData.activeManual.map((m) => (
                       <div
-                        key={i}
+                        key={m.id}
                         style={{
                           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                          gap: '0.75rem',
                           padding: '0.65rem 0.75rem', borderRadius: 'var(--radius-md)',
-                          backgroundColor: 'var(--bg-tertiary)', border: '1px solid var(--border-color)'
+                          backgroundColor: m.isPaid ? 'var(--success-bg)' : 'var(--bg-tertiary)',
+                          border: `1px solid ${m.isPaid ? 'rgba(16,185,129,0.35)' : 'var(--border-color)'}`,
                         }}
                       >
-                        <div>
-                          <span style={{ fontWeight: 600, fontSize: 'var(--font-size-xs)' }}>
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          <span style={{
+                            fontWeight: 600,
+                            fontSize: 'var(--font-size-xs)',
+                            textDecoration: m.isPaid ? 'line-through' : 'none',
+                          }}>
                             {m.description}
                           </span>
-                          <div style={{ display: 'flex', gap: '0.4rem', marginTop: '0.15rem' }}>
+                          <div style={{ display: 'flex', gap: '0.4rem', marginTop: '0.15rem', flexWrap: 'wrap', alignItems: 'center' }}>
                             <Badge variant="neutral" style={{ fontSize: '9px' }}>
                               {translateCategory(m.category)}
                             </Badge>
                             <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
                               {formatDate(m.date)}
                             </span>
+                            {m.isPaid && (
+                              <Badge variant="success" style={{ fontSize: '9px' }}>Paga</Badge>
+                            )}
                           </div>
                         </div>
-                        <span style={{ fontWeight: 700, fontSize: 'var(--font-size-xs)', color: 'var(--danger)' }}>
-                          - {formatCurrency(Math.abs(m.amount))}
-                        </span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexShrink: 0 }}>
+                          <span style={{ fontWeight: 700, fontSize: 'var(--font-size-xs)', color: 'var(--danger)' }}>
+                            - {formatCurrency(Math.abs(m.amount))}
+                          </span>
+                          <label
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '0.3rem',
+                              cursor: 'pointer',
+                              fontSize: '10px',
+                              fontWeight: 600,
+                              color: m.isPaid ? 'var(--success)' : 'var(--text-muted)',
+                              userSelect: 'none',
+                              whiteSpace: 'nowrap',
+                            }}
+                            title="Marcar como pago (apenas controle; não altera saldo)"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={Boolean(m.isPaid)}
+                              onChange={(e) => setManualPaid(m.id, e.target.checked)}
+                              style={{ width: 14, height: 14, cursor: 'pointer', accentColor: 'var(--success)' }}
+                            />
+                            {m.isPaid ? (
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
+                                <CheckCircle2 size={11} /> Pago
+                              </span>
+                            ) : (
+                              'Pago'
+                            )}
+                          </label>
+                        </div>
                       </div>
                     ))}
                     <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid var(--border-color)', paddingTop: '0.5rem', fontSize: 'var(--font-size-xs)', fontWeight: 700 }}>
