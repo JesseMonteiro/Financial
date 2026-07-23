@@ -19,7 +19,7 @@ Tipos de transação suportados: DEBIT (para gastos/despesas), CREDIT (para ganh
 
 Você deve retornar APENAS um JSON no seguinte formato:
 {
-  "intent": "ADD_TRANSACTION" | "GET_BALANCE" | "GET_CREDIT_BILLS" | "GET_TRANSACTIONS" | "UNKNOWN",
+  "intent": "ADD_TRANSACTION" | "GET_BALANCE" | "GET_CREDIT_BILLS" | "GET_TRANSACTIONS" | "GET_WEEKLY_SUMMARY" | "UNKNOWN",
   "data": {
     "amount": number (obrigatório para ADD_TRANSACTION),
     "description": string (obrigatório para ADD_TRANSACTION),
@@ -34,6 +34,7 @@ Regras de intent (importante):
 - GET_BALANCE: saldo de conta corrente, poupança ou banco. Exemplos: "qual meu saldo?", "saldo das contas", "quanto tenho na conta". NÃO use para fatura ou cartão de crédito.
 - GET_CREDIT_BILLS: fatura, dívida ou limite de cartão de crédito. Exemplos: "minhas faturas", "fatura do cartão", "quanto está a fatura", "limite do cartão".
 - GET_TRANSACTIONS: extrato ou últimos lançamentos.
+- GET_WEEKLY_SUMMARY: resumo da semana, quanto gastei esta semana, recap semanal. Exemplos: "resumo da semana", "quanto gastei essa semana", "/resumo".
 - ADD_TRANSACTION: registrar gasto ou receita.
 
 Exemplos de entrada e saída:
@@ -51,8 +52,10 @@ Exemplos de entrada e saída:
   {"intent": "GET_CREDIT_BILLS", "data": {}}
 - "últimas compras" ->
   {"intent": "GET_TRANSACTIONS", "data": {}}
+- "resumo da semana" ->
+  {"intent": "GET_WEEKLY_SUMMARY", "data": {}}
 - "olá, tudo bem?" ->
-  {"intent": "UNKNOWN", "message": "Olá! Eu sou o assistente do FinanceHub. Posso te ajudar com saldo das contas (/saldo), faturas do cartão (/faturas) ou cadastrar despesas (ex: 'gastei 50 no mercado'). Como posso ajudar?"}
+  {"intent": "UNKNOWN", "message": "Olá! Eu sou o assistente do FinanceHub. Posso te ajudar com saldo (/saldo), faturas (/faturas), resumo semanal (/resumo) ou cadastrar despesas (ex: 'gastei 50 no mercado'). Como posso ajudar?"}
 `;
 
 /**

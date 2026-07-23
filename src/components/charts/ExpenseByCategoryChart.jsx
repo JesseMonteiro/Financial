@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { formatCurrency } from '../../utils/formatters';
 import { getCategoryColor } from '../../utils/colors';
-import { translateCategory } from '../../utils/categories';
+import { expensesByCategory } from '../../utils/analytics';
 import { useTransactionStore } from '../../stores/transactionStore';
 import { useIsMobile } from '../../hooks/useMediaQuery';
 
@@ -21,41 +21,15 @@ const CustomTooltip = ({ active, payload }) => {
   return null;
 };
 
-export function ExpenseByCategoryChart({ data = null, height }) {
+export function ExpenseByCategoryChart({ data = null, height, ym }) {
   const { transactions } = useTransactionStore();
   const isMobile = useIsMobile();
   const chartHeight = height ?? (isMobile ? 200 : 280);
 
-  // If data prop is passed explicitly, use it; otherwise compute from real Pluggy transactions
   const chartData = useMemo(() => {
-    if (data && data.length > 0) {
-      return data;
-    }
-
-    if (!transactions || transactions.length === 0) {
-      return [];
-    }
-
-    const map = {};
-    transactions.forEach(t => {
-      // Exclude credit card payment receipts from expense category breakdown
-      if (t.description?.toUpperCase().includes('PAGAMENTO DE FATURA')) return;
-
-      // Count debits / expenses
-      if (t.amount < 0 || t.type === 'DEBIT' || t.amount > 0) {
-        const catLabel = translateCategory(t.category);
-        const amt = Math.abs(t.amount);
-        if (!map[catLabel]) map[catLabel] = 0;
-        map[catLabel] += amt;
-      }
-    });
-
-    const list = Object.entries(map)
-      .map(([name, value]) => ({ name, value: Number(value.toFixed(2)) }))
-      .sort((a, b) => b.value - a.value);
-
-    return list.slice(0, 7); // Top 7 categories
-  }, [data, transactions]);
+    if (data && data.length > 0) return data;
+    return expensesByCategory(transactions || [], { limit: 7, ym });
+  }, [data, transactions, ym]);
 
   if (!chartData || chartData.length === 0) {
     return (
@@ -83,9 +57,9 @@ export function ExpenseByCategoryChart({ data = null, height }) {
             ))}
           </Pie>
           <Tooltip content={<CustomTooltip />} />
-          <Legend 
-            verticalAlign="bottom" 
-            height={42} 
+          <Legend
+            verticalAlign="bottom"
+            height={42}
             formatter={(value) => <span style={{ color: 'var(--text-secondary)', fontSize: '11px' }}>{value}</span>}
           />
         </PieChart>

@@ -341,11 +341,12 @@ async function parseIntentWithGemini(text: string): Promise<{ intent: string; da
   if (!apiKey) return { intent: 'UNKNOWN', message: 'Assistente de linguagem natural indisponível no momento.' };
 
   const system = `Você é o assistente do FinanceHub. Retorne APENAS JSON:
-{"intent":"ADD_TRANSACTION"|"GET_BALANCE"|"GET_CREDIT_BILLS"|"GET_TRANSACTIONS"|"UNKNOWN","data":{"amount":number,"description":string,"category":string,"type":"DEBIT"|"CREDIT","date_offset_days":number},"message":string}
+{"intent":"ADD_TRANSACTION"|"GET_BALANCE"|"GET_CREDIT_BILLS"|"GET_TRANSACTIONS"|"GET_WEEKLY_SUMMARY"|"UNKNOWN","data":{"amount":number,"description":string,"category":string,"type":"DEBIT"|"CREDIT","date_offset_days":number},"message":string}
 Regras de intent:
 - GET_BALANCE: saldo de conta corrente/poupança/banco (ex: "qual meu saldo?", "saldo das contas"). NÃO use para fatura ou cartão.
 - GET_CREDIT_BILLS: fatura/dívida/limite de cartão de crédito (ex: "minhas faturas", "fatura do cartão", "quanto está a fatura").
 - GET_TRANSACTIONS: extrato/últimos lançamentos.
+- GET_WEEKLY_SUMMARY: resumo da semana / quanto gastei esta semana / /resumo.
 - ADD_TRANSACTION: registrar gasto ou receita.
 Categorias: Alimentação, Transporte, Moradia, Lazer, Saúde, Educação, Outros.`;
 
@@ -413,6 +414,15 @@ function parseIntentLocally(text: string): { intent: string; data?: Record<strin
   ) {
     return { intent: 'GET_TRANSACTIONS' };
   }
+
+  if (
+    lower === '/resumo' ||
+    lower === 'resumo' ||
+    /\b(resumo (da |dessa )?semana|quanto gastei (essa|esta) semana|recap)\b/.test(lower)
+  ) {
+    return { intent: 'GET_WEEKLY_SUMMARY' };
+  }
+
   return null;
 }
 
@@ -655,6 +665,98 @@ async function buildTransactionsText(profile: TelegramProfile, supabase: ReturnT
   return text;
 }
 
+async function buildWeeklyRecapText(profile: TelegramProfile, supabase: ReturnType<typeof createClient>): Promise<string> {
+  const money = (n: number) =>
+    Number(n || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+  const now = new Date();
+  const thisStart = new Date(now);
+  thisStart.setDate(thisStart.getDate() - 6);
+  thisStart.setHours(0, 0, 0, 0);
+  const prevEnd = new Date(thisStart);
+  prevEnd.setDate(prevEnd.getDate() - 1);
+  prevEnd.setHours(23, 59, 59, 999);
+  const prevStart = new Date(prevEnd);
+  prevStart.setDate(prevStart.getDate() - 6);
+  prevStart.setHours(0, 0, 0, 0);
+
+  const txs: Array<{ date: Date; amount: number; type?: string; category: string; description: string }> = [];
+  const accounts = await fetchPluggyAccountsForProfile(profile);
+  const creds = resolvePluggyCredentials(profile);
+  if (creds) {
+    const client = { clientId: creds.clientId, clientSecret: creds.clientSecret };
+    for (const acc of accounts.slice(0, 6)) {
+      try {
+        const d = await pluggyJson(client, '/v2/transactions', {
+          params: { accountId: acc.id, pageSize: 50, from: prevStart.toISOString().slice(0, 10) },
+        }) as { results?: Array<{ date: string; description: string; amount: number; category?: string }> };
+        for (const t of d.results || []) {
+          txs.push({
+            date: new Date(t.date),
+            amount: Number(t.amount),
+            category: t.category || 'Outros',
+            description: t.description || '',
+          });
+        }
+      } catch (_) {}
+    }
+  }
+
+  const { data: manualTxs } = await supabase
+    .from('manual_transactions')
+    .select('date, description, amount, type, category')
+    .eq('user_id', profile.id)
+    .gte('date', prevStart.toISOString().slice(0, 10))
+    .order('date', { ascending: false })
+    .limit(100);
+
+  for (const t of manualTxs || []) {
+    txs.push({
+      date: new Date(t.date),
+      amount: Number(t.amount),
+      type: t.type || (Number(t.amount) < 0 ? 'DEBIT' : 'CREDIT'),
+      category: t.category || 'Outros',
+      description: t.description || '',
+    });
+  }
+
+  const isExpense = (t: { amount: number; type?: string }) =>
+    Number(t.amount) < 0 || t.type === 'DEBIT';
+  const inRange = (t: { date: Date }, from: Date, to: Date) => t.date >= from && t.date <= to;
+  const sumWeek = (from: Date, to: Date) => {
+    let total = 0;
+    const cats: Record<string, number> = {};
+    for (const t of txs) {
+      if (!isExpense(t) || !inRange(t, from, to)) continue;
+      const desc = (t.description || '').toUpperCase();
+      if (desc.includes('PAGAMENTO DE FATURA') || desc.includes('PAGAMENTO RECEBIDO')) continue;
+      const amt = Math.abs(Number(t.amount) || 0);
+      total += amt;
+      cats[t.category] = (cats[t.category] || 0) + amt;
+    }
+    const top = Object.entries(cats).sort((a, b) => b[1] - a[1])[0];
+    return { total, top };
+  };
+
+  const current = sumWeek(thisStart, now);
+  const previous = sumWeek(prevStart, prevEnd);
+  const deltaPct =
+    previous.total > 0
+      ? (((current.total - previous.total) / previous.total) * 100).toFixed(0)
+      : current.total > 0
+        ? '100'
+        : '0';
+
+  let text = `📊 *Resumo semanal de ${profile.display_name || 'usuário'}*\n\n`;
+  text += `💸 Gastos (7 dias): *${money(current.total)}*\n`;
+  text += `📅 Semana anterior: ${money(previous.total)} (${Number(deltaPct) > 0 ? '+' : ''}${deltaPct}%)\n`;
+  if (current.top) {
+    text += `🏷 Maior categoria: *${current.top[0]}* (${money(current.top[1])})\n`;
+  }
+  text += `\n_Diga /faturas para cartões ou /saldo para contas._`;
+  return text;
+}
+
 async function handleTelegramWebhook(payload: unknown): Promise<void> {
   const message = (payload as { message?: { chat?: { id?: number | string }; text?: string } })?.message;
   if (!message?.text || message.chat?.id == null) return;
@@ -712,6 +814,12 @@ async function handleTelegramWebhook(payload: unknown): Promise<void> {
     return;
   }
 
+  if (parsed.intent === 'GET_WEEKLY_SUMMARY') {
+    await sendTelegramMessage(chatId, '🔍 _Montando resumo da semana..._');
+    await sendTelegramMessage(chatId, await buildWeeklyRecapText(profile, supabase));
+    return;
+  }
+
   if (parsed.intent === 'ADD_TRANSACTION') {
     const amount = Number(parsed.data?.amount);
     const description = String(parsed.data?.description || '');
@@ -743,7 +851,7 @@ async function handleTelegramWebhook(payload: unknown): Promise<void> {
   await sendTelegramMessage(
     chatId,
     parsed.message ||
-      'Olá! Posso ajudar com:\n• *Saldo das contas:* "qual meu saldo?" ou /saldo\n• *Faturas do cartão:* "minhas faturas" ou /faturas\n• *Registrar gasto:* "gastei 50 no mercado"'
+      'Olá! Posso ajudar com:\n• *Saldo das contas:* "qual meu saldo?" ou /saldo\n• *Faturas do cartão:* "minhas faturas" ou /faturas\n• *Resumo semanal:* "resumo da semana" ou /resumo\n• *Registrar gasto:* "gastei 50 no mercado"'
   );
 }
 

@@ -156,13 +156,19 @@ router.post('/telegram/webhook', async (req, res) => {
       /\b(extrato|ultimas? (compras|transacoes|lancamentos)|ultimos gastos)\b/.test(normalized)
     ) {
       parsed = { intent: 'GET_TRANSACTIONS' };
+    } else if (
+      normalized === '/resumo' ||
+      normalized === 'resumo' ||
+      /\b(resumo (da |dessa )?semana|quanto gastei (essa|esta) semana|recap)\b/.test(normalized)
+    ) {
+      parsed = { intent: 'GET_WEEKLY_SUMMARY' };
     } else {
       // Processar linguagem natural via Gemini
       try {
         parsed = await parseNaturalLanguageCommand(text);
       } catch (geminiErr) {
         console.error('[Chatbot] Erro no Gemini:', geminiErr.message);
-        parsed = { intent: 'UNKNOWN', message: 'Desculpe, tive um problema de comunicação com minha inteligência artificial. Tente /saldo, /faturas ou /ultimos.' };
+        parsed = { intent: 'UNKNOWN', message: 'Desculpe, tive um problema de comunicação com minha inteligência artificial. Tente /saldo, /faturas, /resumo ou /ultimos.' };
       }
     }
 
@@ -186,6 +192,13 @@ router.post('/telegram/webhook', async (req, res) => {
         await sendTelegramMessage(chatId, '🔍 _Buscando seus lançamentos recentes..._');
         const transactionsText = await fetchUserTransactionsText(profile, supabase);
         await sendTelegramMessage(chatId, transactionsText);
+        break;
+      }
+
+      case 'GET_WEEKLY_SUMMARY': {
+        await sendTelegramMessage(chatId, '🔍 _Montando resumo da semana..._');
+        const recapText = await fetchUserWeeklyRecapText(profile, supabase);
+        await sendTelegramMessage(chatId, recapText);
         break;
       }
 
@@ -224,7 +237,7 @@ router.post('/telegram/webhook', async (req, res) => {
 
       case 'UNKNOWN':
       default: {
-        const helpMessage = parsed.message || `Olá! Sou o assistente do FinanceHub.\n\nComo posso ajudar?\n- *Saldo das contas:* "Qual meu saldo?" ou /saldo\n- *Faturas do cartão:* "Minhas faturas" ou /faturas\n- *Despesas:* "Gastei 55 reais no supermercado hoje"`;
+        const helpMessage = parsed.message || `Olá! Sou o assistente do FinanceHub.\n\nComo posso ajudar?\n- *Saldo das contas:* "Qual meu saldo?" ou /saldo\n- *Faturas do cartão:* "Minhas faturas" ou /faturas\n- *Resumo semanal:* "Resumo da semana" ou /resumo\n- *Despesas:* "Gastei 55 reais no supermercado hoje"`;
         await sendTelegramMessage(chatId, helpMessage);
         break;
       }
@@ -484,6 +497,127 @@ async function fetchUserTransactionsText(profile, supabase) {
   } catch (err) {
     console.error('[Chatbot Tx Text] Erro:', err);
     return "❌ Erro ao buscar extrato de lançamentos.";
+  }
+}
+
+/** Resumo semanal: gastos dos últimos 7 dias vs 7 anteriores + top categoria */
+async function fetchUserWeeklyRecapText(profile, supabase) {
+  try {
+    const money = (n) =>
+      Number(n || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+    const now = new Date();
+    const thisStart = new Date(now);
+    thisStart.setDate(thisStart.getDate() - 6);
+    thisStart.setHours(0, 0, 0, 0);
+    const prevEnd = new Date(thisStart);
+    prevEnd.setDate(prevEnd.getDate() - 1);
+    prevEnd.setHours(23, 59, 59, 999);
+    const prevStart = new Date(prevEnd);
+    prevStart.setDate(prevStart.getDate() - 6);
+    prevStart.setHours(0, 0, 0, 0);
+
+    const txs = [];
+    const pluggyItemIds = asItemIdList(profile.pluggy_item_ids);
+    const creds = resolvePluggyCredentials(profile);
+
+    if (pluggyItemIds.length > 0 && creds) {
+      try {
+        const pluggyClient = await createPluggyClient(creds.clientId, creds.clientSecret);
+        const accounts = (
+          await Promise.all(
+            pluggyItemIds.map(async (itemId) => {
+              try {
+                const res = await pluggyClient.get('/accounts', { params: { itemId } });
+                return res.data.results || [];
+              } catch {
+                return [];
+              }
+            })
+          )
+        ).flat();
+
+        const from = prevStart.toISOString().slice(0, 10);
+        await Promise.all(
+          accounts.slice(0, 6).map(async (acc) => {
+            try {
+              const res = await pluggyClient.get('/v2/transactions', {
+                params: { accountId: acc.id, pageSize: 50, from },
+              });
+              (res.data.results || []).forEach((t) => {
+                txs.push({
+                  date: new Date(t.date),
+                  amount: Number(t.amount),
+                  category: t.category || 'Outros',
+                  description: t.description || '',
+                });
+              });
+            } catch {
+              /* ignore per-account errors */
+            }
+          })
+        );
+      } catch (e) {
+        console.warn('[Chatbot Recap] Pluggy:', e.message);
+      }
+    }
+
+    const { data: manualTxs } = await supabase
+      .from('manual_transactions')
+      .select('date, description, amount, type, category')
+      .eq('user_id', profile.id)
+      .gte('date', prevStart.toISOString().slice(0, 10))
+      .order('date', { ascending: false })
+      .limit(100);
+
+    (manualTxs || []).forEach((t) => {
+      txs.push({
+        date: new Date(t.date),
+        amount: Number(t.amount),
+        type: t.type || (Number(t.amount) < 0 ? 'DEBIT' : 'CREDIT'),
+        category: t.category || 'Outros',
+        description: t.description || '',
+      });
+    });
+
+    const isExpense = (t) => Number(t.amount) < 0 || t.type === 'DEBIT';
+    const inRange = (t, from, to) => t.date >= from && t.date <= to;
+
+    const sumWeek = (from, to) => {
+      let total = 0;
+      const cats = {};
+      txs.forEach((t) => {
+        if (!isExpense(t) || !inRange(t, from, to)) return;
+        const desc = (t.description || '').toUpperCase();
+        if (desc.includes('PAGAMENTO DE FATURA') || desc.includes('PAGAMENTO RECEBIDO')) return;
+        const amt = Math.abs(Number(t.amount) || 0);
+        total += amt;
+        cats[t.category] = (cats[t.category] || 0) + amt;
+      });
+      const top = Object.entries(cats).sort((a, b) => b[1] - a[1])[0];
+      return { total, top };
+    };
+
+    const current = sumWeek(thisStart, now);
+    const previous = sumWeek(prevStart, prevEnd);
+    const deltaPct =
+      previous.total > 0
+        ? (((current.total - previous.total) / previous.total) * 100).toFixed(0)
+        : current.total > 0
+          ? '100'
+          : '0';
+
+    let text = `📊 *Resumo semanal de ${profile.display_name}*\n\n`;
+    text += `💸 Gastos (7 dias): *${money(current.total)}*\n`;
+    text += `📅 Semana anterior: ${money(previous.total)} (${Number(deltaPct) > 0 ? '+' : ''}${deltaPct}%)\n`;
+    if (current.top) {
+      text += `🏷 Maior categoria: *${current.top[0]}* (${money(current.top[1])})\n`;
+    }
+    text += `\n_Diga /faturas para ver cartões ou /saldo para contas._`;
+    return text;
+  } catch (err) {
+    console.error('[Chatbot Recap] Erro:', err);
+    return '❌ Erro ao montar o resumo semanal.';
   }
 }
 

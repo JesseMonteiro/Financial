@@ -1,31 +1,40 @@
 import React from 'react';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  CartesianGrid,
+  Legend,
+} from 'recharts';
 import { formatCurrency } from '../../utils/formatters';
+import { getCategoryColor } from '../../utils/colors';
 import { useIsMobile } from '../../hooks/useMediaQuery';
 
 const CustomTooltip = ({ active, payload, label }) => {
-  if (active && payload && payload.length) {
-    return (
-      <div className="custom-chart-tooltip">
-        <p className="tooltip-title">{label}</p>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-          <span style={{ color: 'var(--success)' }}>Receitas: {formatCurrency(payload[0]?.value)}</span>
-          <span style={{ color: 'var(--danger)' }}>Despesas: {formatCurrency(payload[1]?.value)}</span>
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="custom-chart-tooltip">
+      <p className="tooltip-title">{label}</p>
+      {payload.map((p) => (
+        <div key={p.dataKey} style={{ color: p.color, fontSize: 12 }}>
+          {p.name}: {formatCurrency(p.value)}
         </div>
-      </div>
-    );
-  }
-  return null;
+      ))}
+    </div>
+  );
 };
 
-export function IncomeVsExpenseChart({ data = [], height }) {
+export function CategoryTrendChart({ data = [], categories = [], height }) {
   const isMobile = useIsMobile();
-  const chartHeight = height ?? (isMobile ? 200 : 280);
+  const chartHeight = height ?? (isMobile ? 220 : 300);
 
-  if (!data || data.length === 0) {
+  if (!data.length || !categories.length) {
     return (
       <div style={{ width: '100%', height: chartHeight, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: 'var(--font-size-sm)' }}>
-        Sem dados de fluxo de caixa para o período
+        Sem tendência de categorias no período
       </div>
     );
   }
@@ -45,8 +54,9 @@ export function IncomeVsExpenseChart({ data = [], height }) {
           />
           <Tooltip content={<CustomTooltip />} />
           <Legend />
-          <Bar dataKey="receita" name="Receita" fill="var(--success)" radius={[4, 4, 0, 0]} />
-          <Bar dataKey="despesa" name="Despesa" fill="var(--danger)" radius={[4, 4, 0, 0]} />
+          {categories.map((cat) => (
+            <Bar key={cat} dataKey={cat} stackId="a" fill={getCategoryColor(cat)} />
+          ))}
         </BarChart>
       </ResponsiveContainer>
     </div>

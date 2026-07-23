@@ -3,16 +3,6 @@ import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianG
 import { formatCurrency } from '../../utils/formatters';
 import { useIsMobile } from '../../hooks/useMediaQuery';
 
-const sampleData = [
-  { month: 'Jan', patrimônio: 42000 },
-  { month: 'Fev', patrimônio: 43500 },
-  { month: 'Mar', patrimônio: 44200 },
-  { month: 'Abr', patrimônio: 46800 },
-  { month: 'Mai', patrimônio: 48100 },
-  { month: 'Jun', patrimônio: 51200 },
-  { month: 'Jul', patrimônio: 53871 },
-];
-
 const CustomTooltip = ({ active, payload, label }) => {
   if (active && payload && payload.length) {
     return (
@@ -27,9 +17,17 @@ const CustomTooltip = ({ active, payload, label }) => {
   return null;
 };
 
-export function BalanceChart({ data = sampleData, height }) {
+export function BalanceChart({ data = [], height }) {
   const isMobile = useIsMobile();
   const chartHeight = height ?? (isMobile ? 200 : 280);
+
+  if (!data || data.length === 0) {
+    return (
+      <div style={{ width: '100%', height: chartHeight, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: 'var(--font-size-sm)' }}>
+        Sem dados de patrimônio para o período
+      </div>
+    );
+  }
 
   return (
     <div style={{ width: '100%', height: chartHeight }}>

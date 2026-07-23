@@ -14,6 +14,7 @@ import {
   PlusCircle,
   Activity,
   MoreHorizontal,
+  Repeat,
 } from 'lucide-react';
 
 export const navItems = [
@@ -27,6 +28,7 @@ export const navItems = [
   { label: 'Valores a Receber', shortLabel: 'Receber', path: '/receivables', icon: HandCoins },
   { label: 'Momento Financeiro', shortLabel: 'Momento', path: '/financial-moment', icon: Activity },
   { label: 'Despesas Manuais', shortLabel: 'Despesas', path: '/manual-expenses', icon: PlusCircle },
+  { label: 'Assinaturas & Agenda', shortLabel: 'Agenda', path: '/subscriptions', icon: Repeat },
   { label: 'Metas', shortLabel: 'Metas', path: '/goals', icon: Target },
   { label: 'Relatórios', shortLabel: 'Relatórios', path: '/reports', icon: BarChart3 },
   { label: 'Conexões Bancárias', shortLabel: 'Conectar', path: '/connect', icon: Plug },

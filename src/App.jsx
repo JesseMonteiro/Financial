@@ -16,6 +16,7 @@ import { Settings } from './pages/Settings';
 import { Receivables } from './pages/Receivables';
 import { ManualExpenses } from './pages/ManualExpenses';
 import { FinancialMoment } from './pages/FinancialMoment';
+import { Subscriptions } from './pages/Subscriptions';
 import { Login } from './pages/Login';
 import { AuthGuard } from './components/auth/AuthGuard';
 
@@ -42,6 +43,8 @@ export default function App() {
           <Route path="receivables" element={<Receivables />} />
           <Route path="manual-expenses" element={<ManualExpenses />} />
           <Route path="financial-moment" element={<FinancialMoment />} />
+          <Route path="subscriptions" element={<Subscriptions />} />
+          <Route path="calendar" element={<Subscriptions />} />
           <Route path="reports" element={<Reports />} />
           <Route path="connect" element={<ConnectBank />} />
           <Route path="settings" element={<Settings />} />
