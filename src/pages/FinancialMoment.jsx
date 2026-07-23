@@ -357,19 +357,19 @@ export function FinancialMoment() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div className="page-header">
         <div>
           <h1 style={{ fontSize: 'var(--font-size-2xl)', fontWeight: 700 }}>Momento Financeiro</h1>
           <p style={{ color: 'var(--text-muted)', fontSize: 'var(--font-size-sm)' }}>
             Visão consolidada de entradas, faturas de cartão de crédito e despesas manuais do mês.
           </p>
         </div>
-        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-          <Button size="sm" variant="outline" onClick={handlePrev} disabled={monthIndex <= 0}>
-            <ChevronLeft size={16} /> Anterior
+        <div className="page-header__actions">
+          <Button size="sm" variant="outline" onClick={handlePrev} disabled={monthIndex <= 0} className="tap-target">
+            <ChevronLeft size={16} /> <span className="hide-mobile">Anterior</span>
           </Button>
-          <Button size="sm" variant="outline" onClick={handleNext} disabled={monthIndex >= monthList.length - 1}>
-            Próximo <ChevronRight size={16} />
+          <Button size="sm" variant="outline" onClick={handleNext} disabled={monthIndex >= monthList.length - 1} className="tap-target">
+            <span className="hide-mobile">Próximo</span> <ChevronRight size={16} />
           </Button>
         </div>
       </div>
@@ -388,7 +388,8 @@ export function FinancialMoment() {
       <Card title="Seletor de Período">
         <div
           ref={timelineRef}
-          style={{ display: 'flex', gap: '0.75rem', overflowX: 'auto', padding: '0.5rem 0.25rem', scrollbarWidth: 'thin' }}
+          className="chip-scroll"
+          style={{ padding: '0.5rem 0.25rem' }}
         >
           {monthList.map(m => {
             const isSelected = m.ym === selectedMonth;
@@ -576,19 +577,12 @@ export function FinancialMoment() {
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.5rem' }}>
                     {activeMonthData.activeReceivables.map((r, i) => (
-                      <div
-                        key={i}
-                        style={{
-                          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                          padding: '0.65rem 0.75rem', borderRadius: 'var(--radius-md)',
-                          backgroundColor: 'var(--bg-tertiary)', border: '1px solid var(--border-color)'
-                        }}
-                      >
-                        <div>
+                      <div key={i} className="list-row" style={{ padding: '0.65rem 0.75rem' }}>
+                        <div className="list-row-main" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '0.15rem' }}>
                           <span style={{ fontWeight: 600, fontSize: 'var(--font-size-xs)' }}>
                             {r.description}
                           </span>
-                          <div style={{ display: 'flex', gap: '0.4rem', marginTop: '0.15rem' }}>
+                          <div className="list-row-meta" style={{ gap: '0.4rem' }}>
                             <Badge variant="neutral" style={{ backgroundColor: r.personColor + '11', color: r.personColor, fontWeight: 700, fontSize: '9px' }}>
                               👤 {r.personName}
                             </Badge>
@@ -598,7 +592,7 @@ export function FinancialMoment() {
                             {r.paidAt && <Badge variant="success" style={{ fontSize: '9px' }}>Recebido</Badge>}
                           </div>
                         </div>
-                        <span style={{ fontWeight: 700, fontSize: 'var(--font-size-xs)', color: 'var(--success)' }}>
+                        <span className="list-row-amount" style={{ fontWeight: 700, fontSize: 'var(--font-size-xs)', color: 'var(--success)' }}>
                           + {formatCurrency(r.amount)}
                         </span>
                       </div>
@@ -627,15 +621,8 @@ export function FinancialMoment() {
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.5rem' }}>
                     {activeMonthData.activeBills.map((b, i) => (
-                      <div
-                        key={i}
-                        style={{
-                          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                          padding: '0.65rem 0.75rem', borderRadius: 'var(--radius-md)',
-                          backgroundColor: 'var(--bg-tertiary)', border: '1px solid var(--border-color)'
-                        }}
-                      >
-                        <div>
+                      <div key={i} className="list-row" style={{ padding: '0.65rem 0.75rem' }}>
+                        <div className="list-row-main" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '0.15rem' }}>
                           <span style={{ fontWeight: 600, fontSize: 'var(--font-size-xs)' }}>
                             💳 {b.cardName}
                           </span>
@@ -677,15 +664,15 @@ export function FinancialMoment() {
                     {activeMonthData.activeManual.map((m) => (
                       <div
                         key={m.id}
+                        className="list-row"
                         style={{
-                          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                           gap: '0.75rem',
-                          padding: '0.65rem 0.75rem', borderRadius: 'var(--radius-md)',
+                          padding: '0.65rem 0.75rem',
                           backgroundColor: m.isPaid ? 'var(--success-bg)' : 'var(--bg-tertiary)',
                           border: `1px solid ${m.isPaid ? 'rgba(16,185,129,0.35)' : 'var(--border-color)'}`,
                         }}
                       >
-                        <div style={{ minWidth: 0, flex: 1 }}>
+                        <div className="list-row-main" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '0.15rem' }}>
                           <span style={{
                             fontWeight: 600,
                             fontSize: 'var(--font-size-xs)',
@@ -693,7 +680,7 @@ export function FinancialMoment() {
                           }}>
                             {m.description}
                           </span>
-                          <div style={{ display: 'flex', gap: '0.4rem', marginTop: '0.15rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                          <div className="list-row-meta" style={{ gap: '0.4rem' }}>
                             <Badge variant="neutral" style={{ fontSize: '9px' }}>
                               {translateCategory(m.category)}
                             </Badge>
@@ -705,11 +692,12 @@ export function FinancialMoment() {
                             )}
                           </div>
                         </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexShrink: 0 }}>
+                        <div className="list-row-amount" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                           <span style={{ fontWeight: 700, fontSize: 'var(--font-size-xs)', color: 'var(--danger)' }}>
                             - {formatCurrency(Math.abs(m.amount))}
                           </span>
                           <label
+                            className="tap-target"
                             style={{
                               display: 'inline-flex',
                               alignItems: 'center',
@@ -720,6 +708,8 @@ export function FinancialMoment() {
                               color: m.isPaid ? 'var(--success)' : 'var(--text-muted)',
                               userSelect: 'none',
                               whiteSpace: 'nowrap',
+                              minWidth: 'auto',
+                              padding: '0 0.25rem',
                             }}
                             title="Marcar como pago (apenas controle; não altera saldo)"
                           >
@@ -727,7 +717,7 @@ export function FinancialMoment() {
                               type="checkbox"
                               checked={Boolean(m.isPaid)}
                               onChange={(e) => setManualPaid(m.id, e.target.checked)}
-                              style={{ width: 14, height: 14, cursor: 'pointer', accentColor: 'var(--success)' }}
+                              style={{ width: 18, height: 18, cursor: 'pointer', accentColor: 'var(--success)' }}
                             />
                             {m.isPaid ? (
                               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>

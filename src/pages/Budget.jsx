@@ -258,32 +258,35 @@ export function Budget() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
 
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: '1rem' }}>
+      <div className="page-header" style={{ alignItems: 'flex-end' }}>
         <div>
           <h1 style={{ fontSize: 'var(--font-size-2xl)', fontWeight: 700 }}>Orçamento Mensal</h1>
           <p style={{ color: 'var(--text-muted)', fontSize: 'var(--font-size-sm)', marginTop: '0.25rem' }}>
             Gastos reais por categoria com limites definidos por você • Dados Pluggy/Santander
           </p>
         </div>
-        {/* Month Navigator */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', backgroundColor: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-lg)', padding: '0.4rem 0.75rem' }}>
-          <button
-            onClick={() => canGoPrev && setSelectedMonth(availableMonths[monthIdx - 1])}
-            disabled={!canGoPrev}
-            style={{ border: 'none', background: 'transparent', cursor: canGoPrev ? 'pointer' : 'not-allowed', color: canGoPrev ? 'var(--text-primary)' : 'var(--text-muted)', display: 'flex', alignItems: 'center', padding: '0.2rem' }}
-          >
-            <ChevronLeft size={16} />
-          </button>
-          <span style={{ fontWeight: 700, fontSize: 'var(--font-size-sm)', minWidth: 130, textAlign: 'center' }}>
-            {dueMonthLabel(selectedMonth)}
-          </span>
-          <button
-            onClick={() => canGoNext && setSelectedMonth(availableMonths[monthIdx + 1])}
-            disabled={!canGoNext}
-            style={{ border: 'none', background: 'transparent', cursor: canGoNext ? 'pointer' : 'not-allowed', color: canGoNext ? 'var(--text-primary)' : 'var(--text-muted)', display: 'flex', alignItems: 'center', padding: '0.2rem' }}
-          >
-            <ChevronRight size={16} />
-          </button>
+        <div className="page-header__actions">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', backgroundColor: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-lg)', padding: '0.4rem 0.75rem' }}>
+            <button
+              onClick={() => canGoPrev && setSelectedMonth(availableMonths[monthIdx - 1])}
+              disabled={!canGoPrev}
+              className="tap-target"
+              style={{ border: 'none', background: 'transparent', cursor: canGoPrev ? 'pointer' : 'not-allowed', color: canGoPrev ? 'var(--text-primary)' : 'var(--text-muted)', display: 'flex', alignItems: 'center' }}
+            >
+              <ChevronLeft size={16} />
+            </button>
+            <span style={{ fontWeight: 700, fontSize: 'var(--font-size-sm)', minWidth: 130, textAlign: 'center' }}>
+              {dueMonthLabel(selectedMonth)}
+            </span>
+            <button
+              onClick={() => canGoNext && setSelectedMonth(availableMonths[monthIdx + 1])}
+              disabled={!canGoNext}
+              className="tap-target"
+              style={{ border: 'none', background: 'transparent', cursor: canGoNext ? 'pointer' : 'not-allowed', color: canGoNext ? 'var(--text-primary)' : 'var(--text-muted)', display: 'flex', alignItems: 'center' }}
+            >
+              <ChevronRight size={16} />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -489,7 +492,8 @@ export function Budget() {
                           <button
                             onClick={() => { setEditingCat(row.category); setEditValue(row.limit || ''); }}
                             title="Definir limite"
-                            style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--text-muted)', padding: '0.2rem' }}
+                            className="tap-target"
+                            style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--text-muted)' }}
                           >
                             <Edit2 size={13} />
                           </button>
@@ -497,7 +501,8 @@ export function Budget() {
                             <button
                               onClick={() => deleteBudget(row.category)}
                               title="Remover limite"
-                              style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--danger)', padding: '0.2rem' }}
+                              className="tap-target"
+                              style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--danger)' }}
                             >
                               <Trash2 size={13} />
                             </button>

@@ -4,6 +4,7 @@ import { formatCurrency } from '../../utils/formatters';
 import { getCategoryColor } from '../../utils/colors';
 import { translateCategory } from '../../utils/categories';
 import { useTransactionStore } from '../../stores/transactionStore';
+import { useIsMobile } from '../../hooks/useMediaQuery';
 
 const CustomTooltip = ({ active, payload }) => {
   if (active && payload && payload.length) {
@@ -20,8 +21,10 @@ const CustomTooltip = ({ active, payload }) => {
   return null;
 };
 
-export function ExpenseByCategoryChart({ data = null, height = 280 }) {
+export function ExpenseByCategoryChart({ data = null, height }) {
   const { transactions } = useTransactionStore();
+  const isMobile = useIsMobile();
+  const chartHeight = height ?? (isMobile ? 200 : 280);
 
   // If data prop is passed explicitly, use it; otherwise compute from real Pluggy transactions
   const chartData = useMemo(() => {
@@ -56,22 +59,22 @@ export function ExpenseByCategoryChart({ data = null, height = 280 }) {
 
   if (!chartData || chartData.length === 0) {
     return (
-      <div style={{ width: '100%', height, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: 'var(--font-size-sm)' }}>
+      <div style={{ width: '100%', height: chartHeight, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: 'var(--font-size-sm)' }}>
         Sem dados de despesas por categoria
       </div>
     );
   }
 
   return (
-    <div style={{ width: '100%', height }}>
+    <div style={{ width: '100%', height: chartHeight }}>
       <ResponsiveContainer width="100%" height="100%">
         <PieChart>
           <Pie
             data={chartData}
             cx="50%"
             cy="50%"
-            innerRadius={55}
-            outerRadius={85}
+            innerRadius={isMobile ? 40 : 55}
+            outerRadius={isMobile ? 70 : 85}
             paddingAngle={4}
             dataKey="value"
           >

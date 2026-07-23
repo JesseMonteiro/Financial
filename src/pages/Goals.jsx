@@ -33,14 +33,16 @@ export function Goals() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div className="page-header">
         <div>
           <h1 style={{ fontSize: 'var(--font-size-2xl)', fontWeight: 700 }}>Metas Financeiras Pessoais</h1>
           <p style={{ color: 'var(--text-muted)', fontSize: 'var(--font-size-sm)' }}>
             Crie e monitore seus objetivos financeiros salvos localmente.
           </p>
         </div>
-        <Button icon={Plus} onClick={() => setShowModal(true)}>Nova Meta</Button>
+        <div className="page-header__actions">
+          <Button icon={Plus} onClick={() => setShowModal(true)}>Nova Meta</Button>
+        </div>
       </div>
 
       {/* Goals Content */}

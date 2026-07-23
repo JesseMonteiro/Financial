@@ -1,6 +1,7 @@
 import React from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
 import { formatCurrency } from '../../utils/formatters';
+import { useIsMobile } from '../../hooks/useMediaQuery';
 
 const sampleData = [
   { mês: 'Mar', receita: 11000, despesa: 4800 },
@@ -25,9 +26,11 @@ const CustomTooltip = ({ active, payload, label }) => {
   return null;
 };
 
-export function IncomeVsExpenseChart({ data = sampleData, height = 280 }) {
+export function IncomeVsExpenseChart({ data = sampleData, height }) {
+  const isMobile = useIsMobile();
+  const chartHeight = height ?? (isMobile ? 200 : 280);
   return (
-    <div style={{ width: '100%', height }}>
+    <div style={{ width: '100%', height: chartHeight }}>
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" vertical={false} />

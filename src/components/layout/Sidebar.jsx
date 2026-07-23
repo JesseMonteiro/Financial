@@ -1,53 +1,19 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { 
-  LayoutDashboard, 
-  Wallet, 
-  ArrowLeftRight, 
-  TrendingUp, 
-  CreditCard, 
-  Landmark, 
-  PieChart, 
-  Target, 
-  BarChart3, 
-  Plug, 
-  Settings,
+import {
   ChevronLeft,
   ChevronRight,
   ShieldCheck,
-  HandCoins,
-  PlusCircle,
-  Activity,
-  LogOut
+  LogOut,
 } from 'lucide-react';
-import { useSettingsStore } from '../../stores/settingsStore';
 import { useAuthStore } from '../../stores/authStore';
-
+import { navItems } from './navItems';
 
 export function Sidebar({ collapsed, onToggle }) {
-  const { theme } = useSettingsStore();
   const { user, signOut } = useAuthStore();
-
-  const navItems = [
-    { label: 'Visão Geral', path: '/', icon: LayoutDashboard },
-    { label: 'Contas & Saldos', path: '/accounts', icon: Wallet },
-    { label: 'Transações', path: '/transactions', icon: ArrowLeftRight },
-    { label: 'Investimentos', path: '/investments', icon: TrendingUp },
-    { label: 'Cartões de Crédito', path: '/credit-cards', icon: CreditCard },
-    { label: 'Empréstimos', path: '/loans', icon: Landmark },
-    { label: 'Orçamento', path: '/budget', icon: PieChart },
-    { label: 'Valores a Receber', path: '/receivables', icon: HandCoins },
-    { label: 'Momento Financeiro', path: '/financial-moment', icon: Activity },
-    { label: 'Despesas Manuais', path: '/manual-expenses', icon: PlusCircle },
-    { label: 'Metas', path: '/goals', icon: Target },
-    { label: 'Relatórios', path: '/reports', icon: BarChart3 },
-    { label: 'Conexões Bancárias', path: '/connect', icon: Plug },
-    { label: 'Configurações', path: '/settings', icon: Settings },
-  ];
 
   return (
     <aside className={`sidebar ${collapsed ? 'collapsed' : ''}`}>
-      {/* App Header / Logo */}
       <div style={{
         padding: '1.25rem 1.5rem',
         display: 'flex',
@@ -97,7 +63,6 @@ export function Sidebar({ collapsed, onToggle }) {
         </button>
       </div>
 
-      {/* Navigation Items */}
       <nav style={{ flex: 1, padding: '1rem 0.75rem', overflowY: 'auto' }}>
         <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
           {navItems.map(item => {
@@ -132,7 +97,6 @@ export function Sidebar({ collapsed, onToggle }) {
         </ul>
       </nav>
 
-      {/* User Footer Profile */}
       <div style={{
         padding: collapsed ? '1.25rem 0.5rem' : '1rem 1.25rem',
         borderTop: '1px solid var(--border-color)',
@@ -157,7 +121,7 @@ export function Sidebar({ collapsed, onToggle }) {
         }} title={user?.email}>
           {user?.user_metadata?.full_name?.charAt(0).toUpperCase() || user?.email?.charAt(0).toUpperCase() || 'U'}
         </div>
-        
+
         {!collapsed && (
           <div style={{ flex: 1, overflow: 'hidden' }}>
             <p style={{ fontSize: 'var(--font-size-sm)', fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', margin: 0 }}>

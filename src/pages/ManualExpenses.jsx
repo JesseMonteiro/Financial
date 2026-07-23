@@ -134,22 +134,24 @@ export function ManualExpenses() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div className="page-header">
         <div>
           <h1 style={{ fontSize: 'var(--font-size-2xl)', fontWeight: 700 }}>Despesas Manuais</h1>
           <p style={{ color: 'var(--text-muted)', fontSize: 'var(--font-size-sm)' }}>
             Cadastre e gerencie despesas em dinheiro, boleto ou que não passam pelo Open Finance.
           </p>
         </div>
-        <Button icon={Plus} onClick={() => setShowAddForm(!showAddForm)}>
-          {showAddForm ? 'Cancelar' : 'Nova Despesa'}
-        </Button>
+        <div className="page-header__actions">
+          <Button icon={Plus} onClick={() => setShowAddForm(!showAddForm)}>
+            {showAddForm ? 'Cancelar' : 'Nova Despesa'}
+          </Button>
+        </div>
       </div>
 
       {showAddForm && (
         <Card title="Nova Despesa Manual" subtitle="Informe os detalhes da despesa. Ela será mesclada ao seu orçamento e extrato de transações.">
           <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: '1rem' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+            <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
               <div>
                 <label className="label" style={{ display: 'block', marginBottom: '0.4rem', fontSize: 'var(--font-size-xs)', fontWeight: 600 }}>Descrição</label>
                 <input
@@ -177,7 +179,7 @@ export function ManualExpenses() {
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+            <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
               <div>
                 <label className="label" style={{ display: 'block', marginBottom: '0.4rem', fontSize: 'var(--font-size-xs)', fontWeight: 600 }}>Categoria</label>
                 <select
@@ -248,7 +250,7 @@ export function ManualExpenses() {
                     </label>
                   </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                  <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                     <div>
                       <label className="label" style={{ display: 'block', marginBottom: '0.4rem', fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>Frequência</label>
                       <select
@@ -401,7 +403,8 @@ export function ManualExpenses() {
                         </div>
                         <button
                           onClick={() => deleteManualTransaction(group.id)}
-                          style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--text-muted)', padding: '0.25rem' }}
+                          className="tap-target"
+                          style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--text-muted)' }}
                           title={group.isRecurring ? "Excluir toda a série recorrente" : "Excluir despesa"}
                         >
                           <Trash2 size={16} />

@@ -1,6 +1,7 @@
 import React from 'react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { formatCurrency } from '../../utils/formatters';
+import { useIsMobile } from '../../hooks/useMediaQuery';
 
 const sampleData = [
   { month: 'Jan', patrimônio: 42000 },
@@ -26,9 +27,12 @@ const CustomTooltip = ({ active, payload, label }) => {
   return null;
 };
 
-export function BalanceChart({ data = sampleData, height = 280 }) {
+export function BalanceChart({ data = sampleData, height }) {
+  const isMobile = useIsMobile();
+  const chartHeight = height ?? (isMobile ? 200 : 280);
+
   return (
-    <div style={{ width: '100%', height }}>
+    <div style={{ width: '100%', height: chartHeight }}>
       <ResponsiveContainer width="100%" height="100%">
         <AreaChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
           <defs>
@@ -39,21 +43,21 @@ export function BalanceChart({ data = sampleData, height = 280 }) {
           </defs>
           <CartesianGrid strokeDasharray="3 3" vertical={false} />
           <XAxis dataKey="month" stroke="var(--text-muted)" fontSize={12} tickLine={false} />
-          <YAxis 
-            stroke="var(--text-muted)" 
-            fontSize={12} 
-            tickLine={false} 
+          <YAxis
+            stroke="var(--text-muted)"
+            fontSize={12}
+            tickLine={false}
             axisLine={false}
-            tickFormatter={(val) => `R$ ${(val / 1000).toFixed(0)}k`} 
+            tickFormatter={(val) => `R$ ${(val / 1000).toFixed(0)}k`}
           />
           <Tooltip content={<CustomTooltip />} />
-          <Area 
-            type="monotone" 
-            dataKey="patrimônio" 
-            stroke="var(--primary)" 
+          <Area
+            type="monotone"
+            dataKey="patrimônio"
+            stroke="var(--primary)"
             strokeWidth={3}
-            fillOpacity={1} 
-            fill="url(#colorNetWorth)" 
+            fillOpacity={1}
+            fill="url(#colorNetWorth)"
           />
         </AreaChart>
       </ResponsiveContainer>

@@ -158,21 +158,17 @@ function ReceivableModal({ onClose, onSave, creditTransactions, editingReceivabl
   };
 
   return (
-    <div style={{
-      position: 'fixed', inset: 0, zIndex: 1000,
+    <div className="modal-overlay" style={{
+      zIndex: 1000,
       backgroundColor: 'rgba(0,0,0,0.7)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
       backdropFilter: 'blur(4px)',
-      padding: '1rem',
     }}>
-      <div style={{
-        backgroundColor: 'var(--bg-secondary)',
-        borderRadius: 'var(--radius-xl)',
-        border: '1px solid var(--border-color)',
-        width: '100%', maxWidth: 540,
+      <div className="modal-content" style={{
+        maxWidth: 540,
         boxShadow: '0 20px 25px -5px rgba(0,0,0,0.5)',
         display: 'flex', flexDirection: 'column',
         maxHeight: '90vh', overflow: 'hidden',
+        padding: 0,
       }}>
         {/* Modal Header */}
         <div style={{
@@ -577,9 +573,10 @@ function PersonCard({ personName, personColor, receivables, onMarkPaid, onDelete
                     <button
                       onClick={() => onEdit(rec)}
                       title="Editar lançamento"
+                      className="tap-target"
                       style={{
                         border: 'none', background: 'transparent', cursor: 'pointer',
-                        color: 'var(--text-muted)', padding: '0.25rem', display: 'flex', alignItems: 'center',
+                        color: 'var(--text-muted)', display: 'flex', alignItems: 'center',
                       }}
                       onMouseEnter={e => e.currentTarget.style.color = 'var(--primary)'}
                       onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}
@@ -589,9 +586,10 @@ function PersonCard({ personName, personColor, receivables, onMarkPaid, onDelete
                     <button
                       onClick={() => onDelete(rec.id)}
                       title="Remover lançamento"
+                      className="tap-target"
                       style={{
                         border: 'none', background: 'transparent', cursor: 'pointer',
-                        color: 'var(--text-muted)', padding: '0.25rem', display: 'flex', alignItems: 'center',
+                        color: 'var(--text-muted)', display: 'flex', alignItems: 'center',
                       }}
                       onMouseEnter={e => e.currentTarget.style.color = 'var(--danger)'}
                       onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}
@@ -811,16 +809,18 @@ export function Receivables() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
 
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: '1rem' }}>
+      <div className="page-header" style={{ alignItems: 'flex-end' }}>
         <div>
           <h1 style={{ fontSize: 'var(--font-size-2xl)', fontWeight: 700 }}>Valores a Receber</h1>
           <p style={{ color: 'var(--text-muted)', fontSize: 'var(--font-size-sm)', marginTop: '0.25rem' }}>
             Controle compras do cartão emprestadas a terceiros e valores avulsos
           </p>
         </div>
-        <Button variant="primary" icon={Plus} onClick={handleNewEntryClick}>
-          Nova Entrada
-        </Button>
+        <div className="page-header__actions">
+          <Button variant="primary" icon={Plus} onClick={handleNewEntryClick}>
+            Nova Entrada
+          </Button>
+        </div>
       </div>
 
       {/* KPI Row */}

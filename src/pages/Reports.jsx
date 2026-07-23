@@ -19,14 +19,19 @@ export function Reports() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div className="page-header">
         <div>
           <h1 style={{ fontSize: 'var(--font-size-2xl)', fontWeight: 700 }}>Relatórios & Analytics Reais</h1>
           <p style={{ color: 'var(--text-muted)', fontSize: 'var(--font-size-sm)' }}>
             Análise detalhada do seu desempenho financeiro baseada nas contas sincronizadas via Pluggy.
           </p>
         </div>
-        <Button variant="outline" icon={Download}>Exportar Relatório PDF</Button>
+        <div className="page-header__actions">
+          <Button variant="outline" icon={Download}>
+            <span className="hide-mobile">Exportar Relatório PDF</span>
+            <span className="show-mobile">Exportar PDF</span>
+          </Button>
+        </div>
       </div>
 
       <div className="dashboard-grid">

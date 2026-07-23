@@ -45,16 +45,18 @@ export function Accounts() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div className="page-header">
         <div>
           <h1 style={{ fontSize: 'var(--font-size-2xl)', fontWeight: 700 }}>Contas & Saldos</h1>
           <p style={{ color: 'var(--text-muted)', fontSize: 'var(--font-size-sm)' }}>
             Gerencie todas as suas contas bancárias e cartões conectados via Pluggy.ai.
           </p>
         </div>
-        <Link to="/connect" style={{ textDecoration: 'none' }}>
-          <Button icon={Plus}>Adicionar Conta</Button>
-        </Link>
+        <div className="page-header__actions">
+          <Link to="/connect" style={{ textDecoration: 'none' }}>
+            <Button icon={Plus}>Adicionar Conta</Button>
+          </Link>
+        </div>
       </div>
 
       {/* Contas Bancárias */}

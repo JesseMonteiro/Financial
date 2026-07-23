@@ -79,7 +79,7 @@ export function Dashboard() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
       {/* Header Greeting & Action */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+      <div className="page-header">
         <div>
           <h1 style={{ fontSize: 'var(--font-size-3xl)', fontWeight: 700, color: 'var(--text-primary)' }}>
             Olá, {displayName}! 👋
@@ -88,9 +88,11 @@ export function Dashboard() {
             Visão consolidada das suas contas sincronizadas via Pluggy.ai.
           </p>
         </div>
-        <Link to="/connect" style={{ textDecoration: 'none' }}>
-          <Button icon={Plus}>Conectar Nova Conta</Button>
-        </Link>
+        <div className="page-header__actions">
+          <Link to="/connect" style={{ textDecoration: 'none' }}>
+            <Button icon={Plus}>Conectar Nova Conta</Button>
+          </Link>
+        </div>
       </div>
 
       {/* KPI Cards Row - Strictly Real Data */}
@@ -207,15 +209,8 @@ export function Dashboard() {
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '0.5rem' }}>
               {transactions.slice(0, 5).map(tx => (
-                <div key={tx.id} style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  padding: '0.6rem 0.85rem',
-                  borderRadius: 'var(--radius-md)',
-                  backgroundColor: 'var(--bg-tertiary)'
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <div key={tx.id} className="list-row" style={{ padding: '0.6rem 0.85rem' }}>
+                  <div className="list-row-main" style={{ gap: '0.75rem' }}>
                     <div style={{
                       width: 32,
                       height: 32,
@@ -224,12 +219,16 @@ export function Dashboard() {
                       color: tx.amount < 0 ? 'var(--danger)' : 'var(--success)',
                       display: 'flex',
                       alignItems: 'center',
-                      justifyContent: 'center'
+                      justifyContent: 'center',
+                      flexShrink: 0
                     }}>
                       {tx.amount < 0 ? <ArrowDownRight size={16} /> : <ArrowUpRight size={16} />}
                     </div>
-                    <div>
-                      <p style={{ fontWeight: 600, fontSize: 'var(--font-size-sm)', color: 'var(--text-primary)' }}>
+                    <div style={{ minWidth: 0 }}>
+                      <p style={{
+                        fontWeight: 600, fontSize: 'var(--font-size-sm)', color: 'var(--text-primary)',
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', margin: 0
+                      }}>
                         {tx.description}
                       </p>
                       <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>
@@ -237,7 +236,7 @@ export function Dashboard() {
                       </span>
                     </div>
                   </div>
-                  <span style={{
+                  <span className="list-row-amount" style={{
                     fontWeight: 700,
                     fontSize: 'var(--font-size-sm)',
                     color: tx.amount < 0 ? 'var(--text-primary)' : 'var(--success)'
@@ -262,7 +261,7 @@ export function Dashboard() {
             </Link>
           }
         >
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1.25rem', marginTop: '0.75rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(240px, 100%), 1fr))', gap: '1.25rem', marginTop: '0.75rem' }}>
             {dynamicCategoryBudgets.map(b => {
               const pct = Math.min(100, Math.round((b.spent / b.limit) * 100));
               const color = getCategoryColor(b.category);

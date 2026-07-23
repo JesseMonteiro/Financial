@@ -274,7 +274,7 @@ export function CreditCards() {
 
       {/* Credit Card Selector Tabs */}
       {creditCards.length > 0 && (
-        <div style={{ display: 'flex', gap: '0.75rem', overflowX: 'auto', paddingBottom: '0.25rem', scrollbarWidth: 'thin' }}>
+        <div className="chip-scroll">
           <div
             onClick={() => setSelectedCardId('all')}
             style={{
@@ -419,7 +419,8 @@ export function CreditCards() {
       >
         <div
           ref={timelineRef}
-          style={{ display: 'flex', gap: '0.75rem', overflowX: 'auto', padding: '0.75rem 0.25rem', scrollbarWidth: 'thin' }}
+          className="chip-scroll"
+          style={{ padding: '0.75rem 0.25rem' }}
         >
           {sortedBillKeys.map(k => {
             const bill = billsData[k];
@@ -538,9 +539,9 @@ export function CreditCards() {
             </div>
           </div>
 
-          <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1rem' }}>
-            <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '0.5rem', backgroundColor: 'var(--bg-tertiary)', padding: '0.4rem 0.75rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}>
-              <Search size={14} style={{ color: 'var(--text-muted)' }} />
+          <div className="filter-bar" style={{ marginBottom: '1rem' }}>
+            <div className="filter-bar__search" style={{ padding: '0.4rem 0.75rem' }}>
+              <Search size={14} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
               <input
                 type="text"
                 placeholder="Buscar compra..."
@@ -574,15 +575,8 @@ export function CreditCards() {
                 const isPayment = isBillPayment(tx);
                 const cardObj = creditCards.find(c => c.id === tx.accountId);
                 return (
-                  <div
-                    key={tx.id || idx}
-                    style={{
-                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                      padding: '0.75rem 0.85rem', borderRadius: 'var(--radius-md)',
-                      backgroundColor: 'var(--bg-tertiary)', border: '1px solid var(--border-color)'
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  <div key={tx.id || idx} className="list-row" style={{ padding: '0.75rem 0.85rem' }}>
+                    <div className="list-row-main" style={{ gap: '0.75rem' }}>
                       <div style={{
                         width: 36, height: 36, borderRadius: '50%',
                         backgroundColor: isPayment ? 'var(--success-bg)' : 'var(--danger-bg)',
@@ -591,11 +585,14 @@ export function CreditCards() {
                       }}>
                         {isPayment ? <CheckCircle2 size={18} /> : <Receipt size={18} />}
                       </div>
-                      <div>
-                        <h4 style={{ fontWeight: 600, fontSize: 'var(--font-size-sm)', color: 'var(--text-primary)' }}>
+                      <div style={{ minWidth: 0 }}>
+                        <h4 style={{
+                          fontWeight: 600, fontSize: 'var(--font-size-sm)', color: 'var(--text-primary)',
+                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
+                        }}>
                           {tx.description}
                         </h4>
-                        <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', marginTop: '0.15rem', flexWrap: 'wrap' }}>
+                        <div className="list-row-meta" style={{ gap: '0.4rem' }}>
                           {selectedCardId === 'all' && cardObj && (
                             <Badge variant="neutral" style={{ fontWeight: 600, fontSize: '10px' }}>
                               💳 {cardObj.name}
@@ -617,24 +614,24 @@ export function CreditCards() {
                             );
                           })()}
                           <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                            • {formatDate(tx.date)}
+                            {formatDate(tx.date)}
                           </span>
                           {tx.merchant?.businessName && (
                             <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                              • {tx.merchant.businessName}
+                              {tx.merchant.businessName}
                             </span>
                           )}
                         </div>
                       </div>
                     </div>
-                    <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: '0.5rem' }}>
+                    <div className="list-row-amount">
                       <span style={{
                         fontWeight: 700, fontSize: 'var(--font-size-sm)',
                         color: isPayment ? 'var(--success)' : 'var(--danger)'
                       }}>
                         {isPayment ? '+ ' : '- '}{formatCurrency(Math.abs(tx.amount))}
                       </span>
-                      <p style={{ fontSize: '10px', marginTop: '2px', color: tx.isProjected ? 'var(--info)' : tx.status === 'POSTED' ? 'var(--success)' : 'var(--warning)' }}>
+                      <p style={{ fontSize: '10px', marginTop: '2px', marginBottom: 0, color: tx.isProjected ? 'var(--info)' : tx.status === 'POSTED' ? 'var(--success)' : 'var(--warning)' }}>
                         {tx.isProjected ? 'Parcela Projetada' : tx.status === 'POSTED' ? 'Confirmado' : 'Pendente'}
                       </p>
                     </div>

@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useMemo } from 'react';
-import { Search, Filter, ArrowDownRight, ArrowUpRight, Download, RefreshCw } from 'lucide-react';
+import React, { useEffect, useMemo } from 'react';
+import { Search, ArrowDownRight, ArrowUpRight, Download, RefreshCw } from 'lucide-react';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
@@ -19,7 +19,6 @@ export function Transactions() {
 
   const filteredTransactions = getFilteredTransactions();
 
-  // Extract unique category options dynamically from raw transactions
   const uniqueCategories = useMemo(() => {
     const setCat = new Set();
     rawTransactions.forEach(t => {
@@ -37,7 +36,7 @@ export function Transactions() {
       t.amount,
       t.status
     ]);
-    
+
     const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
@@ -50,36 +49,38 @@ export function Transactions() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
-      {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+      <div className="page-header">
         <div>
           <h1 style={{ fontSize: 'var(--font-size-2xl)', fontWeight: 700 }}>Histórico de Transações</h1>
           <p style={{ color: 'var(--text-muted)', fontSize: 'var(--font-size-sm)' }}>
             Visualize, filtre e pesquise por todas as suas entradas e saídas sincronizadas em tempo real.
           </p>
         </div>
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
-          <Button variant="outline" icon={RefreshCw} onClick={() => loadTransactions({ force: true })}>Atualizar</Button>
-          <Button variant="outline" icon={Download} onClick={handleExportCSV}>Exportar CSV</Button>
+        <div className="page-header__actions">
+          <Button variant="outline" icon={RefreshCw} onClick={() => loadTransactions({ force: true })}>
+            <span className="hide-mobile">Atualizar</span>
+            <span className="show-mobile">Atualizar</span>
+          </Button>
+          <Button variant="outline" icon={Download} onClick={handleExportCSV}>
+            <span className="hide-mobile">Exportar CSV</span>
+            <span className="show-mobile">CSV</span>
+          </Button>
         </div>
       </div>
 
-      {/* Filter Bar */}
       <Card padding="1rem">
-        <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
-          {/* Search Input */}
-          <div style={{ flex: 1, minWidth: 260, display: 'flex', alignItems: 'center', gap: '0.5rem', backgroundColor: 'var(--bg-tertiary)', padding: '0.5rem 0.85rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}>
-            <Search size={16} style={{ color: 'var(--text-muted)' }} />
+        <div className="filter-bar">
+          <div className="filter-bar__search">
+            <Search size={16} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
             <input
               type="text"
-              placeholder="Buscar por descrição, Uber, Movida, Recife..."
+              placeholder="Buscar por descrição..."
               value={filters.search}
               onChange={(e) => setFilters({ search: e.target.value })}
               style={{ border: 'none', background: 'transparent', outline: 'none', color: 'var(--text-primary)', width: '100%', fontSize: 'var(--font-size-sm)' }}
             />
           </div>
 
-          {/* Account Filter */}
           <select
             value={filters.accountId}
             onChange={(e) => setFilters({ accountId: e.target.value })}
@@ -94,19 +95,17 @@ export function Transactions() {
             ))}
           </select>
 
-          {/* Type Selector */}
           <select
             value={filters.type}
             onChange={(e) => setFilters({ type: e.target.value })}
             className="input"
             style={{ width: 'auto' }}
           >
-            <option value="all">Todos os Tipos (Receitas & Despesas)</option>
-            <option value="debit">Apenas Despesas (Saídas)</option>
-            <option value="credit">Apenas Receitas (Entradas)</option>
+            <option value="all">Todos os Tipos</option>
+            <option value="debit">Apenas Despesas</option>
+            <option value="credit">Apenas Receitas</option>
           </select>
 
-          {/* Dynamic Category Filter */}
           <select
             value={filters.category}
             onChange={(e) => setFilters({ category: e.target.value })}
@@ -121,7 +120,6 @@ export function Transactions() {
             ))}
           </select>
 
-          {/* Reset Filters Button */}
           {(filters.search || filters.category !== 'all' || filters.type !== 'all' || filters.accountId !== 'all') && (
             <Button size="sm" variant="ghost" onClick={() => setFilters({ search: '', category: 'all', type: 'all', accountId: 'all' })}>
               Limpar Filtros
@@ -130,7 +128,6 @@ export function Transactions() {
         </div>
       </Card>
 
-      {/* Transactions Table / List */}
       <Card title={`Transações Encontradas (${filteredTransactions.length} de ${rawTransactions.length})`}>
         {loading ? (
           <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
@@ -145,16 +142,8 @@ export function Transactions() {
             {filteredTransactions.map(tx => {
               const isIncome = tx.amount > 0 || tx.type === 'CREDIT';
               return (
-                <div key={tx.id} style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  padding: '0.75rem 1rem',
-                  borderRadius: 'var(--radius-md)',
-                  backgroundColor: 'var(--bg-tertiary)',
-                  border: '1px solid var(--border-color)'
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                <div key={tx.id} className="list-row">
+                  <div className="list-row-main">
                     <div style={{
                       width: 38,
                       height: 38,
@@ -163,29 +152,37 @@ export function Transactions() {
                       color: isIncome ? 'var(--success)' : 'var(--danger)',
                       display: 'flex',
                       alignItems: 'center',
-                      justifyContent: 'center'
+                      justifyContent: 'center',
+                      flexShrink: 0
                     }}>
                       {isIncome ? <ArrowUpRight size={20} /> : <ArrowDownRight size={20} />}
                     </div>
-                    <div>
-                      <h4 style={{ fontWeight: 600, fontSize: 'var(--font-size-base)', color: 'var(--text-primary)' }}>
+                    <div style={{ minWidth: 0 }}>
+                      <h4 style={{
+                        fontWeight: 600,
+                        fontSize: 'var(--font-size-base)',
+                        color: 'var(--text-primary)',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap'
+                      }}>
                         {tx.description}
                       </h4>
-                      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginTop: '0.2rem' }}>
+                      <div className="list-row-meta">
                         <Badge variant="neutral">{translateCategory(tx.category)}</Badge>
                         <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>
-                          • {formatDateRelative(tx.date)} ({formatDate(tx.date)})
+                          {formatDateRelative(tx.date)} ({formatDate(tx.date)})
                         </span>
                         {tx.merchant?.businessName && (
                           <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>
-                            • {tx.merchant.businessName}
+                            {tx.merchant.businessName}
                           </span>
                         )}
                       </div>
                     </div>
                   </div>
 
-                  <div style={{ textAlign: 'right' }}>
+                  <div className="list-row-amount">
                     <span style={{
                       fontWeight: 700,
                       fontSize: 'var(--font-size-base)',
@@ -193,7 +190,7 @@ export function Transactions() {
                     }}>
                       {isIncome ? `+ ${formatCurrency(Math.abs(tx.amount))}` : `- ${formatCurrency(Math.abs(tx.amount))}`}
                     </span>
-                    <p style={{ fontSize: '11px', color: tx.status === 'POSTED' ? 'var(--success)' : 'var(--warning)' }}>
+                    <p style={{ fontSize: '11px', color: tx.status === 'POSTED' ? 'var(--success)' : 'var(--warning)', margin: 0 }}>
                       {tx.status === 'POSTED' ? 'Confirmada' : 'Pendente'}
                     </p>
                   </div>
