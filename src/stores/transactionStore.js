@@ -155,6 +155,36 @@ export const useTransactionStore = create((set, get) => ({
     }));
   },
 
+  /**
+   * Update manual expense amount.
+   * @param {string} id - installment/transaction id
+   * @param {number} amount - absolute value (stored as negative debit)
+   * @param {{ scope?: 'one' | 'series' }} [opts] - `series` updates all parcels sharing parentId
+   */
+  updateManualAmount: async (id, amount, { scope = 'one' } = {}) => {
+    const { transactions } = get();
+    const tx = transactions.find((t) => t.id === id && t.isManual);
+    if (!tx) return;
+
+    const nextAmount = -Math.abs(parseFloat(amount) || 0);
+    const targets =
+      scope === 'series' && tx.parentId
+        ? transactions.filter((t) => t.isManual && t.parentId === tx.parentId)
+        : [tx];
+
+    const updatedList = [];
+    for (const t of targets) {
+      const updated = { ...t, amount: nextAmount };
+      await saveStoredManualTransaction(updated);
+      updatedList.push(updated);
+    }
+
+    const byId = new Map(updatedList.map((t) => [t.id, t]));
+    set((state) => ({
+      transactions: state.transactions.map((t) => byId.get(t.id) || t),
+    }));
+  },
+
   getFilteredTransactions: () => {
     const { transactions, filters } = get();
     return transactions.filter(t => {

@@ -6,7 +6,20 @@ import { Badge } from '../components/ui/Badge';
 import { formatCurrency, formatDate } from '../utils/formatters';
 import { translateCategory } from '../utils/categories';
 import { getCategoryColor } from '../utils/colors';
-import { Plus, Trash2, Calendar, DollarSign, Clock, HelpCircle, ChevronDown, ChevronRight, CheckCircle2 } from 'lucide-react';
+import {
+  Plus,
+  Trash2,
+  Calendar,
+  DollarSign,
+  Clock,
+  HelpCircle,
+  ChevronDown,
+  ChevronRight,
+  CheckCircle2,
+  Pencil,
+  Check,
+  X,
+} from 'lucide-react';
 
 function PaidCheckbox({ checked, onChange, label = 'Pago' }) {
   return (
@@ -41,6 +54,66 @@ function PaidCheckbox({ checked, onChange, label = 'Pago' }) {
   );
 }
 
+function AmountEditRow({ value, onChange, onSave, onCancel, hint }) {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '0.4rem',
+        flexShrink: 0,
+      }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
+        <input
+          type="number"
+          step="0.01"
+          min="0"
+          autoFocus
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') onSave();
+            if (e.key === 'Escape') onCancel();
+          }}
+          className="input"
+          style={{
+            width: 96,
+            padding: '0.25rem 0.4rem',
+            fontSize: 'var(--font-size-xs)',
+            fontWeight: 700,
+            textAlign: 'right',
+          }}
+        />
+        {hint && (
+          <span style={{ fontSize: 9, color: 'var(--text-muted)', maxWidth: 140, textAlign: 'right' }}>
+            {hint}
+          </span>
+        )}
+      </div>
+      <button
+        type="button"
+        onClick={onSave}
+        className="tap-target"
+        title="Salvar"
+        style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--success)', padding: 2 }}
+      >
+        <Check size={16} />
+      </button>
+      <button
+        type="button"
+        onClick={onCancel}
+        className="tap-target"
+        title="Cancelar"
+        style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--text-muted)', padding: 2 }}
+      >
+        <X size={16} />
+      </button>
+    </div>
+  );
+}
+
 export function ManualExpenses() {
   const {
     transactions,
@@ -48,6 +121,7 @@ export function ManualExpenses() {
     addManualTransaction,
     deleteManualTransaction,
     setManualPaid,
+    updateManualAmount,
     loading,
   } = useTransactionStore();
 
@@ -63,6 +137,9 @@ export function ManualExpenses() {
 
   const [showAddForm, setShowAddForm] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState({});
+
+  /** @type {[null|{ mode: 'series'|'one', id: string, groupKey: string, draft: string }, Function]} */
+  const [editing, setEditing] = useState(null);
 
   useEffect(() => {
     loadTransactions();
@@ -80,7 +157,6 @@ export function ManualExpenses() {
           id: tx.id,
           parentId: tx.parentId,
           description: tx.originalDescription || tx.description?.replace(/ \(\d+\/\d+\)$/, '').replace(/ \(Recorrente\)$/, ''),
-          amount: tx.amount,
           category: tx.category,
           date: tx.date,
           isRecurring: tx.isRecurring,
@@ -101,6 +177,11 @@ export function ManualExpenses() {
 
     Object.values(groups).forEach((g) => {
       g.allInstallments.sort((a, b) => new Date(a.date) - new Date(b.date));
+      const absAmounts = g.allInstallments.map((t) => Math.abs(Number(t.amount) || 0));
+      const first = absAmounts[0] || 0;
+      g.hasVariedAmounts = absAmounts.some((a) => Math.abs(a - first) > 0.001);
+      g.amount = -first;
+      g.displayAmount = first;
     });
 
     return Object.values(groups);
@@ -108,6 +189,36 @@ export function ManualExpenses() {
 
   const toggleExpanded = (key) => {
     setExpandedGroups((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const startEditSeries = (group) => {
+    const sample = group.allInstallments[0];
+    if (!sample) return;
+    setEditing({
+      mode: group.installmentsCount > 1 || group.isRecurring ? 'series' : 'one',
+      id: sample.id,
+      groupKey: group.parentId || group.id,
+      draft: String(Math.abs(Number(sample.amount) || 0)),
+    });
+  };
+
+  const startEditOne = (inst, groupKey) => {
+    setEditing({
+      mode: 'one',
+      id: inst.id,
+      groupKey,
+      draft: String(Math.abs(Number(inst.amount) || 0)),
+    });
+  };
+
+  const cancelEdit = () => setEditing(null);
+
+  const saveEdit = async () => {
+    if (!editing) return;
+    const num = parseFloat(editing.draft);
+    if (Number.isNaN(num) || num < 0) return;
+    await updateManualAmount(editing.id, num, { scope: editing.mode });
+    setEditing(null);
   };
 
   const handleSubmit = async (e) => {
@@ -303,7 +414,7 @@ export function ManualExpenses() {
 
       <Card
         title="Despesas Cadastradas"
-        subtitle="Marque Pago por ocorrência/parcela (só controle). Excluir uma série apaga todas as parcelas."
+        subtitle="Editar no grupo altera todas as parcelas; editar uma parcela altera só aquele mês. Marque Pago por ocorrência."
       >
         {loading ? (
           <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '2rem' }}>Carregando despesas...</p>
@@ -320,6 +431,15 @@ export function ManualExpenses() {
                 const isSeries = group.installmentsCount > 1 || group.isRecurring;
                 const expanded = expandedGroups[groupKey] ?? isSeries;
                 const single = group.allInstallments[0];
+                const editingSeries =
+                  editing &&
+                  editing.groupKey === groupKey &&
+                  editing.mode === 'series';
+                const editingSingleOuter =
+                  editing &&
+                  editing.groupKey === groupKey &&
+                  editing.mode === 'one' &&
+                  !isSeries;
 
                 return (
                   <div
@@ -378,29 +498,62 @@ export function ManualExpenses() {
                                 {group.paidCount}/{group.installmentsCount} pagas
                               </Badge>
                             )}
+                            {group.hasVariedAmounts && (
+                              <Badge variant="warning" style={{ fontSize: 9 }}>Valores variados</Badge>
+                            )}
                             <span style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '2px' }}>
                               <Calendar size={12} /> Começa em {formatDate(group.date)}
                             </span>
                           </div>
                         </div>
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexShrink: 0 }}>
-                        {!isSeries && single && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', flexShrink: 0 }}>
+                        {!isSeries && single && !(editingSeries || editingSingleOuter) && (
                           <PaidCheckbox
                             checked={single.isPaid}
                             onChange={(v) => setManualPaid(single.id, v)}
                           />
                         )}
-                        <div style={{ textAlign: 'right' }}>
-                          <span style={{ fontWeight: 700, fontSize: 'var(--font-size-sm)', color: 'var(--danger)', display: 'block' }}>
-                            {formatCurrency(group.amount)}
-                          </span>
-                          {group.isRecurring && (
-                            <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
-                              por ocorrência
-                            </span>
-                          )}
-                        </div>
+                        {editingSeries || editingSingleOuter ? (
+                          <AmountEditRow
+                            value={editing.draft}
+                            onChange={(v) => setEditing((prev) => ({ ...prev, draft: v }))}
+                            onSave={saveEdit}
+                            onCancel={cancelEdit}
+                            hint={
+                              editingSeries
+                                ? 'Aplica a todas as parcelas'
+                                : undefined
+                            }
+                          />
+                        ) : (
+                          <>
+                            <div style={{ textAlign: 'right' }}>
+                              <span style={{ fontWeight: 700, fontSize: 'var(--font-size-sm)', color: 'var(--danger)', display: 'block' }}>
+                                {group.hasVariedAmounts ? 'a partir de ' : ''}
+                                {formatCurrency(group.displayAmount)}
+                              </span>
+                              {group.isRecurring && (
+                                <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+                                  {group.hasVariedAmounts ? 'valores por mês' : 'por ocorrência'}
+                                </span>
+                              )}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => startEditSeries(group)}
+                              className="tap-target"
+                              style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--text-muted)' }}
+                              title={
+                                isSeries
+                                  ? 'Editar valor de todas as parcelas'
+                                  : 'Editar valor'
+                              }
+                            >
+                              <Pencil size={16} />
+                            </button>
+                          </>
+                        )}
                         <button
                           onClick={() => deleteManualTransaction(group.id)}
                           className="tap-target"
@@ -421,48 +574,82 @@ export function ManualExpenses() {
                         gap: '0.35rem',
                         backgroundColor: 'var(--bg-secondary)',
                       }}>
-                        {group.allInstallments.map((inst, idx) => (
-                          <div
-                            key={inst.id}
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'space-between',
-                              gap: '0.75rem',
-                              padding: '0.5rem 0.65rem',
-                              borderRadius: 'var(--radius-sm)',
-                              backgroundColor: inst.isPaid ? 'var(--success-bg)' : 'var(--bg-tertiary)',
-                              border: `1px solid ${inst.isPaid ? 'rgba(16,185,129,0.35)' : 'var(--border-color)'}`,
-                              opacity: inst.isPaid ? 0.92 : 1,
-                            }}
-                          >
-                            <div style={{ minWidth: 0 }}>
-                              <span style={{
-                                fontSize: 'var(--font-size-xs)',
-                                fontWeight: 600,
-                                color: 'var(--text-primary)',
-                                textDecoration: inst.isPaid ? 'line-through' : 'none',
-                              }}>
-                                {group.isContinuous
-                                  ? `Ocorrência ${idx + 1}`
-                                  : `Parcela ${idx + 1}/${group.installmentsCount}`}
-                              </span>
-                              <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: 2 }}>
-                                Vence {formatDate(inst.date)}
-                                {inst.paidAt ? ` · marcado em ${formatDate(inst.paidAt)}` : ''}
+                        {group.allInstallments.map((inst, idx) => {
+                          const isEditingThis =
+                            editing &&
+                            editing.mode === 'one' &&
+                            editing.id === inst.id;
+
+                          return (
+                            <div
+                              key={inst.id}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                gap: '0.75rem',
+                                padding: '0.5rem 0.65rem',
+                                borderRadius: 'var(--radius-sm)',
+                                backgroundColor: inst.isPaid ? 'var(--success-bg)' : 'var(--bg-tertiary)',
+                                border: `1px solid ${inst.isPaid ? 'rgba(16,185,129,0.35)' : 'var(--border-color)'}`,
+                                opacity: inst.isPaid ? 0.92 : 1,
+                              }}
+                            >
+                              <div style={{ minWidth: 0 }}>
+                                <span style={{
+                                  fontSize: 'var(--font-size-xs)',
+                                  fontWeight: 600,
+                                  color: 'var(--text-primary)',
+                                  textDecoration: inst.isPaid ? 'line-through' : 'none',
+                                }}>
+                                  {group.isContinuous
+                                    ? `Ocorrência ${idx + 1}`
+                                    : `Parcela ${idx + 1}/${group.installmentsCount}`}
+                                </span>
+                                <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: 2 }}>
+                                  Vence {formatDate(inst.date)}
+                                  {inst.paidAt ? ` · marcado em ${formatDate(inst.paidAt)}` : ''}
+                                </div>
+                              </div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
+                                {isEditingThis ? (
+                                  <AmountEditRow
+                                    value={editing.draft}
+                                    onChange={(v) => setEditing((prev) => ({ ...prev, draft: v }))}
+                                    onSave={saveEdit}
+                                    onCancel={cancelEdit}
+                                    hint="Só este mês"
+                                  />
+                                ) : (
+                                  <>
+                                    <span style={{ fontWeight: 700, fontSize: 'var(--font-size-xs)', color: 'var(--danger)' }}>
+                                      {formatCurrency(inst.amount)}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => startEditOne(inst, groupKey)}
+                                      className="tap-target"
+                                      style={{
+                                        border: 'none',
+                                        background: 'transparent',
+                                        cursor: 'pointer',
+                                        color: 'var(--text-muted)',
+                                        padding: 2,
+                                      }}
+                                      title="Editar valor só desta parcela"
+                                    >
+                                      <Pencil size={14} />
+                                    </button>
+                                    <PaidCheckbox
+                                      checked={inst.isPaid}
+                                      onChange={(v) => setManualPaid(inst.id, v)}
+                                    />
+                                  </>
+                                )}
                               </div>
                             </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem', flexShrink: 0 }}>
-                              <span style={{ fontWeight: 700, fontSize: 'var(--font-size-xs)', color: 'var(--danger)' }}>
-                                {formatCurrency(inst.amount)}
-                              </span>
-                              <PaidCheckbox
-                                checked={inst.isPaid}
-                                onChange={(v) => setManualPaid(inst.id, v)}
-                              />
-                            </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     )}
                   </div>
