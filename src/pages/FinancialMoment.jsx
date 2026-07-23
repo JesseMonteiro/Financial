@@ -19,19 +19,16 @@ import {
   MONTHS_PT,
 } from '../utils/creditBillPeriod';
 import { resolveMonthSalary, withSavedMonthSalary } from '../utils/monthSalary';
+import { automaticDebitsForMonth } from '../utils/analytics';
 import { 
-  Activity, 
   ChevronLeft, 
   ChevronRight, 
   TrendingUp, 
   TrendingDown, 
   DollarSign, 
-  CreditCard, 
-  PlusCircle, 
-  ArrowUpRight, 
-  Calendar,
   Save,
-  CheckCircle2
+  CheckCircle2,
+  Repeat
 } from 'lucide-react';
 
 export function FinancialMoment() {
@@ -79,7 +76,16 @@ export function FinancialMoment() {
   }, []);
 
   const creditCards = useMemo(() => accounts.filter(a => a.type === 'CREDIT'), [accounts]);
+  const bankAccounts = useMemo(() => accounts.filter(a => a.type === 'BANK'), [accounts]);
   const cardIds = useMemo(() => creditCards.map((c) => c.id), [creditCards]);
+  const bankAccountIds = useMemo(() => bankAccounts.map((a) => a.id), [bankAccounts]);
+  const bankAccountNameById = useMemo(() => {
+    const map = {};
+    bankAccounts.forEach((a) => {
+      map[a.id] = a.name || a.marketingName || 'Conta conectada';
+    });
+    return map;
+  }, [bankAccounts]);
 
   useEffect(() => {
     if (accountsLoading) return;
@@ -268,14 +274,27 @@ export function FinancialMoment() {
     );
     const manualExpensesTotal = activeManual.reduce((s, t) => s + Math.abs(t.amount), 0);
 
-    // Contas a pagar: faturas e manuais ainda não marcadas/liquidadas no mês
+    // 5. Expenses - Automatic debits scheduled/posted on connected bank accounts
+    const activeAutomaticDebits = automaticDebitsForMonth(transactions, selectedMonth, {
+      bankAccountIds,
+    }).map((t) => ({
+      ...t,
+      accountName: bankAccountNameById[t.accountId] || 'Conta conectada',
+      amountAbs: Math.abs(Number(t.amount) || 0),
+      isPending: t.status === 'PENDING',
+    }));
+    const automaticDebitsTotal = activeAutomaticDebits.reduce((s, t) => s + t.amountAbs, 0);
+
+    // Contas a pagar: faturas, manuais e débitos automáticos ainda não liquidados no mês
     const unpaidBills = activeBills.filter((b) => !b.isPaid);
     const unpaidManual = activeManual.filter((t) => !t.isPaid);
+    const unpaidAutomaticDebits = activeAutomaticDebits.filter((t) => t.isPending);
     const unpaidCreditTotal = unpaidBills.reduce((s, b) => s + (Number(b.amount) || 0), 0);
     const unpaidManualTotal = unpaidManual.reduce((s, t) => s + Math.abs(t.amount), 0);
-    const accountsPayableTotal = unpaidCreditTotal + unpaidManualTotal;
+    const unpaidAutomaticDebitsTotal = unpaidAutomaticDebits.reduce((s, t) => s + t.amountAbs, 0);
+    const accountsPayableTotal = unpaidCreditTotal + unpaidManualTotal + unpaidAutomaticDebitsTotal;
 
-    const expensesTotal = creditCardsTotal + manualExpensesTotal;
+    const expensesTotal = creditCardsTotal + manualExpensesTotal + automaticDebitsTotal;
     const netBalance = entriesTotal - expensesTotal;
 
     return {
@@ -287,15 +306,19 @@ export function FinancialMoment() {
       creditCardsTotal,
       activeManual,
       manualExpensesTotal,
+      activeAutomaticDebits,
+      automaticDebitsTotal,
       unpaidBills,
       unpaidManual,
+      unpaidAutomaticDebits,
       unpaidCreditTotal,
       unpaidManualTotal,
+      unpaidAutomaticDebitsTotal,
       accountsPayableTotal,
       expensesTotal,
       netBalance
     };
-  }, [selectedMonth, salaries, receivables, cardBills, cardTransactions, creditBillPeriod, transactions, creditCards]);
+  }, [selectedMonth, salaries, receivables, cardBills, cardTransactions, creditBillPeriod, transactions, creditCards, bankAccountIds, bankAccountNameById]);
 
   const monthsStatus = useMemo(() => {
     const statuses = {};
@@ -326,7 +349,11 @@ export function FinancialMoment() {
         .filter(t => t.isManual === true && t.date?.startsWith(ym))
         .reduce((s, t) => s + Math.abs(t.amount), 0);
 
-      const expensesTotal = creditCardsTotal + manualExpensesTotal;
+      const automaticDebitsTotal = automaticDebitsForMonth(transactions, ym, {
+        bankAccountIds,
+      }).reduce((s, t) => s + Math.abs(Number(t.amount) || 0), 0);
+
+      const expensesTotal = creditCardsTotal + manualExpensesTotal + automaticDebitsTotal;
       const netVal = entriesTotal - expensesTotal;
 
       statuses[ym] = {
@@ -336,7 +363,7 @@ export function FinancialMoment() {
     });
 
     return statuses;
-  }, [monthList, salaries, receivables, cardBills, creditBillPeriod, transactions, creditCards, creditLoading]);
+  }, [monthList, salaries, receivables, cardBills, creditBillPeriod, transactions, creditCards, creditLoading, bankAccountIds]);
 
   const monthIndex = monthList.findIndex(m => m.ym === selectedMonth);
   const handlePrev = () => {
@@ -361,7 +388,7 @@ export function FinancialMoment() {
         <div>
           <h1 style={{ fontSize: 'var(--font-size-2xl)', fontWeight: 700 }}>Momento Financeiro</h1>
           <p style={{ color: 'var(--text-muted)', fontSize: 'var(--font-size-sm)' }}>
-            Visão consolidada de entradas, faturas de cartão de crédito e despesas manuais do mês.
+            Visão consolidada de entradas, faturas, débitos automáticos e despesas manuais do mês.
           </p>
         </div>
         <div className="page-header__actions">
@@ -478,7 +505,7 @@ export function FinancialMoment() {
                 {formatCurrency(activeMonthData.expensesTotal)}
               </h2>
               <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>
-                Faturas + {activeMonthData.activeManual.length} despesas manuais
+                Faturas + débitos auto + {activeMonthData.activeManual.length} manuais
               </span>
             </Card>
 
@@ -506,7 +533,7 @@ export function FinancialMoment() {
               </h2>
               <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>
                 {activeMonthData.accountsPayableTotal > 0
-                  ? `${activeMonthData.unpaidBills.length} fatura(s) e ${activeMonthData.unpaidManual.length} manual(is) pendentes`
+                  ? `${activeMonthData.unpaidBills.length} fatura(s), ${activeMonthData.unpaidAutomaticDebits.length} débito(s) auto e ${activeMonthData.unpaidManual.length} manual(is)`
                   : 'Nada pendente neste mês'}
               </span>
             </Card>
@@ -525,7 +552,7 @@ export function FinancialMoment() {
           </div>
 
           {/* Progress / Cash Flow health */}
-          <Card title="Utilização de Entradas" subtitle={`Percentual de suas entradas consumido por cartões e despesas manuais em ${currentLabel}.`}>
+          <Card title="Utilização de Entradas" subtitle={`Percentual de suas entradas consumido por cartões, débitos automáticos e despesas manuais em ${currentLabel}.`}>
             <div style={{ marginTop: '0.5rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.35rem', fontSize: 'var(--font-size-xs)' }}>
                 <span>Saídas vs Entradas</span>
@@ -645,6 +672,58 @@ export function FinancialMoment() {
                     <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid var(--border-color)', paddingTop: '0.5rem', fontSize: 'var(--font-size-xs)', fontWeight: 700 }}>
                       <span>Total Faturas</span>
                       <span style={{ color: 'var(--danger)' }}>{formatCurrency(activeMonthData.creditCardsTotal)}</span>
+                    </div>
+                  </div>
+                )}
+              </Card>
+
+              {/* Automatic Debits from connected bank accounts */}
+              <Card
+                title="Débito Automático"
+                subtitle="Despesas agendadas (PENDING) e débitos automáticos das contas bancárias conectadas neste mês."
+              >
+                {activeMonthData.activeAutomaticDebits.length === 0 ? (
+                  <p style={{ color: 'var(--text-muted)', fontSize: 'var(--font-size-xs)', textAlign: 'center', padding: '1rem' }}>
+                    Nenhum débito automático nas contas conectadas para este mês.
+                  </p>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.5rem' }}>
+                    {activeMonthData.activeAutomaticDebits.map((t) => (
+                      <div
+                        key={t.id}
+                        className="list-row"
+                        style={{
+                          padding: '0.65rem 0.75rem',
+                          backgroundColor: t.isPending ? 'var(--bg-tertiary)' : undefined,
+                          border: t.isPending ? '1px solid rgba(245,158,11,0.35)' : undefined,
+                        }}
+                      >
+                        <div className="list-row-main" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '0.15rem' }}>
+                          <span style={{ fontWeight: 600, fontSize: 'var(--font-size-xs)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                            <Repeat size={12} /> {t.description || t.descriptionRaw || 'Débito automático'}
+                          </span>
+                          <div className="list-row-meta" style={{ gap: '0.4rem' }}>
+                            <Badge variant="neutral" style={{ fontSize: '9px' }}>
+                              {t.accountName}
+                            </Badge>
+                            <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+                              {formatDate(t.date)}
+                            </span>
+                            {t.isPending ? (
+                              <Badge variant="warning" style={{ fontSize: '9px' }}>Agendado</Badge>
+                            ) : (
+                              <Badge variant="success" style={{ fontSize: '9px' }}>Liquidado</Badge>
+                            )}
+                          </div>
+                        </div>
+                        <span style={{ fontWeight: 700, fontSize: 'var(--font-size-xs)', color: 'var(--danger)' }}>
+                          - {formatCurrency(t.amountAbs)}
+                        </span>
+                      </div>
+                    ))}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid var(--border-color)', paddingTop: '0.5rem', fontSize: 'var(--font-size-xs)', fontWeight: 700 }}>
+                      <span>Total Débitos Automáticos</span>
+                      <span style={{ color: 'var(--danger)' }}>{formatCurrency(activeMonthData.automaticDebitsTotal)}</span>
                     </div>
                   </div>
                 )}

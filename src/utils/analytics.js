@@ -60,6 +60,64 @@ export function isIncomeTx(tx) {
   return Number(tx.amount) > 0 || tx.type === 'CREDIT' || tx.type === 'CREDIT_INCOME';
 }
 
+/**
+ * Normalize bank description for matching (uppercase, no accents).
+ * @param {string} [text]
+ */
+function normalizeDesc(text) {
+  return String(text || '')
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * True when a bank-account expense looks like an automatic debit
+ * (scheduled PENDING or classic "débito aut" / convênio patterns).
+ * Excludes manuals, credit cards, and fatura payments (already counted elsewhere).
+ *
+ * @param {object} tx
+ * @param {{ bankAccountIds?: Set<string>|string[] }} [opts]
+ */
+export function isAutomaticDebitTx(tx, { bankAccountIds } = {}) {
+  if (!tx || tx.isManual) return false;
+  if (!isExpenseTx(tx)) return false;
+
+  if (bankAccountIds) {
+    const ids = bankAccountIds instanceof Set ? bankAccountIds : new Set(bankAccountIds);
+    if (!ids.has(tx.accountId)) return false;
+  }
+
+  if (tx.status === 'PENDING') return true;
+
+  if (tx.operationType === 'CONVENIO_ARRECADACAO') return true;
+
+  const d = normalizeDesc(tx.descriptionRaw || tx.description);
+  return (
+    d.includes('DEBITO AUT') ||
+    d.includes('DEB AUT') ||
+    d.includes('DEB.AUT') ||
+    d.includes('DEBITO AUTOMATICO') ||
+    d.includes('DEBITO AUTOM') ||
+    d.includes('DEBITO EM CONTA')
+  );
+}
+
+/**
+ * Automatic debits from connected bank accounts for a calendar month (YYYY-MM).
+ * @param {object[]} transactions
+ * @param {string} ym
+ * @param {{ bankAccountIds?: Set<string>|string[] }} [opts]
+ */
+export function automaticDebitsForMonth(transactions = [], ym, opts = {}) {
+  if (!ym) return [];
+  return transactions.filter(
+    (t) => isAutomaticDebitTx(t, opts) && String(t.date || '').startsWith(ym)
+  );
+}
+
 export function filterTransactions(transactions = [], { accountId, category, fromYm, toYm, fromDate, toDate } = {}) {
   return transactions.filter((t) => {
     if (accountId && accountId !== 'all' && t.accountId !== accountId) return false;
