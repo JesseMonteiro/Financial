@@ -59,6 +59,36 @@ Exemplos de entrada e saída:
 `;
 
 /**
+ * Transcreve áudio (voice note / arquivo) em português do Brasil via Gemini multimodal.
+ * @param {{ base64: string, mimeType?: string }} params
+ * @returns {Promise<string>}
+ */
+export async function transcribeAudioCommand({ base64, mimeType = 'audio/ogg' }) {
+  if (!genAI) {
+    throw new Error('Serviço Gemini não inicializado. Verifique a GEMINI_API_KEY no arquivo .env.');
+  }
+  if (!base64) {
+    throw new Error('Áudio vazio para transcrição.');
+  }
+
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+  const result = await model.generateContent({
+    contents: [{
+      role: 'user',
+      parts: [
+        { inlineData: { mimeType, data: base64 } },
+        {
+          text: 'Transcreva este áudio em português do Brasil. Retorne APENAS o texto falado, sem aspas, sem explicações e sem pontuação extra inventada. Se não houver fala audível, retorne uma string vazia.'
+        }
+      ]
+    }],
+    generationConfig: { temperature: 0.1 }
+  });
+
+  return (result.response.text() || '').trim().replace(/^["'«»]|["'«»]$/g, '').trim();
+}
+
+/**
  * Envia o comando de voz ou texto em linguagem natural ao Gemini e retorna a estrutura JSON correspondente.
  * @param {string} messageText 
  * @returns {Promise<{intent: string, data?: object, message?: string}>}

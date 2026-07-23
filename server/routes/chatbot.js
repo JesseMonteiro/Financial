@@ -2,11 +2,13 @@ import { Router } from 'express';
 import { checkAuth } from '../middleware/auth.js';
 import { getSupabaseClient, getServiceRoleClient } from '../services/supabaseClient.js';
 import { createPluggyClient } from '../services/pluggyClient.js';
-import { parseNaturalLanguageCommand } from '../services/geminiService.js';
+import { parseNaturalLanguageCommand, transcribeAudioCommand } from '../services/geminiService.js';
 import { summarizeCardOpenBill } from '../../src/utils/creditBillPeriod.js';
 import axios from 'axios';
 
 const router = Router();
+
+const MAX_VOICE_DURATION_SEC = 60;
 
 function asItemIdList(value) {
   if (!Array.isArray(value)) return [];
@@ -56,6 +58,67 @@ async function sendTelegramMessage(chatId, text) {
   }
 }
 
+/** Download Telegram voice/audio file as base64 for Gemini STT. */
+async function downloadTelegramAudioFile(fileId) {
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  if (!token) throw new Error('TELEGRAM_BOT_TOKEN não configurada');
+
+  const metaRes = await axios.get(`https://api.telegram.org/bot${token}/getFile`, {
+    params: { file_id: fileId }
+  });
+  const filePath = metaRes.data?.result?.file_path;
+  if (!filePath) throw new Error('Arquivo de áudio não encontrado no Telegram');
+
+  const fileRes = await axios.get(`https://api.telegram.org/file/bot${token}/${filePath}`, {
+    responseType: 'arraybuffer'
+  });
+  return Buffer.from(fileRes.data).toString('base64');
+}
+
+/**
+ * Resolve message text from plain text or voice/audio transcription.
+ * @returns {Promise<string|null>}
+ */
+async function resolveMessageText(message, chatId) {
+  const voiceOrAudio = message.voice || message.audio;
+  if (voiceOrAudio) {
+    const duration = Number(voiceOrAudio.duration || 0);
+    if (duration > MAX_VOICE_DURATION_SEC) {
+      await sendTelegramMessage(
+        chatId,
+        `⏱ Áudio muito longo (${duration}s). Envie um comando com até *${MAX_VOICE_DURATION_SEC} segundos* ou digite o texto.`
+      );
+      return null;
+    }
+
+    await sendTelegramMessage(chatId, '🎧 _Transcrevendo áudio..._');
+    try {
+      const base64 = await downloadTelegramAudioFile(voiceOrAudio.file_id);
+      const mimeType = message.audio?.mime_type || 'audio/ogg';
+      const transcript = await transcribeAudioCommand({ base64, mimeType });
+      if (!transcript) {
+        await sendTelegramMessage(
+          chatId,
+          '❌ Não consegui entender o áudio. Tente falar de novo com mais clareza ou digite o comando.'
+        );
+        return null;
+      }
+      await sendTelegramMessage(chatId, `📝 _Entendi:_ "${transcript}"`);
+      return transcript;
+    } catch (err) {
+      console.error('[Chatbot] Erro ao transcrever áudio:', err.message || err);
+      await sendTelegramMessage(
+        chatId,
+        '❌ Falha ao processar o áudio. Tente novamente em instantes ou digite o comando.'
+      );
+      return null;
+    }
+  }
+
+  if (message.text) return message.text.trim();
+  return null;
+}
+
 // 1. POST /api/chatbot/telegram/link-token (Autenticado - Gera o token de 6 dígitos)
 router.post('/telegram/link-token', checkAuth, async (req, res) => {
   try {
@@ -81,10 +144,11 @@ router.post('/telegram/webhook', async (req, res) => {
 
   try {
     const { message } = req.body;
-    if (!message || !message.text) return;
+    if (!message?.chat?.id) return;
 
     const chatId = message.chat.id.toString();
-    const text = message.text.trim();
+    const text = await resolveMessageText(message, chatId);
+    if (!text) return;
 
     // Service role: webhook não tem JWT; precisa ler perfil + manual_transactions sem RLS
     let supabase;

@@ -336,6 +336,125 @@ async function sendTelegramMessage(chatId: string, text: string): Promise<void> 
   });
 }
 
+const MAX_VOICE_DURATION_SEC = 60;
+
+async function downloadTelegramAudioFile(fileId: string): Promise<{ base64: string; mimeType: string }> {
+  const token = Deno.env.get('TELEGRAM_BOT_TOKEN');
+  if (!token) throw new Error('TELEGRAM_BOT_TOKEN missing');
+
+  const metaRes = await fetch(`https://api.telegram.org/bot${token}/getFile?file_id=${encodeURIComponent(fileId)}`);
+  if (!metaRes.ok) throw new Error(`getFile failed: ${await metaRes.text()}`);
+  const meta = await metaRes.json();
+  const filePath = meta?.result?.file_path as string | undefined;
+  if (!filePath) throw new Error('Arquivo de áudio não encontrado no Telegram');
+
+  const fileRes = await fetch(`https://api.telegram.org/file/bot${token}/${filePath}`);
+  if (!fileRes.ok) throw new Error(`file download failed: ${fileRes.status}`);
+  const bytes = new Uint8Array(await fileRes.arrayBuffer());
+  let binary = '';
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+  const base64 = btoa(binary);
+
+  const lower = filePath.toLowerCase();
+  let mimeType = 'audio/ogg';
+  if (lower.endsWith('.mp3')) mimeType = 'audio/mpeg';
+  else if (lower.endsWith('.m4a') || lower.endsWith('.mp4')) mimeType = 'audio/mp4';
+  else if (lower.endsWith('.wav')) mimeType = 'audio/wav';
+
+  return { base64, mimeType };
+}
+
+async function transcribeAudioWithGemini(base64: string, mimeType = 'audio/ogg'): Promise<string> {
+  const apiKey = Deno.env.get('GEMINI_API_KEY');
+  if (!apiKey) throw new Error('GEMINI_API_KEY missing');
+
+  const prompt =
+    'Transcreva este áudio em português do Brasil. Retorne APENAS o texto falado, sem aspas, sem explicações e sem pontuação extra inventada. Se não houver fala audível, retorne uma string vazia.';
+  const models = ['gemini-2.5-flash', 'gemini-2.0-flash'];
+  let lastError = '';
+
+  for (const model of models) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{
+          role: 'user',
+          parts: [
+            { inline_data: { mime_type: mimeType, data: base64 } },
+            { text: prompt },
+          ],
+        }],
+        generationConfig: { temperature: 0.1 },
+      }),
+    });
+    if (!res.ok) {
+      lastError = await res.text();
+      console.error(`[telegram] Gemini STT error (${model}):`, lastError);
+      continue;
+    }
+    const data = await res.json();
+    const raw = String(data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '').trim();
+    return raw.replace(/^["'«»]|["'«»]$/g, '').trim();
+  }
+
+  throw new Error(lastError || 'Falha na transcrição com Gemini');
+}
+
+type TelegramVoiceOrAudio = {
+  file_id: string;
+  duration?: number;
+  mime_type?: string;
+};
+
+async function resolveMessageText(
+  message: {
+    text?: string;
+    voice?: TelegramVoiceOrAudio;
+    audio?: TelegramVoiceOrAudio;
+  },
+  chatId: string,
+): Promise<string | null> {
+  const voiceOrAudio = message.voice || message.audio;
+  if (voiceOrAudio) {
+    const duration = Number(voiceOrAudio.duration || 0);
+    if (duration > MAX_VOICE_DURATION_SEC) {
+      await sendTelegramMessage(
+        chatId,
+        `⏱ Áudio muito longo (${duration}s). Envie um comando com até *${MAX_VOICE_DURATION_SEC} segundos* ou digite o texto.`,
+      );
+      return null;
+    }
+
+    await sendTelegramMessage(chatId, '🎧 _Transcrevendo áudio..._');
+    try {
+      const { base64, mimeType: pathMime } = await downloadTelegramAudioFile(voiceOrAudio.file_id);
+      const mimeType = message.audio?.mime_type || pathMime || 'audio/ogg';
+      const transcript = await transcribeAudioWithGemini(base64, mimeType);
+      if (!transcript) {
+        await sendTelegramMessage(
+          chatId,
+          '❌ Não consegui entender o áudio. Tente falar de novo com mais clareza ou digite o comando.',
+        );
+        return null;
+      }
+      await sendTelegramMessage(chatId, `📝 _Entendi:_ "${transcript}"`);
+      return transcript;
+    } catch (err) {
+      console.error('[telegram] STT error:', err);
+      await sendTelegramMessage(
+        chatId,
+        '❌ Falha ao processar o áudio. Tente novamente em instantes ou digite o comando.',
+      );
+      return null;
+    }
+  }
+
+  if (message.text) return message.text.trim();
+  return null;
+}
+
 async function parseIntentWithGemini(text: string): Promise<{ intent: string; data?: Record<string, unknown>; message?: string }> {
   const apiKey = Deno.env.get('GEMINI_API_KEY');
   if (!apiKey) return { intent: 'UNKNOWN', message: 'Assistente de linguagem natural indisponível no momento.' };
@@ -758,11 +877,19 @@ async function buildWeeklyRecapText(profile: TelegramProfile, supabase: ReturnTy
 }
 
 async function handleTelegramWebhook(payload: unknown): Promise<void> {
-  const message = (payload as { message?: { chat?: { id?: number | string }; text?: string } })?.message;
-  if (!message?.text || message.chat?.id == null) return;
+  const message = (payload as {
+    message?: {
+      chat?: { id?: number | string };
+      text?: string;
+      voice?: TelegramVoiceOrAudio;
+      audio?: TelegramVoiceOrAudio;
+    };
+  })?.message;
+  if (!message || message.chat?.id == null) return;
 
   const chatId = String(message.chat.id);
-  const text = message.text.trim();
+  const text = await resolveMessageText(message, chatId);
+  if (!text) return;
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
