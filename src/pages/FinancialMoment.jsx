@@ -10,6 +10,11 @@ import { Badge } from '../components/ui/Badge';
 import { ProgressBar } from '../components/ui/ProgressBar';
 import { formatCurrency, formatDate } from '../utils/formatters';
 import { translateCategory } from '../utils/categories';
+import {
+  buildCreditCardBills,
+  isBillPayment,
+  MONTHS_PT,
+} from '../utils/creditBillPeriod';
 import { 
   Activity, 
   ChevronLeft, 
@@ -24,52 +29,13 @@ import {
   Save
 } from 'lucide-react';
 
-const MONTHS = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho',
-                'Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
-
-function isBillPayment(tx) {
-  return (tx.description || '').toUpperCase().includes('PAGAMENTO DE FATURA') ||
-         (tx.description || '').toUpperCase().includes('PAGAMENTO RECEBIDO');
-}
-
-function getForecastKey(t, officialBills) {
-  let key = t.creditCardMetadata?.billForecastDate;
-  if (key) return key;
-
-  const billId = t.creditCardMetadata?.billId || t.billId;
-  if (billId) {
-    const bill = officialBills.find(b => b.id === billId);
-    if (bill && bill.dueDate) {
-      const dueYM = bill.dueDate.slice(0, 7);
-      const [y, m] = dueYM.split('-').map(Number);
-      let prevM = m - 1;
-      let prevY = y;
-      if (prevM < 1) {
-        prevM = 12;
-        prevY -= 1;
-      }
-      return `${prevY}-${prevM < 10 ? '0' + prevM : prevM}`;
-    }
-  }
-
-  if (t.date) return t.date.slice(0, 7);
-  return 'Outros';
-}
-
-function forecastKeyToDueMonth(ymKey) {
-  if (!ymKey || ymKey === 'Outros') return null;
-  const [y, m] = ymKey.split('-').map(Number);
-  let nm = m + 1, ny = y;
-  if (nm > 12) { nm = 1; ny += 1; }
-  return `${ny}-${nm < 10 ? '0' + nm : nm}`;
-}
-
 export function FinancialMoment() {
   const { accounts, loadAccounts } = useAccountStore();
   const { transactions, loadTransactions } = useTransactionStore();
   const { receivables, loadReceivables } = useReceivableStore();
 
   const [cardBills, setCardBills] = useState([]);
+  const [cardTransactions, setCardTransactions] = useState([]);
   const [loadingCards, setLoadingCards] = useState(true);
   const [selectedMonth, setSelectedMonth] = useState('');
   
@@ -92,7 +58,7 @@ export function FinancialMoment() {
 
   const creditCards = useMemo(() => accounts.filter(a => a.type === 'CREDIT'), [accounts]);
 
-  // Load official bills for all credit cards
+  // Load official bills + credit transactions for all cards
   useEffect(() => {
     async function loadBills() {
       if (creditCards.length === 0) {
@@ -102,12 +68,17 @@ export function FinancialMoment() {
       setLoadingCards(true);
       try {
         const allBills = [];
+        const allTxs = [];
         for (const card of creditCards) {
-          const res = await fetchBills(card.id);
-          const bills = (res || []).map(b => ({ ...b, accountId: card.id }));
-          allBills.push(...bills);
+          const [billsRes, txRes] = await Promise.all([
+            fetchBills(card.id),
+            fetchTransactions({ accountId: card.id }),
+          ]);
+          allBills.push(...(billsRes || []).map(b => ({ ...b, accountId: card.id })));
+          allTxs.push(...((txRes.results || txRes || []).map(t => ({ ...t, accountId: t.accountId || card.id }))));
         }
         setCardBills(allBills);
+        setCardTransactions(allTxs);
       } catch (e) {
         console.warn('[FinancialMoment] Failed to load bills:', e);
       } finally {
@@ -117,18 +88,27 @@ export function FinancialMoment() {
     if (accounts.length > 0) loadBills();
   }, [creditCards, accounts.length]);
 
-  // 12-month calendar list around July 2026
+  const creditBillPeriod = useMemo(
+    () =>
+      buildCreditCardBills({
+        transactions: cardTransactions,
+        officialBills: cardBills,
+        creditCards,
+        selectedCardId: 'all',
+      }),
+    [cardTransactions, cardBills, creditCards]
+  );
+
+  // 12-month calendar list around today
   const monthList = useMemo(() => {
     const list = [];
-    const baseDate = new Date('2026-07-21');
-    // Generate 6 months past, current, and 5 months future
+    const baseDate = new Date();
     for (let i = -6; i <= 5; i++) {
-      const d = new Date(baseDate);
-      d.setMonth(baseDate.getMonth() + i);
+      const d = new Date(baseDate.getFullYear(), baseDate.getMonth() + i, 1);
       const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
       list.push({
         ym,
-        label: `${MONTHS[d.getMonth()]} de ${d.getFullYear()}`,
+        label: `${MONTHS_PT[d.getMonth()]} de ${d.getFullYear()}`,
         year: d.getFullYear(),
         month: d.getMonth() + 1
       });
@@ -136,10 +116,11 @@ export function FinancialMoment() {
     return list;
   }, []);
 
-  // Default to current month (2026-07)
+  // Default to current calendar month
   useEffect(() => {
     if (!selectedMonth) {
-      setSelectedMonth('2026-07');
+      const now = new Date();
+      setSelectedMonth(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`);
     }
   }, [selectedMonth]);
 
@@ -206,12 +187,10 @@ export function FinancialMoment() {
 
     const entriesTotal = salary + receivablesTotal;
 
-    // 3. Expenses - Credit Card bills due in this month
-    // In our system, the due month is closingMonth + 1. So if we look at month 2026-07:
-    // The credit card bills due in 2026-07 have forecast month 2026-06!
-    // So we lookup bills whose dueDate is in the selectedMonth (starts with YYYY-MM)
+    // 3. Expenses - Credit Card bills due in this month (canonical due-month index)
     const activeBills = [];
     let creditCardsTotal = 0;
+    const periodBill = creditBillPeriod.bills[selectedMonth];
 
     creditCards.forEach(card => {
       const matchingBill = cardBills.find(b => b.accountId === card.id && b.dueDate?.startsWith(selectedMonth));
@@ -223,72 +202,31 @@ export function FinancialMoment() {
           isPaid: matchingBill.payments?.length > 0
         });
         creditCardsTotal += matchingBill.totalAmount || 0;
-      } else {
-        // Fallback: sum transactions for this card matching selected month (due date)
-        const cardTxs = transactions.filter(t => 
-          t.accountId === card.id && 
-          t.isManual !== true && 
-          !isBillPayment(t)
+      } else if (periodBill) {
+        const cardItems = periodBill.items.filter(
+          t => t.accountId === card.id && !isBillPayment(t) && !t.isProjected
         );
-
-        const map = {};
-        cardTxs.forEach(t => {
-          const k = getForecastKey(t, cardBills);
-          if (!map[k]) map[k] = [];
-          map[k].push(t);
-        });
-
-        // Project installments from base month '2026-07'
-        const openKey = '2026-07';
-        if (map[openKey]) {
-          const activeInstallments = map[openKey].filter(t =>
-            t.creditCardMetadata?.totalInstallments &&
-            t.creditCardMetadata?.installmentNumber &&
-            t.creditCardMetadata.installmentNumber < t.creditCardMetadata.totalInstallments
-          );
-
-          activeInstallments.forEach(t => {
-            const meta = t.creditCardMetadata;
-            const baseForecastKey = meta.billForecastDate || openKey;
-            const [baseY, baseM] = baseForecastKey.split('-').map(Number);
-            const remaining = meta.totalInstallments - meta.installmentNumber;
-
-            for (let step = 1; step <= remaining; step++) {
-              let nm = baseM + step, ny = baseY;
-              if (nm > 12) { ny += Math.floor((nm - 1) / 12); nm = ((nm - 1) % 12) + 1; }
-              const futureKey = `${ny}-${nm < 10 ? '0' + nm : nm}`;
-
-              if (!map[futureKey]) map[futureKey] = [];
-
-              const projId = `proj_${t.id}_${futureKey}`;
-              if (!map[futureKey].some(e => e.id === projId)) {
-                map[futureKey].push({
-                  ...t,
-                  id: projId,
-                  amount: t.amount,
-                  isProjected: true
-                });
-              }
-            }
-          });
+        let amount;
+        if (selectedMonth === creditBillPeriod.openDueKey) {
+          amount = Math.abs(Number(card.balance) || 0);
+        } else {
+          amount = cardItems.reduce((s, t) => s + Math.abs(t.amount || 0), 0);
+          if (selectedMonth > creditBillPeriod.openDueKey) {
+            const projected = periodBill.items.filter(
+              t => t.accountId === card.id && t.isProjected
+            );
+            amount += projected.reduce((s, t) => s + Math.abs(t.amount || 0), 0);
+          }
         }
-
-        // Selected month due corresponds to forecastKey = selectedMonth - 1 month
-        const [y, m] = selectedMonth.split('-').map(Number);
-        let prevM = m - 1, prevY = y;
-        if (prevM < 1) { prevM = 12; prevY -= 1; }
-        const forecastKey = `${prevY}-${prevM < 10 ? '0' + prevM : prevM}`;
-
-        const sumTxs = (map[forecastKey] || []).reduce((s, t) => s + Math.abs(t.amount), 0);
-        if (sumTxs > 0) {
+        if (amount > 0) {
           activeBills.push({
             cardName: card.name,
-            dueDate: `${selectedMonth}-10`,
-            amount: sumTxs,
+            dueDate: periodBill.dueDate || `${selectedMonth}-10`,
+            amount,
             isPaid: false,
             isFallback: true
           });
-          creditCardsTotal += sumTxs;
+          creditCardsTotal += amount;
         }
       }
     });
@@ -315,7 +253,7 @@ export function FinancialMoment() {
       expensesTotal,
       netBalance
     };
-  }, [selectedMonth, salaries, receivables, cardBills, transactions, creditCards]);
+  }, [selectedMonth, salaries, receivables, cardBills, cardTransactions, creditBillPeriod, transactions, creditCards]);
 
   const monthsStatus = useMemo(() => {
     const statuses = {};
@@ -337,65 +275,20 @@ export function FinancialMoment() {
       const entriesTotal = salary + receivablesTotal;
 
       let creditCardsTotal = 0;
+      const periodBill = creditBillPeriod.bills[ym];
       creditCards.forEach(card => {
         const matchingBill = cardBills.find(b => b.accountId === card.id && b.dueDate?.startsWith(ym));
         if (matchingBill) {
           creditCardsTotal += matchingBill.totalAmount || 0;
-        } else {
-          const cardTxs = transactions.filter(t => 
-            t.accountId === card.id && 
-            t.isManual !== true && 
-            !isBillPayment(t)
-          );
-
-          const map = {};
-          cardTxs.forEach(t => {
-            const k = getForecastKey(t, cardBills);
-            if (!map[k]) map[k] = [];
-            map[k].push(t);
-          });
-
-          const openKey = '2026-07';
-          if (map[openKey]) {
-            const activeInstallments = map[openKey].filter(t =>
-              t.creditCardMetadata?.totalInstallments &&
-              t.creditCardMetadata?.installmentNumber &&
-              t.creditCardMetadata.installmentNumber < t.creditCardMetadata.totalInstallments
+        } else if (periodBill) {
+          if (ym === creditBillPeriod.openDueKey) {
+            creditCardsTotal += Math.abs(Number(card.balance) || 0);
+          } else {
+            const cardItems = periodBill.items.filter(
+              t => t.accountId === card.id && !isBillPayment(t) && (ym > creditBillPeriod.openDueKey || !t.isProjected)
             );
-
-            activeInstallments.forEach(t => {
-              const meta = t.creditCardMetadata;
-              const baseForecastKey = meta.billForecastDate || openKey;
-              const [baseY, baseM] = baseForecastKey.split('-').map(Number);
-              const remaining = meta.totalInstallments - meta.installmentNumber;
-
-              for (let step = 1; step <= remaining; step++) {
-                let nm = baseM + step, ny = baseY;
-                if (nm > 12) { ny += Math.floor((nm - 1) / 12); nm = ((nm - 1) % 12) + 1; }
-                const futureKey = `${ny}-${nm < 10 ? '0' + nm : nm}`;
-
-                if (!map[futureKey]) map[futureKey] = [];
-
-                const projId = `proj_${t.id}_${futureKey}`;
-                if (!map[futureKey].some(e => e.id === projId)) {
-                  map[futureKey].push({
-                    ...t,
-                    id: projId,
-                    amount: t.amount,
-                    isProjected: true
-                  });
-                }
-              }
-            });
+            creditCardsTotal += cardItems.reduce((s, t) => s + Math.abs(t.amount || 0), 0);
           }
-
-          const [y, mVal] = ym.split('-').map(Number);
-          let prevM = mVal - 1, prevY = y;
-          if (prevM < 1) { prevM = 12; prevY -= 1; }
-          const forecastKey = `${prevY}-${prevM < 10 ? '0' + prevM : prevM}`;
-
-          const sumTxs = (map[forecastKey] || []).reduce((s, t) => s + Math.abs(t.amount), 0);
-          creditCardsTotal += sumTxs;
         }
       });
 
@@ -413,7 +306,7 @@ export function FinancialMoment() {
     });
 
     return statuses;
-  }, [monthList, salaries, receivables, cardBills, transactions, creditCards, loadingCards]);
+  }, [monthList, salaries, receivables, cardBills, creditBillPeriod, transactions, creditCards, loadingCards]);
 
   const monthIndex = monthList.findIndex(m => m.ym === selectedMonth);
   const handlePrev = () => {
@@ -459,7 +352,10 @@ export function FinancialMoment() {
         >
           {monthList.map(m => {
             const isSelected = m.ym === selectedMonth;
-            const isCurrent = m.ym === '2026-07';
+            const isCurrent = m.ym === (() => {
+              const n = new Date();
+              return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}`;
+            })();
             const status = monthsStatus[m.ym];
             
             let cardBg = 'var(--bg-tertiary)';

@@ -20,10 +20,16 @@ import { ProgressBar } from '../components/ui/ProgressBar';
 import { useBudgetStore } from '../stores/budgetStore';
 import { useAccountStore } from '../stores/accountStore';
 import { useReceivableStore } from '../stores/receivableStore';
-import { fetchTransactions } from '../services/api';
+import { fetchTransactions, fetchBills } from '../services/api';
 import { formatCurrency } from '../utils/formatters';
 import { translateCategory } from '../utils/categories';
 import { getCategoryColor } from '../utils/colors';
+import {
+  getDueMonthKey,
+  inferForecastToDueOffset,
+  isBillPayment,
+  MONTHS_PT,
+} from '../utils/creditBillPeriod';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell
 } from 'recharts';
@@ -32,39 +38,14 @@ import {
 // HELPERS
 // ─────────────────────────────────────────────────────────────────────────────
 
-const MONTH_NAMES = [
-  'Janeiro','Fevereiro','Março','Abril','Maio','Junho',
-  'Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'
-];
-
-/**
- * billForecastDate (YYYY-MM) for current open = the month WHOSE transactions
- * make up the bill that will be due next month.
- * Today is July 2026 → currentForecastKey = '2026-07' (Fatura Agosto/2026).
- * For the budget screen we show spending by the FORECAST month since that is
- * how transactions are tagged by the API.
- */
-function currentForecastKey() {
+function currentDueMonthKey() {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 }
 
-function forecastKeyLabel(ym) {
+function dueMonthLabel(ym) {
   const [y, m] = ym.split('-');
-  return `${MONTH_NAMES[parseInt(m, 10) - 1]}/${y}`;
-}
-
-function addMonths(ym, n) {
-  let [y, m] = ym.split('-').map(Number);
-  m += n;
-  if (m > 12) { y += Math.floor((m - 1) / 12); m = ((m - 1) % 12) + 1; }
-  if (m < 1) { y -= Math.ceil(Math.abs(m) / 12 + 1); m = ((m - 1 + 12 * 100) % 12) + 1; }
-  return `${y}-${m < 10 ? '0' + m : m}`;
-}
-
-function isBillPayment(tx) {
-  return (tx.description || '').toUpperCase().includes('PAGAMENTO DE FATURA') ||
-         (tx.description || '').toUpperCase().includes('PAGAMENTO RECEBIDO');
+  return `${MONTHS_PT[parseInt(m, 10) - 1]}/${y}`;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -77,10 +58,11 @@ export function Budget() {
   const { receivables, loadReceivables } = useReceivableStore();
 
   const [allTransactions, setAllTransactions] = useState([]);
+  const [officialBills, setOfficialBills] = useState([]);
   const [loadingTx, setLoadingTx] = useState(true);
 
-  // Selected forecast month (current by default)
-  const [selectedMonth, setSelectedMonth] = useState(currentForecastKey);
+  // Selected due month (current by default)
+  const [selectedMonth, setSelectedMonth] = useState(currentDueMonthKey);
 
   // Edit state
   const [editingCat, setEditingCat] = useState(null);
@@ -98,29 +80,28 @@ export function Budget() {
     async function loadTxs() {
       setLoadingTx(true);
       try {
-        // Load from all credit accounts
         const creditAccounts = accounts.filter(a => a.type === 'CREDIT');
-        if (creditAccounts.length === 0 && accounts.length > 0) {
-          setLoadingTx(false);
-          return;
-        }
-        // If no accounts yet loaded, wait
         if (accounts.length === 0) { setLoadingTx(false); return; }
 
         let txs = [];
+        const bills = [];
         for (const acc of creditAccounts) {
-          const res = await fetchTransactions({ accountId: acc.id });
-          const results = res.results || res || [];
+          const [res, billsRes] = await Promise.all([
+            fetchTransactions({ accountId: acc.id }),
+            fetchBills(acc.id),
+          ]);
+          const results = (res.results || res || []).map(t => ({ ...t, accountId: t.accountId || acc.id }));
           txs = txs.concat(results);
+          bills.push(...(billsRes || []).map(b => ({ ...b, accountId: acc.id })));
         }
-        // Also load bank account transactions (e.g. rent, salary)
         const bankAccounts = accounts.filter(a => a.type === 'BANK');
         for (const acc of bankAccounts) {
           const res = await fetchTransactions({ accountId: acc.id });
-          const results = res.results || res || [];
+          const results = (res.results || res || []).map(t => ({ ...t, accountId: t.accountId || acc.id }));
           txs = txs.concat(results);
         }
         setAllTransactions(txs);
+        setOfficialBills(bills);
       } catch (e) {
         console.warn('[Budget] error loading transactions:', e);
       } finally {
@@ -130,39 +111,51 @@ export function Budget() {
     if (accounts.length > 0) loadTxs();
   }, [accounts]);
 
-  // ── Compute spending by category for selected month ────────────────────────
-  /**
-   * Group credit card transactions by billForecastDate for the selected month.
-   * Bank account transactions are grouped by their actual date month.
-   */
+  const forecastOffset = useMemo(
+    () => inferForecastToDueOffset(
+      allTransactions.filter(t => t.creditCardMetadata || t.type === undefined),
+      officialBills
+    ),
+    [allTransactions, officialBills]
+  );
+
+  /** Due-month key for credit txs; calendar month for bank/manual. */
+  const txDueMonth = (tx) => {
+    if (tx.creditCardMetadata || officialBills.some(b => b.accountId === tx.accountId)) {
+      const cardBills = officialBills.filter(b => b.accountId === tx.accountId);
+      const cardTxs = allTransactions.filter(t => t.accountId === tx.accountId);
+      const offset = inferForecastToDueOffset(cardTxs, cardBills.length ? cardBills : officialBills);
+      return getDueMonthKey(tx, cardBills.length ? cardBills : officialBills, offset);
+    }
+    return (tx.date || '').slice(0, 7);
+  };
+
+  // ── Compute spending by category for selected due month ────────────────────
   const spendingByCategory = useMemo(() => {
     const map = {};
     allTransactions.forEach(tx => {
       if (isBillPayment(tx)) return;
-      if (tx.amount > 0) return; // skip credits/income
+      if (tx.amount > 0) return;
 
-      // Determine which month this tx belongs to
-      const meta = tx.creditCardMetadata;
-      const txMonth = meta?.billForecastDate || (tx.date || '').slice(0, 7);
-
+      const txMonth = txDueMonth(tx);
       if (txMonth !== selectedMonth) return;
 
       const label = translateCategory(tx.category);
       map[label] = (map[label] || 0) + Math.abs(tx.amount);
     });
-    return map; // { 'Aluguel de Carros': 1916.66, ... }
-  }, [allTransactions, selectedMonth]);
+    return map;
+  }, [allTransactions, officialBills, selectedMonth, forecastOffset]);
 
-  // All available months in transactions
+  // All available due months
   const availableMonths = useMemo(() => {
     const months = new Set();
     allTransactions.forEach(tx => {
-      const meta = tx.creditCardMetadata;
-      const m = meta?.billForecastDate || (tx.date || '').slice(0, 7);
+      if (isBillPayment(tx)) return;
+      const m = txDueMonth(tx);
       if (m && m !== 'Outros') months.add(m);
     });
     return [...months].sort();
-  }, [allTransactions]);
+  }, [allTransactions, officialBills, forecastOffset]);
 
   // ── Merge real spending with user-defined limits ───────────────────────────
   /**
@@ -221,19 +214,17 @@ export function Budget() {
 
   // ── Historical chart: spending by month for a specific category ────────────
   const chartData = useMemo(() => {
-    // Show last 6 available months
     const last6 = availableMonths.slice(-6);
     return last6.map(m => {
-      const txMonth = allTransactions.filter(tx => {
+      const monthTxs = allTransactions.filter(tx => {
         if (isBillPayment(tx) || tx.amount > 0) return false;
-        const meta = tx.creditCardMetadata;
-        return (meta?.billForecastDate || (tx.date || '').slice(0, 7)) === m;
+        return txDueMonth(tx) === m;
       });
-      const total = txMonth.reduce((s, t) => s + Math.abs(t.amount), 0);
+      const total = monthTxs.reduce((s, t) => s + Math.abs(t.amount), 0);
       const [, mo] = m.split('-');
-      return { label: MONTH_NAMES[parseInt(mo, 10) - 1].slice(0, 3), total, month: m };
+      return { label: MONTHS_PT[parseInt(mo, 10) - 1].slice(0, 3), total, month: m };
     });
-  }, [availableMonths, allTransactions]);
+  }, [availableMonths, allTransactions, officialBills]);
 
   // ── Actions ────────────────────────────────────────────────────────────────
   const handleSaveEdit = (cat) => {
@@ -292,7 +283,7 @@ export function Budget() {
             <ChevronLeft size={16} />
           </button>
           <span style={{ fontWeight: 700, fontSize: 'var(--font-size-sm)', minWidth: 130, textAlign: 'center' }}>
-            {forecastKeyLabel(selectedMonth)}
+            {dueMonthLabel(selectedMonth)}
           </span>
           <button
             onClick={() => canGoNext && setSelectedMonth(availableMonths[monthIdx + 1])}
@@ -382,7 +373,7 @@ export function Budget() {
 
       {/* Budget Categories */}
       <Card
-        title={`Orçamento por Categoria — ${forecastKeyLabel(selectedMonth)}`}
+        title={`Orçamento por Categoria — ${dueMonthLabel(selectedMonth)}`}
         subtitle="Gastos reais da Pluggy. Clique em ✏ para definir um limite para a categoria."
         action={
           <Button size="sm" variant="primary" onClick={() => setAddingNew(true)} icon={Plus}>
@@ -429,7 +420,7 @@ export function Budget() {
           </p>
         ) : budgetRows.length === 0 ? (
           <p style={{ color: 'var(--text-muted)', padding: '2rem', textAlign: 'center' }}>
-            Nenhuma transação encontrada para {forecastKeyLabel(selectedMonth)}.
+            Nenhuma transação encontrada para {dueMonthLabel(selectedMonth)}.
           </p>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', marginTop: '1rem' }}>

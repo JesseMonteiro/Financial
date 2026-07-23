@@ -21,74 +21,12 @@ import { translateCategory } from '../utils/categories';
 import { getCategoryColor } from '../utils/colors';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell } from 'recharts';
 import { useReceivableStore } from '../stores/receivableStore';
-
-// ─────────────────────────────────────────────────────────────────────────────
-// HELPERS
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * billForecastDate (YYYY-MM) → due month is the NEXT calendar month.
- * e.g. '2026-07' closes in early Aug → due date is 10/08/2026.
- */
-function forecastKeyToDueMonth(ymKey) {
-  if (!ymKey || ymKey === 'Outros') return null;
-  const [y, m] = ymKey.split('-').map(Number);
-  let nm = m + 1, ny = y;
-  if (nm > 12) { nm = 1; ny += 1; }
-  return `${ny}-${nm < 10 ? '0' + nm : nm}`;
-}
-
-const MONTHS = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho',
-                'Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
-
-function formatBillTitle(ymKey) {
-  if (!ymKey || ymKey === 'Outros') return 'Outros Lançamentos';
-  const dueKey = forecastKeyToDueMonth(ymKey);
-  if (!dueKey) return ymKey;
-  const [y, m] = dueKey.split('-').map(Number);
-  return `Fatura ${MONTHS[m - 1]} de ${y}`;
-}
-
-/** Format due date string as DD/MM/YYYY */
-function formatDueDate(ymKey) {
-  const dueKey = forecastKeyToDueMonth(ymKey);
-  if (!dueKey) return '';
-  const [y, m] = dueKey.split('-');
-  return `10/${m}/${y}`;
-}
-
-/** True if the transaction is a bill payment (should be ignored in totals) */
-function isBillPayment(tx) {
-  return (tx.description || '').toUpperCase().includes('PAGAMENTO DE FATURA') ||
-         (tx.description || '').toUpperCase().includes('PAGAMENTO RECEBIDO');
-}
-
-/** Resolve forecast key (forecast month) for a transaction */
-function getForecastKey(t, officialBills) {
-  let key = t.creditCardMetadata?.billForecastDate;
-  if (key) return key;
-
-  // Try to resolve via billId matching official bills
-  const billId = t.creditCardMetadata?.billId || t.billId;
-  if (billId) {
-    const bill = officialBills.find(b => b.id === billId);
-    if (bill && bill.dueDate) {
-      const dueYM = bill.dueDate.slice(0, 7); // e.g. "2026-10"
-      const [y, m] = dueYM.split('-').map(Number);
-      let prevM = m - 1;
-      let prevY = y;
-      if (prevM < 1) {
-        prevM = 12;
-        prevY -= 1;
-      }
-      return `${prevY}-${prevM < 10 ? '0' + prevM : prevM}`;
-    }
-  }
-
-  // Fallback to transaction date
-  if (t.date) return t.date.slice(0, 7);
-  return 'Outros';
-}
+import {
+  buildCreditCardBills,
+  formatDueMonthTitle,
+  formatDueMonthShort,
+  isBillPayment,
+} from '../utils/creditBillPeriod';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // COMPONENT
@@ -134,7 +72,7 @@ export function CreditCards() {
               fetchTransactions({ accountId: card.id }),
               fetchBills(card.id)
             ]);
-            const txs = txRes.results || txRes || [];
+            const txs = (txRes.results || txRes || []).map(t => ({ ...t, accountId: t.accountId || card.id }));
             const bills = (billsRes || []).map(b => ({ ...b, accountId: card.id }));
             allTxs.push(...txs);
             allBillsList.push(...bills);
@@ -146,7 +84,10 @@ export function CreditCards() {
             fetchTransactions({ accountId: activeCard.id }),
             fetchBills(activeCard.id)
           ]);
-          setCardTransactions(txRes.results || txRes || []);
+          setCardTransactions((txRes.results || txRes || []).map(t => ({
+            ...t,
+            accountId: t.accountId || activeCard.id,
+          })));
           setOfficialBills((billsRes || []).map(b => ({ ...b, accountId: activeCard.id })));
         }
       } catch (e) {
@@ -170,172 +111,33 @@ export function CreditCards() {
   const availableLimit = activeCard ? (creditData.availableCreditLimit ?? (creditLimit - totalDebt)) : availableLimitAllCards;
   const pctUsed = creditLimit > 0 ? Math.min(100, Math.round((totalDebt / creditLimit) * 100)) : 0;
 
-  // ── Build basic bills map from transactions and official bills ─────────────
-  const allBills = useMemo(() => {
-    const map = {};
+  // ── Bills indexed by due month (canonical) ─────────────────────────────────
+  const billPeriod = useMemo(
+    () =>
+      buildCreditCardBills({
+        transactions: cardTransactions,
+        officialBills,
+        creditCards,
+        selectedCardId,
+      }),
+    [cardTransactions, officialBills, creditCards, selectedCardId]
+  );
 
-    // Step 1: single-pass grouping by resolved forecast key
-    cardTransactions.forEach(t => {
-      const key = getForecastKey(t, officialBills);
-      if (!map[key]) {
-        map[key] = {
-          monthKey: key,
-          items: [],
-          total: 0,
-          dueDate: `${forecastKeyToDueMonth(key)}-10`
-        };
-      }
-      map[key].items.push(t);
-    });
-
-    // Make sure all key months from officialBills are also present in map
-    officialBills.forEach(b => {
-      if (b.dueDate) {
-        const dueYM = b.dueDate.slice(0, 7);
-        const [y, m] = dueYM.split('-').map(Number);
-        let prevM = m - 1;
-        let prevY = y;
-        if (prevM < 1) {
-          prevM = 12;
-          prevY -= 1;
-        }
-        const key = `${prevY}-${prevM < 10 ? '0' + prevM : prevM}`;
-        if (!map[key]) {
-          map[key] = {
-            monthKey: key,
-            items: [],
-            total: 0,
-            dueDate: b.dueDate.slice(0, 10)
-          };
-        }
-      }
-    });
-
-    // Step 4: project FUTURE bills from active installments in CURRENT_OPEN (2026-07)
-    const openKey = '2026-07';
-    if (map[openKey]) {
-      const activeInstallments = map[openKey].items.filter(t =>
-        t.creditCardMetadata?.totalInstallments &&
-        t.creditCardMetadata?.installmentNumber &&
-        t.creditCardMetadata.installmentNumber < t.creditCardMetadata.totalInstallments
-      );
-
-      activeInstallments.forEach(t => {
-        const meta = t.creditCardMetadata;
-        const baseForecastKey = meta.billForecastDate || openKey;
-        const [baseY, baseM] = baseForecastKey.split('-').map(Number);
-        const remaining = meta.totalInstallments - meta.installmentNumber;
-
-        for (let step = 1; step <= remaining; step++) {
-          let nm = baseM + step, ny = baseY;
-          if (nm > 12) { ny += Math.floor((nm - 1) / 12); nm = ((nm - 1) % 12) + 1; }
-          const futureKey = `${ny}-${nm < 10 ? '0' + nm : nm}`;
-
-          if (!map[futureKey]) {
-            map[futureKey] = {
-              monthKey: futureKey,
-              items: [],
-              total: 0,
-              dueDate: `${forecastKeyToDueMonth(futureKey)}-10`
-            };
-          }
-
-          const projId = `proj_${t.id}_${futureKey}`;
-          if (!map[futureKey].items.some(e => e.id === projId)) {
-            map[futureKey].items.push({
-              ...t,
-              id: projId,
-              description: `${t.description} (Parcela ${meta.installmentNumber + step}/${meta.totalInstallments})`,
-              currentInstallment: meta.installmentNumber + step,
-              totalInstallmentsCount: meta.totalInstallments,
-              isProjected: true,
-              date: `${futureKey}-10T00:00:00.000Z`
-            });
-          }
-        }
-      });
-    }
-
-    return map;
-  }, [cardTransactions, officialBills]);
-
-  // Sorted keys in chronological order
-  const sortedBillKeys = useMemo(() => {
-    return Object.keys(allBills).filter(k => k !== 'Outros').sort();
-  }, [allBills]);
-
-  // Current Open Key represents the open bill of the current month (July 2026 -> forecast '2026-07')
-  const currentOpenKey = useMemo(() => {
-    const today = new Date();
-    const ym = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
-    return sortedBillKeys.find(k => k === ym) || '2026-07';
-  }, [sortedBillKeys]);
-
-  // ── Refined bills data with per-card contributions (sums or official amounts) ──
-  const billsData = useMemo(() => {
-    const result = {};
-
-    sortedBillKeys.forEach(k => {
-      const bill = allBills[k];
-      const dueMonthKey = forecastKeyToDueMonth(k);
-
-      let totalAmount = 0;
-      let isPaid = true;
-      let hasOfficial = false;
-
-      // Filter contributors based on selected card view
-      const activeCardsForMonth = selectedCardId === 'all' ? creditCards : creditCards.filter(c => c.id === selectedCardId);
-
-      activeCardsForMonth.forEach(card => {
-        // Find if this card has an official bill due in this month
-        const official = officialBills.find(b => b.accountId === card.id && b.dueDate?.startsWith(dueMonthKey));
-        if (official) {
-          totalAmount += official.totalAmount || 0;
-          if (!(official.payments?.length > 0)) {
-            isPaid = false;
-          }
-          hasOfficial = true;
-        } else {
-          // No official bill for this card -> sum its transactions
-          const cardTxs = bill.items.filter(t => t.accountId === card.id && !isBillPayment(t));
-          const sumTxs = cardTxs.reduce((s, t) => s + Math.abs(t.amount), 0);
-          totalAmount += sumTxs;
-          // If there is any open card transaction in a past/current month, it's not "paid" yet
-          if (sumTxs > 0 && k <= currentOpenKey) {
-            isPaid = false;
-          }
-        }
-      });
-
-      // Classification type based on calendar month
-      let type = 'PAST';
-      if (k === currentOpenKey) {
-        type = 'CURRENT_OPEN';
-      } else if (k > currentOpenKey) {
-        type = 'FUTURE';
-      }
-
-      result[k] = {
-        monthKey: k,
-        items: bill.items,
-        total: totalAmount,
-        dueDate: bill.dueDate || `${dueMonthKey}-10`,
-        isPaid: isPaid,
-        type: type,
-        hasOfficial: hasOfficial
-      };
-    });
-
-    return result;
-  }, [allBills, sortedBillKeys, selectedCardId, creditCards, officialBills, currentOpenKey]);
+  const sortedBillKeys = billPeriod.sortedDueKeys;
+  const currentOpenKey = billPeriod.openDueKey;
+  const billsData = billPeriod.bills;
 
   const [selectedBillKey, setSelectedBillKey] = useState(null);
+
+  useEffect(() => {
+    setSelectedBillKey(null);
+  }, [selectedCardId]);
 
   useEffect(() => {
     if (currentOpenKey && !selectedBillKey) {
       setSelectedBillKey(currentOpenKey);
     }
-  }, [currentOpenKey]);
+  }, [currentOpenKey, selectedBillKey]);
 
   const activeSelectedKey = selectedBillKey || currentOpenKey;
 
@@ -415,15 +217,14 @@ export function CreditCards() {
     });
   }, [currentSelectedBill, search, selectedCategory]);
 
-  // Bar chart data
+  // Bar chart data — keys are already due months
   const chartData = useMemo(() => {
     return sortedBillKeys.map(k => {
       const b = billsData[k];
-      const dueKey = forecastKeyToDueMonth(k);
-      const [, dm] = (dueKey || k).split('-');
+      const [, dm] = k.split('-');
       return {
         key: k,
-        label: `${dm}/${(forecastKeyToDueMonth(k) || k).split('-')[0].slice(2)}`,
+        label: `${dm}/${k.split('-')[0].slice(2)}`,
         total: b?.total || 0,
         type: b?.type
       };
@@ -531,7 +332,7 @@ export function CreditCards() {
             {formatCurrency(currentOpenTotal)}
           </h2>
           <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>
-            Vence em {formatDueDate(currentOpenKey)} • {currentOpenBill?.items?.filter(t => !isBillPayment(t)).length || 0} compras
+            Vence em {formatDueMonthShort(currentOpenKey)} • {currentOpenBill?.items?.filter(t => !isBillPayment(t)).length || 0} compras
           </span>
         </Card>
 
@@ -546,7 +347,7 @@ export function CreditCards() {
             {formatCurrency(lastPaidBill?.total || 0)}
           </h2>
           <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--success)' }}>
-            ✓ {lastPaidBill ? `${formatBillTitle(lastPaidKey)} — Venceu em ${lastPaidBill.dueDate || '—'}` : '—'}
+            ✓ {lastPaidBill ? `${formatDueMonthTitle(lastPaidKey)} — Venceu em ${lastPaidBill.dueDate || '—'}` : '—'}
           </span>
         </Card>
 
@@ -609,8 +410,8 @@ export function CreditCards() {
             const badge = billBadge(bill, k);
             const displayAmount = bill?.total || 0;
 
-            const title = formatBillTitle(k);
-            const dueStr = formatDueDate(k);
+            const title = formatDueMonthTitle(k);
+            const dueStr = formatDueMonthShort(k);
 
             let borderColor = 'var(--border-color)';
             if (bill?.type === 'CURRENT_OPEN') borderColor = 'var(--warning)';
@@ -696,7 +497,7 @@ export function CreditCards() {
       <div className="dashboard-grid">
         <Card
           className="col-8"
-          title={`Extrato Discriminado: ${formatBillTitle(activeSelectedKey)}`}
+          title={`Extrato Discriminado: ${formatDueMonthTitle(activeSelectedKey)}`}
         >
           <div style={{
             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
@@ -709,7 +510,7 @@ export function CreditCards() {
                 {formatCurrency(currentSelectedBill.total)}
               </h3>
               <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                Vencimento: {formatDueDate(activeSelectedKey)} {currentSelectedBill.dueDate ? `(${currentSelectedBill.dueDate})` : ''}
+                Vencimento: {formatDueMonthShort(activeSelectedKey)} {currentSelectedBill.dueDate ? `(${currentSelectedBill.dueDate})` : ''}
               </span>
             </div>
             <div style={{ textAlign: 'right' }}>
@@ -827,7 +628,7 @@ export function CreditCards() {
           )}
         </Card>
 
-        <Card className="col-4" title={`Gastos por Categoria`} subtitle={formatBillTitle(activeSelectedKey)}>
+        <Card className="col-4" title={`Gastos por Categoria`} subtitle={formatDueMonthTitle(activeSelectedKey)}>
           {selectedBillCategories.length === 0 ? (
             <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '2rem' }}>
               Sem dados de categoria nesta fatura.

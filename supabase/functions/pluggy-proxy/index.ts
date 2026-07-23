@@ -1,6 +1,7 @@
 // Pluggy Proxy — Supabase Edge Function (multi-user via profiles.pluggy_item_ids)
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.39.8";
+import { summarizeCardOpenBill } from "./creditBillPeriod.ts";
 
 const PLUGGY_API = 'https://api.pluggy.ai';
 
@@ -330,42 +331,114 @@ async function parseIntentWithGemini(text: string): Promise<{ intent: string; da
   if (!apiKey) return { intent: 'UNKNOWN', message: 'Assistente de linguagem natural indisponível no momento.' };
 
   const system = `Você é o assistente do FinanceHub. Retorne APENAS JSON:
-{"intent":"ADD_TRANSACTION"|"GET_BALANCE"|"GET_TRANSACTIONS"|"UNKNOWN","data":{"amount":number,"description":string,"category":string,"type":"DEBIT"|"CREDIT","date_offset_days":number},"message":string}
+{"intent":"ADD_TRANSACTION"|"GET_BALANCE"|"GET_CREDIT_BILLS"|"GET_TRANSACTIONS"|"UNKNOWN","data":{"amount":number,"description":string,"category":string,"type":"DEBIT"|"CREDIT","date_offset_days":number},"message":string}
+Regras de intent:
+- GET_BALANCE: saldo de conta corrente/poupança/banco (ex: "qual meu saldo?", "saldo das contas"). NÃO use para fatura ou cartão.
+- GET_CREDIT_BILLS: fatura/dívida/limite de cartão de crédito (ex: "minhas faturas", "fatura do cartão", "quanto está a fatura").
+- GET_TRANSACTIONS: extrato/últimos lançamentos.
+- ADD_TRANSACTION: registrar gasto ou receita.
 Categorias: Alimentação, Transporte, Moradia, Lazer, Saúde, Educação, Outros.`;
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      systemInstruction: { parts: [{ text: system }] },
-      contents: [{ role: 'user', parts: [{ text }] }],
-      generationConfig: { temperature: 0.1, responseMimeType: 'application/json' },
-    }),
-  });
-  if (!res.ok) {
-    console.error('[telegram] Gemini error', await res.text());
-    return { intent: 'UNKNOWN', message: 'Desculpe, tive um problema ao interpretar sua mensagem.' };
+  const models = ['gemini-2.5-flash', 'gemini-2.0-flash'];
+  let lastError = '';
+  for (const model of models) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: system }] },
+        contents: [{ role: 'user', parts: [{ text }] }],
+        generationConfig: { temperature: 0.1, responseMimeType: 'application/json' },
+      }),
+    });
+    if (!res.ok) {
+      lastError = await res.text();
+      console.error(`[telegram] Gemini error (${model}):`, lastError);
+      continue;
+    }
+    const data = await res.json();
+    const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '{}';
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return { intent: 'UNKNOWN', message: 'Não consegui entender o comando.' };
+    }
   }
-  const data = await res.json();
-  const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '{}';
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return { intent: 'UNKNOWN', message: 'Não consegui entender o comando.' };
-  }
+
+  return {
+    intent: 'UNKNOWN',
+    message: 'Desculpe, tive um problema ao interpretar sua mensagem. Tente /saldo, /faturas ou /ultimos.',
+  };
 }
 
-async function fetchPluggyAccountsForProfile(profile: TelegramProfile): Promise<Array<{ name: string; balance: number; id: string }>> {
+function parseIntentLocally(text: string): { intent: string; data?: Record<string, unknown>; message?: string } | null {
+  const lower = text.toLowerCase().normalize('NFD').replace(/\p{M}/gu, '');
+
+  // Faturas/cartão antes de saldo — evita "saldo da fatura" cair em GET_BALANCE.
+  if (
+    lower === '/faturas' ||
+    lower === '/fatura' ||
+    lower === '/cartoes' ||
+    lower === 'faturas' ||
+    lower === 'fatura' ||
+    /\b(fatura|faturas|cartao(es)? de credito|limite do cartao|divida do cartao)\b/.test(lower)
+  ) {
+    return { intent: 'GET_CREDIT_BILLS' };
+  }
+
+  if (
+    lower === '/saldo' ||
+    lower === 'saldo' ||
+    lower === '/contas' ||
+    /\b(saldo|quanto tenho|meu patrimonio|meus saldos|conta corrente|poupanca|saldo das contas)\b/.test(lower)
+  ) {
+    return { intent: 'GET_BALANCE' };
+  }
+
+  if (
+    lower === '/ultimos' ||
+    lower === 'extrato' ||
+    /\b(extrato|ultimas? (compras|transacoes|lancamentos)|ultimos gastos)\b/.test(lower)
+  ) {
+    return { intent: 'GET_TRANSACTIONS' };
+  }
+  return null;
+}
+
+async function fetchPluggyAccountsForProfile(profile: TelegramProfile): Promise<Array<{
+  name: string;
+  balance: number;
+  id: string;
+  type?: string;
+  number?: string;
+  creditData?: { availableCreditLimit?: number; creditLimit?: number; balanceDueDate?: string };
+}>> {
   const itemIds = asItemIdList(profile.pluggy_item_ids);
   const creds = resolvePluggyCredentials(profile);
   if (!itemIds.length || !creds) return [];
 
   const client = { clientId: creds.clientId, clientSecret: creds.clientSecret };
-  const all: Array<{ name: string; balance: number; id: string }> = [];
+  const all: Array<{
+    name: string;
+    balance: number;
+    id: string;
+    type?: string;
+    number?: string;
+    creditData?: { availableCreditLimit?: number; creditLimit?: number; balanceDueDate?: string };
+  }> = [];
   for (const itemId of itemIds) {
     try {
-      const d = await pluggyJson(client, '/accounts', { params: { itemId } }) as { results?: Array<{ name: string; balance: number; id: string }> };
+      const d = await pluggyJson(client, '/accounts', { params: { itemId } }) as {
+        results?: Array<{
+          name: string;
+          balance: number;
+          id: string;
+          type?: string;
+          number?: string;
+          creditData?: { availableCreditLimit?: number; creditLimit?: number; balanceDueDate?: string };
+        }>;
+      };
       all.push(...(d.results || []));
     } catch (e) {
       console.error(`[telegram] accounts for item ${itemId}:`, e);
@@ -374,8 +447,14 @@ async function fetchPluggyAccountsForProfile(profile: TelegramProfile): Promise<
   return all;
 }
 
-async function buildBalanceText(profile: TelegramProfile, supabase: ReturnType<typeof createClient>): Promise<string> {
-  const bankAccounts = await fetchPluggyAccountsForProfile(profile);
+function formatMoney(value: number): string {
+  return `R$ ${Number(value).toFixed(2)}`;
+}
+
+async function buildBankBalanceText(profile: TelegramProfile, supabase: ReturnType<typeof createClient>): Promise<string> {
+  const accounts = await fetchPluggyAccountsForProfile(profile);
+  const bankAccounts = accounts.filter((a) => a.type === 'BANK');
+
   let manualBalance = 0;
   const { data: manualTxs } = await supabase
     .from('manual_transactions')
@@ -387,19 +466,123 @@ async function buildBalanceText(profile: TelegramProfile, supabase: ReturnType<t
     manualBalance += tx.type === 'DEBIT' ? -amt : amt;
   });
 
-  let text = `💰 *Saldos de ${profile.display_name || 'usuário'}:*\n\n`;
+  let text = `🏦 *Saldos das contas — ${profile.display_name || 'usuário'}*\n\n`;
   let bankTotal = 0;
+
   if (bankAccounts.length) {
     for (const acc of bankAccounts) {
-      text += `🏦 *${acc.name}*: R$ ${Number(acc.balance).toFixed(2)}\n`;
-      bankTotal += Number(acc.balance);
+      const bal = Number(acc.balance || 0);
+      bankTotal += bal;
+      text += `• *${acc.name}*: ${formatMoney(bal)}\n`;
     }
-    text += `\n💵 *Total Bancos:* R$ ${bankTotal.toFixed(2)}\n`;
+    text += `\n💵 *Total em contas:* ${formatMoney(bankTotal)}`;
   } else {
-    text += `🏦 *Contas de Banco:* Nenhuma conectada.\n`;
+    text += `_Nenhuma conta bancária conectada._`;
   }
-  text += `📦 *Carteira Manual:* R$ ${manualBalance.toFixed(2)}\n`;
-  text += `\n📊 *Saldo Geral:* R$ ${(bankTotal + manualBalance).toFixed(2)}`;
+
+  if (manualBalance !== 0) {
+    text += `\n📦 *Carteira manual:* ${formatMoney(manualBalance)}`;
+    text += `\n📊 *Total disponível:* ${formatMoney(bankTotal + manualBalance)}`;
+  }
+
+  text += `\n\n_Para faturas de cartão, diga "faturas" ou /faturas._`;
+  return text;
+}
+
+async function fetchPluggyBillsForAccount(
+  client: { clientId: string; clientSecret: string },
+  accountId: string,
+): Promise<Array<Record<string, unknown>>> {
+  try {
+    const d = await pluggyJson(client, '/bills', { params: { accountId } }) as { results?: Array<Record<string, unknown>> };
+    return (d.results || []).map((b) => ({ ...b, accountId }));
+  } catch (e) {
+    console.error('[telegram] bills fail', accountId, e);
+    return [];
+  }
+}
+
+async function fetchAllPluggyTransactionsForAccount(
+  client: { clientId: string; clientSecret: string },
+  accountId: string,
+): Promise<Array<Record<string, unknown>>> {
+  const results: Array<Record<string, unknown>> = [];
+  let next: string | null = null;
+  let guard = 0;
+  const apiKey = await getPluggyApiKey(client.clientId, client.clientSecret);
+
+  do {
+    try {
+      const url = next
+        ? (next.startsWith('http') ? next : `${PLUGGY_API}${next}`)
+        : `${PLUGGY_API}/v2/transactions?accountId=${encodeURIComponent(accountId)}`;
+      const res = await fetch(url, { headers: { 'X-API-KEY': apiKey, Accept: 'application/json' } });
+      if (!res.ok) {
+        console.error('[telegram] tx fail', accountId, res.status, await res.text());
+        break;
+      }
+      const data = await res.json() as { results?: Array<Record<string, unknown>>; next?: string | null };
+      for (const t of data.results || []) {
+        results.push({ ...t, accountId: t.accountId || accountId });
+      }
+      next = data.next || null;
+    } catch (e) {
+      console.error('[telegram] tx fail', accountId, e);
+      break;
+    }
+    guard++;
+  } while (next && guard < 30);
+
+  return results;
+}
+
+async function buildCreditBillsText(profile: TelegramProfile): Promise<string> {
+  const accounts = await fetchPluggyAccountsForProfile(profile);
+  const creditCards = accounts.filter((a) => a.type === 'CREDIT');
+
+  let text = `💳 *Faturas em aberto — ${profile.display_name || 'usuário'}*\n\n`;
+  let creditDebt = 0;
+
+  if (!creditCards.length) {
+    return `${text}_Nenhum cartão de crédito conectado._\n\n_Para saldo de contas, diga "saldo" ou /saldo._`;
+  }
+
+  const creds = resolvePluggyCredentials(profile);
+  if (!creds) {
+    return `${text}_Credenciais Pluggy indisponíveis._`;
+  }
+  const client = { clientId: creds.clientId, clientSecret: creds.clientSecret };
+
+  for (const acc of creditCards) {
+    const [bills, txs] = await Promise.all([
+      fetchPluggyBillsForAccount(client, acc.id),
+      fetchAllPluggyTransactionsForAccount(client, acc.id),
+    ]);
+    const summary = summarizeCardOpenBill(acc, txs, bills);
+    creditDebt += summary.openTotal;
+
+    const last4 = acc.number ? ` • final ${String(acc.number).slice(-4)}` : '';
+    const due = summary.openDueDate
+      ? `\n  Vencimento: ${new Date(summary.openDueDate).toLocaleDateString('pt-BR')}`
+      : '';
+    const limit = summary.creditLimit != null
+      ? `\n  Limite total: ${formatMoney(summary.creditLimit)}`
+      : '';
+    const available = summary.availableLimit != null
+      ? `\n  Limite disponível: ${formatMoney(summary.availableLimit)}`
+      : '';
+    const lastPaid = summary.lastPaidTitle
+      ? `\n  Última paga: ${summary.lastPaidTitle} (${formatMoney(summary.lastPaidTotal || 0)})`
+      : '';
+
+    text += `• *${acc.name}*${last4}\n`;
+    text += `  ${summary.openTitle} (em aberto): *${formatMoney(summary.openTotal)}*${due}`;
+    text += `\n  ${summary.openItemCount} lançamentos${limit}${available}${lastPaid}\n\n`;
+  }
+
+  text += `🧾 *Total em faturas abertas:* ${formatMoney(creditDebt)}`;
+  text += `\n\n_Valor = saldo devedor atual do cartão (ciclo aberto). Fatura fechada não entra aqui._`;
+  text += `\n_Para saldo de contas, diga "saldo" ou /saldo._`;
   return text;
 }
 
@@ -414,7 +597,7 @@ async function buildTransactionsText(profile: TelegramProfile, supabase: ReturnT
     for (const acc of accounts.slice(0, 3)) {
       try {
         const d = await pluggyJson(client, '/v2/transactions', {
-          params: { accountId: acc.id, pageSize: '5' },
+          params: { accountId: acc.id },
         }) as { results?: Array<{ date: string; description: string; amount: number; category?: string }> };
         for (const t of d.results || []) {
           const amount = Number(t.amount);
@@ -483,7 +666,7 @@ async function handleTelegramWebhook(payload: unknown): Promise<void> {
     if (error || !linkResult?.success) {
       await sendTelegramMessage(chatId, `❌ *Falha ao vincular:* ${linkResult?.message || error?.message || 'Token inválido'}`);
     } else {
-      await sendTelegramMessage(chatId, `🎉 *Olá, ${linkResult.display_name}!*\n\nConta vinculada. Pergunte: "Qual meu saldo?"`);
+      await sendTelegramMessage(chatId, `🎉 *Olá, ${linkResult.display_name}!*\n\nConta vinculada. Experimente:\n• /saldo — contas\n• /faturas — cartões`);
     }
     return;
   }
@@ -497,14 +680,19 @@ async function handleTelegramWebhook(payload: unknown): Promise<void> {
   console.log(`[telegram] chat=${chatId} user=${profile.id} name=${profile.display_name} items=${asItemIdList(profile.pluggy_item_ids).length}`);
 
   let parsed: { intent: string; data?: Record<string, unknown>; message?: string } = { intent: 'UNKNOWN' };
-  const lower = text.toLowerCase();
-  if (lower === '/saldo' || lower === 'saldo') parsed = { intent: 'GET_BALANCE' };
-  else if (lower === '/ultimos' || lower === 'extrato') parsed = { intent: 'GET_TRANSACTIONS' };
+  const local = parseIntentLocally(text);
+  if (local) parsed = local;
   else parsed = await parseIntentWithGemini(text);
 
   if (parsed.intent === 'GET_BALANCE') {
-    await sendTelegramMessage(chatId, '🔍 _Buscando seus saldos..._');
-    await sendTelegramMessage(chatId, await buildBalanceText(profile, supabase));
+    await sendTelegramMessage(chatId, '🔍 _Buscando saldo das contas..._');
+    await sendTelegramMessage(chatId, await buildBankBalanceText(profile, supabase));
+    return;
+  }
+
+  if (parsed.intent === 'GET_CREDIT_BILLS') {
+    await sendTelegramMessage(chatId, '🔍 _Buscando faturas dos cartões..._');
+    await sendTelegramMessage(chatId, await buildCreditBillsText(profile));
     return;
   }
 
@@ -544,7 +732,8 @@ async function handleTelegramWebhook(payload: unknown): Promise<void> {
 
   await sendTelegramMessage(
     chatId,
-    parsed.message || 'Olá! Pergunte seu saldo ("qual meu saldo?") ou registre um gasto ("gastei 50 no mercado").'
+    parsed.message ||
+      'Olá! Posso ajudar com:\n• *Saldo das contas:* "qual meu saldo?" ou /saldo\n• *Faturas do cartão:* "minhas faturas" ou /faturas\n• *Registrar gasto:* "gastei 50 no mercado"'
   );
 }
 

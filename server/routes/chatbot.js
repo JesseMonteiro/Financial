@@ -3,6 +3,7 @@ import { checkAuth } from '../middleware/auth.js';
 import { getSupabaseClient, getServiceRoleClient } from '../services/supabaseClient.js';
 import { createPluggyClient } from '../services/pluggyClient.js';
 import { parseNaturalLanguageCommand } from '../services/geminiService.js';
+import { summarizeCardOpenBill } from '../../src/utils/creditBillPeriod.js';
 import axios from 'axios';
 
 const router = Router();
@@ -123,9 +124,28 @@ router.post('/telegram/webhook', async (req, res) => {
     let parsed = { intent: 'UNKNOWN' };
 
     // Atalhos rápidos sem IA
-    if (text.toLowerCase() === '/saldo' || text.toLowerCase() === 'saldo') {
+    const normalized = text.toLowerCase().normalize('NFD').replace(/\p{M}/gu, '');
+    if (
+      normalized === '/faturas' ||
+      normalized === '/fatura' ||
+      normalized === '/cartoes' ||
+      normalized === 'faturas' ||
+      normalized === 'fatura' ||
+      /\b(fatura|faturas|cartao(es)? de credito|limite do cartao|divida do cartao)\b/.test(normalized)
+    ) {
+      parsed = { intent: 'GET_CREDIT_BILLS' };
+    } else if (
+      normalized === '/saldo' ||
+      normalized === 'saldo' ||
+      normalized === '/contas' ||
+      /\b(saldo|quanto tenho|meu patrimonio|meus saldos|conta corrente|poupanca|saldo das contas)\b/.test(normalized)
+    ) {
       parsed = { intent: 'GET_BALANCE' };
-    } else if (text.toLowerCase() === '/ultimos' || text.toLowerCase() === 'extrato') {
+    } else if (
+      normalized === '/ultimos' ||
+      normalized === 'extrato' ||
+      /\b(extrato|ultimas? (compras|transacoes|lancamentos)|ultimos gastos)\b/.test(normalized)
+    ) {
       parsed = { intent: 'GET_TRANSACTIONS' };
     } else {
       // Processar linguagem natural via Gemini
@@ -133,16 +153,23 @@ router.post('/telegram/webhook', async (req, res) => {
         parsed = await parseNaturalLanguageCommand(text);
       } catch (geminiErr) {
         console.error('[Chatbot] Erro no Gemini:', geminiErr.message);
-        parsed = { intent: 'UNKNOWN', message: 'Desculpe, tive um problema de comunicação com minha inteligência artificial.' };
+        parsed = { intent: 'UNKNOWN', message: 'Desculpe, tive um problema de comunicação com minha inteligência artificial. Tente /saldo, /faturas ou /ultimos.' };
       }
     }
 
     // 2.4 Tratamento da Intenção
     switch (parsed.intent) {
       case 'GET_BALANCE': {
-        await sendTelegramMessage(chatId, '🔍 _Buscando seus saldos nas contas conectadas..._');
+        await sendTelegramMessage(chatId, '🔍 _Buscando saldo das contas..._');
         const balanceText = await fetchUserBalancesText(profile, supabase);
         await sendTelegramMessage(chatId, balanceText);
+        break;
+      }
+
+      case 'GET_CREDIT_BILLS': {
+        await sendTelegramMessage(chatId, '🔍 _Buscando faturas dos cartões..._');
+        const billsText = await fetchUserCreditBillsText(profile);
+        await sendTelegramMessage(chatId, billsText);
         break;
       }
 
@@ -188,7 +215,7 @@ router.post('/telegram/webhook', async (req, res) => {
 
       case 'UNKNOWN':
       default: {
-        const helpMessage = parsed.message || `Olá! Sou o assistente do FinanceHub.\n\nComo posso ajudar?\n- Pergunte seu saldo: *"Qual meu saldo?"*\n- Adicione despesas: *"Gastei 55 reais no supermercado hoje"*`;
+        const helpMessage = parsed.message || `Olá! Sou o assistente do FinanceHub.\n\nComo posso ajudar?\n- *Saldo das contas:* "Qual meu saldo?" ou /saldo\n- *Faturas do cartão:* "Minhas faturas" ou /faturas\n- *Despesas:* "Gastei 55 reais no supermercado hoje"`;
         await sendTelegramMessage(chatId, helpMessage);
         break;
       }
@@ -219,12 +246,46 @@ async function fetchPluggyAccounts(profile) {
   return (await Promise.all(promises)).flat();
 }
 
-// Helper para compilar saldos do Pluggy + Manual
+async function fetchAllPluggyTransactions(pluggyClient, accountId) {
+  let results = [];
+  let next = null;
+  let guard = 0;
+  // Cursor pagination without pageSize (Pluggy v2)
+  do {
+    try {
+      const res = next
+        ? await axios.get(next.startsWith('http') ? next : `https://api.pluggy.ai${next}`, {
+            headers: { 'X-API-KEY': pluggyClient.defaults.headers['X-API-KEY'] },
+          })
+        : await pluggyClient.get('/v2/transactions', { params: { accountId } });
+      const data = res.data || {};
+      results = results.concat(data.results || []);
+      next = data.next || null;
+    } catch (e) {
+      console.warn('[Chatbot] tx fetch fail', accountId, e.response?.data || e.message);
+      break;
+    }
+    guard++;
+  } while (next && guard < 30);
+  return results;
+}
+
+async function fetchPluggyBills(pluggyClient, accountId) {
+  try {
+    const res = await pluggyClient.get('/bills', { params: { accountId } });
+    return res.data.results || res.data || [];
+  } catch (e) {
+    console.warn('[Chatbot] bills fail', accountId, e.response?.data || e.message);
+    return [];
+  }
+}
+
+// Helper: só contas bancárias (BANK) + carteira manual
 async function fetchUserBalancesText(profile, supabase) {
   try {
-    const bankAccounts = await fetchPluggyAccounts(profile);
+    const accounts = await fetchPluggyAccounts(profile);
+    const bankAccounts = accounts.filter((a) => a.type === 'BANK');
 
-    // Busca transações manuais no Supabase para calcular saldo manual (somente deste user_id)
     let manualBalance = 0;
     const { data: manualTxs } = await supabase
       .from('manual_transactions')
@@ -242,26 +303,88 @@ async function fetchUserBalancesText(profile, supabase) {
       });
     }
 
-    let text = `💰 *Saldos de ${profile.display_name}:*\n\n`;
+    const money = (v) => `R$ ${Number(v).toFixed(2)}`;
+    let text = `🏦 *Saldos das contas — ${profile.display_name}*\n\n`;
     let bankTotal = 0;
 
     if (bankAccounts.length > 0) {
       bankAccounts.forEach(acc => {
-        text += `🏦 *${acc.name}*: R$ ${Number(acc.balance).toFixed(2)}\n`;
-        bankTotal += Number(acc.balance);
+        const bal = Number(acc.balance || 0);
+        bankTotal += bal;
+        text += `• *${acc.name}*: ${money(bal)}\n`;
       });
-      text += `\n💵 *Total Bancos:* R$ ${bankTotal.toFixed(2)}\n`;
+      text += `\n💵 *Total em contas:* ${money(bankTotal)}`;
     } else {
-      text += `🏦 *Contas de Banco:* Nenhuma conectada.\n`;
+      text += `_Nenhuma conta bancária conectada._`;
     }
 
-    text += `📦 *Carteira Manual:* R$ ${manualBalance.toFixed(2)}\n`;
-    text += `\n📊 *Saldo Geral:* R$ ${(bankTotal + manualBalance).toFixed(2)}`;
+    if (manualBalance !== 0) {
+      text += `\n📦 *Carteira manual:* ${money(manualBalance)}`;
+      text += `\n📊 *Total disponível:* ${money(bankTotal + manualBalance)}`;
+    }
 
+    text += `\n\n_Para faturas de cartão, diga "faturas" ou /faturas._`;
     return text;
   } catch (err) {
     console.error('[Chatbot Balance Text] Erro:', err);
     return "❌ Erro ao compilar informações de saldo.";
+  }
+}
+
+// Helper: fatura aberta (ciclo atual) por cartão — mesma regra do app
+async function fetchUserCreditBillsText(profile) {
+  try {
+    const accounts = await fetchPluggyAccounts(profile);
+    const creditCards = accounts.filter((a) => a.type === 'CREDIT');
+    const money = (v) => `R$ ${Number(v).toFixed(2)}`;
+
+    let text = `💳 *Faturas em aberto — ${profile.display_name}*\n\n`;
+    let creditDebt = 0;
+
+    if (!creditCards.length) {
+      return `${text}_Nenhum cartão de crédito conectado._\n\n_Para saldo de contas, diga "saldo" ou /saldo._`;
+    }
+
+    const creds = resolvePluggyCredentials(profile);
+    if (!creds) {
+      return `${text}_Credenciais Pluggy indisponíveis._`;
+    }
+    const pluggyClient = await createPluggyClient(creds.clientId, creds.clientSecret);
+
+    for (const acc of creditCards) {
+      const [bills, txs] = await Promise.all([
+        fetchPluggyBills(pluggyClient, acc.id),
+        fetchAllPluggyTransactions(pluggyClient, acc.id),
+      ]);
+      const summary = summarizeCardOpenBill(acc, txs, bills);
+      creditDebt += summary.openTotal;
+
+      const last4 = acc.number ? ` • final ${String(acc.number).slice(-4)}` : '';
+      const due = summary.openDueDate
+        ? `\n  Vencimento: ${new Date(summary.openDueDate).toLocaleDateString('pt-BR')}`
+        : '';
+      const limit = summary.creditLimit != null
+        ? `\n  Limite total: ${money(summary.creditLimit)}`
+        : '';
+      const available = summary.availableLimit != null
+        ? `\n  Limite disponível: ${money(summary.availableLimit)}`
+        : '';
+      const lastPaid = summary.lastPaidTitle
+        ? `\n  Última paga: ${summary.lastPaidTitle} (${money(summary.lastPaidTotal || 0)})`
+        : '';
+
+      text += `• *${acc.name}*${last4}\n`;
+      text += `  ${summary.openTitle} (em aberto): *${money(summary.openTotal)}*${due}`;
+      text += `\n  ${summary.openItemCount} lançamentos${limit}${available}${lastPaid}\n\n`;
+    }
+
+    text += `🧾 *Total em faturas abertas:* ${money(creditDebt)}`;
+    text += `\n\n_Valor = saldo devedor atual do cartão (ciclo aberto). Fatura fechada não entra aqui._`;
+    text += `\n_Para saldo de contas, diga "saldo" ou /saldo._`;
+    return text;
+  } catch (err) {
+    console.error('[Chatbot Credit Bills] Erro:', err);
+    return "❌ Erro ao buscar faturas dos cartões.";
   }
 }
 

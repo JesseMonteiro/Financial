@@ -19,7 +19,7 @@ Tipos de transação suportados: DEBIT (para gastos/despesas), CREDIT (para ganh
 
 Você deve retornar APENAS um JSON no seguinte formato:
 {
-  "intent": "ADD_TRANSACTION" | "GET_BALANCE" | "GET_TRANSACTIONS" | "UNKNOWN",
+  "intent": "ADD_TRANSACTION" | "GET_BALANCE" | "GET_CREDIT_BILLS" | "GET_TRANSACTIONS" | "UNKNOWN",
   "data": {
     "amount": number (obrigatório para ADD_TRANSACTION),
     "description": string (obrigatório para ADD_TRANSACTION),
@@ -30,6 +30,12 @@ Você deve retornar APENAS um JSON no seguinte formato:
   "message": string (mensagem educada explicando o erro ou ajudando se a intenção for UNKNOWN)
 }
 
+Regras de intent (importante):
+- GET_BALANCE: saldo de conta corrente, poupança ou banco. Exemplos: "qual meu saldo?", "saldo das contas", "quanto tenho na conta". NÃO use para fatura ou cartão de crédito.
+- GET_CREDIT_BILLS: fatura, dívida ou limite de cartão de crédito. Exemplos: "minhas faturas", "fatura do cartão", "quanto está a fatura", "limite do cartão".
+- GET_TRANSACTIONS: extrato ou últimos lançamentos.
+- ADD_TRANSACTION: registrar gasto ou receita.
+
 Exemplos de entrada e saída:
 - "Gastei 55 reais no mercado hoje" ->
   {"intent": "ADD_TRANSACTION", "data": {"amount": 55.0, "description": "mercado", "category": "Alimentação", "type": "DEBIT", "date_offset_days": 0}}
@@ -37,10 +43,16 @@ Exemplos de entrada e saída:
   {"intent": "ADD_TRANSACTION", "data": {"amount": 1500.0, "description": "salário", "category": "Outros", "type": "CREDIT", "date_offset_days": -1}}
 - "Quanto eu tenho de saldo?" ->
   {"intent": "GET_BALANCE", "data": {}}
+- "Saldo das contas" ->
+  {"intent": "GET_BALANCE", "data": {}}
+- "Minhas faturas" ->
+  {"intent": "GET_CREDIT_BILLS", "data": {}}
+- "Quanto está a fatura do cartão?" ->
+  {"intent": "GET_CREDIT_BILLS", "data": {}}
 - "últimas compras" ->
   {"intent": "GET_TRANSACTIONS", "data": {}}
 - "olá, tudo bem?" ->
-  {"intent": "UNKNOWN", "message": "Olá! Eu sou o assistente do FinanceHub. Posso te ajudar a cadastrar despesas (ex: 'gastei 50 no mercado') ou ver seu saldo (ex: 'qual meu saldo?'). Como posso ajudar?"}
+  {"intent": "UNKNOWN", "message": "Olá! Eu sou o assistente do FinanceHub. Posso te ajudar com saldo das contas (/saldo), faturas do cartão (/faturas) ou cadastrar despesas (ex: 'gastei 50 no mercado'). Como posso ajudar?"}
 `;
 
 /**
@@ -55,7 +67,7 @@ export async function parseNaturalLanguageCommand(messageText) {
 
   try {
     const model = genAI.getGenerativeModel({
-      model: 'gemini-1.5-flash',
+      model: 'gemini-2.5-flash',
       systemInstruction: SYSTEM_INSTRUCTION
     });
 
