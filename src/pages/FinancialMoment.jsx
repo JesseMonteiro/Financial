@@ -268,6 +268,13 @@ export function FinancialMoment() {
     );
     const manualExpensesTotal = activeManual.reduce((s, t) => s + Math.abs(t.amount), 0);
 
+    // Contas a pagar: faturas e manuais ainda não marcadas/liquidadas no mês
+    const unpaidBills = activeBills.filter((b) => !b.isPaid);
+    const unpaidManual = activeManual.filter((t) => !t.isPaid);
+    const unpaidCreditTotal = unpaidBills.reduce((s, b) => s + (Number(b.amount) || 0), 0);
+    const unpaidManualTotal = unpaidManual.reduce((s, t) => s + Math.abs(t.amount), 0);
+    const accountsPayableTotal = unpaidCreditTotal + unpaidManualTotal;
+
     const expensesTotal = creditCardsTotal + manualExpensesTotal;
     const netBalance = entriesTotal - expensesTotal;
 
@@ -280,6 +287,11 @@ export function FinancialMoment() {
       creditCardsTotal,
       activeManual,
       manualExpensesTotal,
+      unpaidBills,
+      unpaidManual,
+      unpaidCreditTotal,
+      unpaidManualTotal,
+      accountsPayableTotal,
       expensesTotal,
       netBalance
     };
@@ -365,7 +377,7 @@ export function FinancialMoment() {
       {/* Month Seletor Tabs */}
       {isPageLoading ? (
         <PageLoadingSkeleton
-          kpiCount={3}
+          kpiCount={4}
           showTimeline
           showChart={false}
           showList
@@ -445,7 +457,7 @@ export function FinancialMoment() {
         <>
           {/* Summary KPIs */}
           <div className="dashboard-grid">
-            <Card className="col-4" style={{ borderLeft: '4px solid var(--success)' }}>
+            <Card className="col-3" style={{ borderLeft: '4px solid var(--success)' }}>
               <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)', fontWeight: 600 }}>
                 ENTRADAS DO MÊS
               </span>
@@ -457,7 +469,7 @@ export function FinancialMoment() {
               </span>
             </Card>
 
-            <Card className="col-4" style={{ borderLeft: '4px solid var(--danger)' }}>
+            <Card className="col-3" style={{ borderLeft: '4px solid var(--danger)' }}>
               <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)', fontWeight: 600 }}>
                 SAÍDAS DO MÊS
               </span>
@@ -469,7 +481,36 @@ export function FinancialMoment() {
               </span>
             </Card>
 
-            <Card className="col-4" style={{ borderLeft: `4px solid ${net >= 0 ? 'var(--success)' : 'var(--danger)'}` }}>
+            <Card
+              className="col-3"
+              style={{
+                borderLeft: `4px solid ${
+                  activeMonthData.accountsPayableTotal > 0 ? 'var(--warning)' : 'var(--success)'
+                }`,
+              }}
+            >
+              <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)', fontWeight: 600 }}>
+                CONTAS A PAGAR
+              </span>
+              <h2
+                style={{
+                  fontSize: 'var(--font-size-2xl)',
+                  fontWeight: 700,
+                  margin: '0.4rem 0',
+                  color:
+                    activeMonthData.accountsPayableTotal > 0 ? 'var(--warning)' : 'var(--success)',
+                }}
+              >
+                {formatCurrency(activeMonthData.accountsPayableTotal)}
+              </h2>
+              <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>
+                {activeMonthData.accountsPayableTotal > 0
+                  ? `${activeMonthData.unpaidBills.length} fatura(s) e ${activeMonthData.unpaidManual.length} manual(is) pendentes`
+                  : 'Nada pendente neste mês'}
+              </span>
+            </Card>
+
+            <Card className="col-3" style={{ borderLeft: `4px solid ${net >= 0 ? 'var(--success)' : 'var(--danger)'}` }}>
               <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)', fontWeight: 600 }}>
                 SALDO RESIDUAL
               </span>
