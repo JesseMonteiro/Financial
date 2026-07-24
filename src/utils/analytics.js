@@ -80,12 +80,31 @@ function txDay(tx) {
 }
 
 /**
+ * Join cleaned + raw description and merchant — UI may show `description`
+ * while filters previously only looked at `descriptionRaw` (missed PIX ENVIADO).
+ */
+function txSearchText(tx) {
+  return normalizeDesc(
+    [
+      tx?.description,
+      tx?.descriptionRaw,
+      tx?.merchant?.name,
+      tx?.merchant?.businessName,
+      tx?.paymentData?.receiver?.name,
+      tx?.paymentData?.payer?.name,
+    ]
+      .filter(Boolean)
+      .join(' | ')
+  );
+}
+
+/**
  * True credit-card statement payments (avoid double-counting faturas).
  * Intentionally narrower than isBillPayment — do NOT treat every "PAGAMENTO *"
  * as fatura (loan/financing auto-debits often start with PAGAMENTO).
  */
 function isCreditCardFaturaPayment(tx) {
-  const d = normalizeDesc(tx?.descriptionRaw || tx?.description);
+  const d = txSearchText(tx);
   return (
     d.includes('PAGAMENTO DE FATURA') ||
     d.includes('PAGAMENTO RECEBIDO') ||
@@ -109,20 +128,28 @@ function isPersonOrRailTransfer(tx) {
     return true;
   }
 
-  const d = normalizeDesc(tx?.descriptionRaw || tx?.description);
+  const op = String(tx?.operationType || '').toUpperCase();
+  if (
+    op === 'PIX' ||
+    op === 'TED' ||
+    op === 'DOC' ||
+    op === 'TRANSFERENCIA_MESMA_INSTITUICAO' ||
+    op.includes('PIX') ||
+    op.includes('TRANSFERENCIA')
+  ) {
+    return true;
+  }
+
+  const d = txSearchText(tx);
   if (!d) return false;
 
+  // Any mention of PIX in the visible/raw text = person transfer, not debito auto
+  if (/\bPIX\b/.test(d)) return true;
+
   return (
-    d.includes('PIX ENVIADO') ||
-    d.includes('PIX RECEBIDO') ||
-    d.includes('PIX TRANSF') ||
-    d.includes('PIX TRANSFER') ||
-    d.includes('ENVIO PIX') ||
-    d.includes('TRANSFERENCIA PIX') ||
-    /^PIX\b/.test(d) ||
+    d.includes('TED ENVIAD') ||
     /^TED\b/.test(d) ||
     /^DOC\b/.test(d) ||
-    d.includes('TED ENVIAD') ||
     d.includes('TRANSFERENCIA ENVIADA') ||
     d.includes('TRANSF ENTRE CONTAS') ||
     d.includes('TRANSFERENCIA ENTRE CONTAS')
@@ -134,8 +161,10 @@ function isPersonOrRailTransfer(tx) {
  * Avoids broad tokens like AGENDADO/PROV that catch PIX and investments.
  */
 function matchesAutomaticDebitDescription(tx) {
-  const d = normalizeDesc(tx?.descriptionRaw || tx?.description);
+  const d = txSearchText(tx);
   if (!d) return false;
+  // Never classify PIX text as automatic debit even if other tokens match
+  if (/\bPIX\b/.test(d)) return false;
   return (
     d.includes('DEBITO AUT') ||
     d.includes('DEB AUT') ||
@@ -161,20 +190,18 @@ function matchesAutomaticDebitDescription(tx) {
 export function isAutomaticDebitTx(tx, { bankAccountIds } = {}) {
   if (!tx || tx.isManual) return false;
   if (!isBankOutflow(tx)) return false;
-  if (isCreditCardFaturaPayment(tx)) return false;
+  // Transfers first — before operationType shortcuts
   if (isPersonOrRailTransfer(tx)) return false;
+  if (isCreditCardFaturaPayment(tx)) return false;
 
   if (bankAccountIds) {
     const ids = bankAccountIds instanceof Set ? bankAccountIds : new Set(bankAccountIds);
     if (!ids.has(tx.accountId)) return false;
   }
 
-  if (
-    tx.operationType === 'CONVENIO_ARRECADACAO' ||
-    tx.operationType === 'OPERACAO_CREDITO'
-  ) {
-    return true;
-  }
+  // Only convênio is safe as operationType alone; OPERACAO_CREDITO is too broad
+  // (can appear on unrelated outflows) — require description for financing.
+  if (tx.operationType === 'CONVENIO_ARRECADACAO') return true;
 
   return matchesAutomaticDebitDescription(tx);
 }
