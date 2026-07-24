@@ -680,7 +680,7 @@ export function FinancialMoment() {
               {/* Automatic Debits from connected bank accounts */}
               <Card
                 title="Débito Automático"
-                subtitle="Despesas agendadas e débitos automáticos das contas bancárias conectadas neste mês (inclui financiamentos futuros)."
+                subtitle="Convênios e débitos automáticos das contas bancárias neste mês (energia, celular, financiamentos). PIX e transferências não entram."
               >
                 {activeMonthData.activeAutomaticDebits.length === 0 ? (
                   <p style={{ color: 'var(--text-muted)', fontSize: 'var(--font-size-xs)', textAlign: 'center', padding: '1rem' }}>

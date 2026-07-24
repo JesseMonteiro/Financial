@@ -102,6 +102,37 @@ function isBankOutflow(tx) {
   return Number(tx.amount) < 0 || tx.type === 'DEBIT';
 }
 
+/** PIX / TED / DOC / transfers — never automatic debits. */
+function isPersonOrRailTransfer(tx) {
+  const method = String(tx?.paymentData?.paymentMethod || '').toUpperCase();
+  if (method === 'PIX' || method === 'TED' || method === 'DOC' || method === 'TEV') {
+    return true;
+  }
+
+  const d = normalizeDesc(tx?.descriptionRaw || tx?.description);
+  if (!d) return false;
+
+  return (
+    d.includes('PIX ENVIADO') ||
+    d.includes('PIX RECEBIDO') ||
+    d.includes('PIX TRANSF') ||
+    d.includes('PIX TRANSFER') ||
+    d.includes('ENVIO PIX') ||
+    d.includes('TRANSFERENCIA PIX') ||
+    /^PIX\b/.test(d) ||
+    /^TED\b/.test(d) ||
+    /^DOC\b/.test(d) ||
+    d.includes('TED ENVIAD') ||
+    d.includes('TRANSFERENCIA ENVIADA') ||
+    d.includes('TRANSF ENTRE CONTAS') ||
+    d.includes('TRANSFERENCIA ENTRE CONTAS')
+  );
+}
+
+/**
+ * Classic automatic-debit / financing descriptions from Brazilian banks.
+ * Avoids broad tokens like AGENDADO/PROV that catch PIX and investments.
+ */
 function matchesAutomaticDebitDescription(tx) {
   const d = normalizeDesc(tx?.descriptionRaw || tx?.description);
   if (!d) return false;
@@ -112,39 +143,31 @@ function matchesAutomaticDebitDescription(tx) {
     d.includes('DEBITO AUTOMATICO') ||
     d.includes('DEBITO AUTOM') ||
     d.includes('DEBITO EM CONTA') ||
-    d.includes('AGENDADO') ||
-    d.includes('PROGRAMADO') ||
+    /\bDA\b.*\b(CLARO|VIVO|TIM|OI|NET|SKY|ENERGIA|SABESP|CEMIG|LIGHT|ENEL)\b/.test(d) ||
     d.includes('SOCIEDADE DE CREDITO') ||
     d.includes('FINANCIAMENTO E INVESTIMENTO') ||
     d.includes('CREDITO, FINANCIAMENTO') ||
-    /\bPROV\b/.test(d)
+    d.includes('CREDITO FINANCIAMENTO')
   );
 }
 
 /**
- * True when a bank-account expense is an automatic/scheduled debit.
- * Includes PENDING, future-dated outflows (agendados), and classic debito-aut patterns.
- * Does not use isBillPayment — that regex drops legitimate "PAGAMENTO SANTANDER…" loans.
+ * True when a bank-account expense is a real automatic debit / financing charge.
+ * Does NOT treat every PENDING or future-dated PIX/TED as debito automático.
  *
  * @param {object} tx
- * @param {{ bankAccountIds?: Set<string>|string[], now?: Date }} [opts]
+ * @param {{ bankAccountIds?: Set<string>|string[] }} [opts]
  */
-export function isAutomaticDebitTx(tx, { bankAccountIds, now = new Date() } = {}) {
+export function isAutomaticDebitTx(tx, { bankAccountIds } = {}) {
   if (!tx || tx.isManual) return false;
   if (!isBankOutflow(tx)) return false;
   if (isCreditCardFaturaPayment(tx)) return false;
+  if (isPersonOrRailTransfer(tx)) return false;
 
   if (bankAccountIds) {
     const ids = bankAccountIds instanceof Set ? bankAccountIds : new Set(bankAccountIds);
     if (!ids.has(tx.accountId)) return false;
   }
-
-  if (tx.status === 'PENDING') return true;
-
-  const day = txDay(tx);
-  const today = now.toISOString().slice(0, 10);
-  // Future-dated bank outflow = scheduled commitment (ex.: financiamento dia 29)
-  if (day && day >= today) return true;
 
   if (
     tx.operationType === 'CONVENIO_ARRECADACAO' ||
@@ -169,7 +192,7 @@ export function isAutomaticDebitPending(tx, now = new Date()) {
  * Automatic debits from connected bank accounts for a calendar month (YYYY-MM).
  * @param {object[]} transactions
  * @param {string} ym
- * @param {{ bankAccountIds?: Set<string>|string[], now?: Date }} [opts]
+ * @param {{ bankAccountIds?: Set<string>|string[] }} [opts]
  */
 export function automaticDebitsForMonth(transactions = [], ym, opts = {}) {
   if (!ym) return [];
