@@ -420,6 +420,8 @@ export function buildCreditCardBills({
   ];
   const openByAccount = {};
   const latestOfficialByAccount = {};
+  /** ISO date (YYYY-MM-DD) of latest official bill close (or due) per account */
+  const latestCycleEndByAccount = {};
   for (const accountId of accountIds) {
     const offset = offsetForAccount(accountId, transactions, officialBills, offsetCache);
     const acctBills = officialBills.filter((b) => b.accountId === accountId);
@@ -437,12 +439,17 @@ export function buildCreditCardBills({
     });
     openKey = ensureOpenNotSettled(openKey, acctBills, settleOpts);
     openByAccount[accountId] = openKey;
-    latestOfficialByAccount[accountId] =
-      acctBills
-        .map((b) => ymFromIso(b.dueDate))
-        .filter(Boolean)
-        .sort()
-        .at(-1) || null;
+    const latestBill = acctBills
+      .filter((b) => b?.dueDate)
+      .sort((a, b) => String(a.dueDate).localeCompare(String(b.dueDate)))
+      .at(-1);
+    latestOfficialByAccount[accountId] = latestBill
+      ? ymFromIso(latestBill.dueDate)
+      : null;
+    const cycleEnd = latestBill?.billClosingDate || latestBill?.dueDate;
+    latestCycleEndByAccount[accountId] = cycleEnd
+      ? String(cycleEnd).slice(0, 10)
+      : null;
   }
   const openCandidates = Object.values(openByAccount);
   let openDueKey = (openCandidates.length
@@ -467,8 +474,11 @@ export function buildCreditCardBills({
     let key = getDueMonthKey(t, billMap, offset);
     const openForCard = openByAccount[t.accountId] || openDueKey;
     const latestOfficial = latestOfficialByAccount[t.accountId];
-    // PENDING without billId that still map into a closed official cycle
-    // belong to the open bill (wrong/stale billForecastDate from Pluggy)
+    // PENDING without billId that map into a closed official cycle may be:
+    // (a) a NEW purchase with stale billForecastDate → remap to open, OR
+    // (b) historical charges some connectors never mark POSTED (e.g. Carrefour)
+    //     → must stay in history, otherwise the open bill sums the whole ledger.
+    // Only remap when the purchase date is after the last closed cycle.
     if (
       t.status === 'PENDING' &&
       !isBillPayment(t) &&
@@ -479,7 +489,11 @@ export function buildCreditCardBills({
       key <= latestOfficial &&
       openForCard
     ) {
-      return openForCard;
+      const cycleEnd = latestCycleEndByAccount[t.accountId];
+      const txDate = t.date ? String(t.date).slice(0, 10) : null;
+      if (txDate && cycleEnd && txDate > cycleEnd) {
+        return openForCard;
+      }
     }
     return key;
   };
