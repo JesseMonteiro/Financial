@@ -124,8 +124,9 @@ export function inferDueDateForMonth(dueYm, officialBills = []) {
 
 /**
  * Fingerprint for an installment series (dedupe real vs projected).
- * Amount is rounded to cents so Pluggy ±R$ 0.01 drift still matches, while
- * distinct purchases (R$ 5,70 vs R$ 40,56) stay separate.
+ * Amount is rounded to R$ 0.10 so Pluggy cent-drift (18,32 vs 18,33 across
+ * parcels of the same purchase) still matches, while distinct purchases
+ * (R$ 5,70 vs R$ 40,56) stay separate.
  * accountId is included so consolidated multi-card views do not merge series.
  */
 export function installmentSeriesKey(tx) {
@@ -134,7 +135,8 @@ export function installmentSeriesKey(tx) {
   if (meta.purchaseId) return `${acct}|pid:${meta.purchaseId}`;
   const total = meta.totalInstallments || tx?.totalInstallmentsCount;
   if (!total) return null;
-  const amt = Math.round(Math.abs(Number(tx?.amount) || 0) * 100);
+  // Tenths of a real — absorbs ±R$ 0.05 drift without merging unrelated amounts
+  const amt = Math.round(Math.abs(Number(tx?.amount) || 0) * 10);
   return `${acct}|${normalizeInstallmentDesc(tx.description)}|${total}|${amt}`;
 }
 
@@ -202,10 +204,12 @@ export function sumCycleCharges(items = [], { includeProjected = false, chargeSu
 /**
  * Open-bill total for ONE due cycle.
  * Never use account.balance when it equals total outstanding (limit − available).
+ * Exclude projected parcels — they belong on future due months, not the open total
+ * (including them double-counts when amount-drift splits a series).
  */
 export function resolveOpenBillTotal(account, cycleItems = [], profile) {
   const cycleSum = sumCycleCharges(cycleItems, {
-    includeProjected: true,
+    includeProjected: false,
     chargeSumMode: profile?.chargeSumMode || 'signed_net',
   });
   const outstanding = balanceLooksLikeTotalOutstanding(account);
@@ -453,6 +457,30 @@ export function resolveOpenDueMonthKey({
     .filter(Boolean)
     .sort();
   if (unpaidOfficial.length) return unpaidOfficial[0];
+
+  // Bradesco/Amazon (and similar): after close, Pluggy keeps the closed cycle as
+  // PENDING without billId (billForecastDate = close month) and already tags new
+  // purchases with the *next* forecast month — before publishing an official bill.
+  // Treat the earliest unbound forecast cluster as Fechada; open = next forecast.
+  const unboundForecastMonths = new Set();
+  for (const t of transactions) {
+    if (t.status !== 'PENDING' || isBillPayment(t)) continue;
+    if (t.creditCardMetadata?.billId || t.billId) continue;
+    const fcRaw = t.creditCardMetadata?.billForecastDate;
+    const fc = ymFromIso(fcRaw) || (fcRaw ? String(fcRaw).slice(0, 7) : null);
+    if (fc) unboundForecastMonths.add(fc);
+  }
+  const fcSorted = [...unboundForecastMonths].sort();
+  if (fcSorted.length >= 2) {
+    const openFromFc = ymAdd(fcSorted[1], forecastToDueOffset);
+    if (
+      openFromFc &&
+      openFromFc !== 'Outros' &&
+      (!latestOfficialDue || openFromFc > latestOfficialDue)
+    ) {
+      return openFromFc;
+    }
+  }
 
   const pendingDueMonths = new Set();
   for (const t of transactions) {

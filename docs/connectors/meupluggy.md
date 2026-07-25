@@ -12,6 +12,7 @@ O sandbox replica fixtures de vários bancos sob o mesmo connector:
 |---------------|---------------|
 | `platinum` (Nubank-like) | offset 0; `balance` = dívida total; `PENDING` com `billForecastDate` no mês de due da aberta |
 | `Mercado Pago` | offset 0 |
+| `AMAZON MASTERCARD PLATINUM` (Bradesco-like) | offset 1 (`forecast` = mês de fechamento); após fechar, ciclo fica `PENDING` sem `billId` e compras novas já vêm com o próximo forecast — ver regra 10 do README |
 | Outros cartões sandbox | Inferir offset pelos dados |
 
 ## Regras de código
