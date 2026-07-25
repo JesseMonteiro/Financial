@@ -35,11 +35,34 @@ function getInitials(name = '') {
     .join('');
 }
 
+function dueKey(installment) {
+  return String(installment?.dueDate || '').slice(0, 10);
+}
+
 function nextPendingDue(installmentHistory = []) {
   const pending = installmentHistory
     .filter(i => !i.paidAt)
-    .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+    .sort((a, b) => dueKey(a).localeCompare(dueKey(b)));
   return pending[0]?.dueDate || null;
+}
+
+/**
+ * Sort key that puts the closest pending due first and fully settled entries
+ * at the end (ordered by their last installment).
+ */
+function receivableSortKey(rec) {
+  const pending = nextPendingDue(rec.installmentHistory);
+  if (pending) return `0_${String(pending).slice(0, 10)}`;
+
+  const lastDue = (rec.installmentHistory || [])
+    .map(dueKey)
+    .sort()
+    .pop();
+  return `1_${lastDue || '9999-12-31'}`;
+}
+
+function sortReceivablesByDue(list = []) {
+  return [...list].sort((a, b) => receivableSortKey(a).localeCompare(receivableSortKey(b)));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -610,7 +633,9 @@ function PersonCard({ personName, personColor, receivables, onMarkPaid, onDelete
                 {/* Installments list */}
                 {isExpanded && (
                   <div style={{ borderTop: '1px solid var(--border-color)' }}>
-                    {rec.installmentHistory.map(inst => (
+                    {[...rec.installmentHistory]
+                      .sort((a, b) => dueKey(a).localeCompare(dueKey(b)))
+                      .map(inst => (
                       <div key={inst.installmentNumber} style={{
                         display: 'flex', alignItems: 'center', gap: '0.75rem',
                         padding: '0.65rem 1rem',
@@ -756,7 +781,18 @@ export function Receivables() {
       }
       map[r.personName].receivables.push(r);
     });
-    return Object.values(map);
+
+    const groups = Object.values(map);
+    groups.forEach(g => {
+      g.receivables = sortReceivablesByDue(g.receivables);
+    });
+
+    // People with the closest pending receipt come first
+    return groups.sort((a, b) => {
+      const keyA = a.receivables[0] ? receivableSortKey(a.receivables[0]) : '2';
+      const keyB = b.receivables[0] ? receivableSortKey(b.receivables[0]) : '2';
+      return keyA.localeCompare(keyB) || a.personName.localeCompare(b.personName);
+    });
   }, [receivables]);
 
   // ── Handlers ───────────────────────────────────────────────────────────────

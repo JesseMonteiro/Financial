@@ -185,6 +185,113 @@ export const useTransactionStore = create((set, get) => ({
     }));
   },
 
+  /**
+   * Full update of a manual expense (or series): name, category, amount, date, recurrence.
+   * Rebuilds the series when needed and restores paid flags by calendar day when dates match.
+   * @param {string} id - any installment id in the group (or the single expense id)
+   * @param {{
+   *   description: string,
+   *   amount: number,
+   *   category?: string,
+   *   date: Date|string,
+   *   isRecurring?: boolean,
+   *   isContinuous?: boolean,
+   *   frequency?: string,
+   *   occurrences?: number|string,
+   * }} txData
+   */
+  updateManualExpense: async (id, txData) => {
+    const { transactions } = get();
+    const tx = transactions.find((t) => t.id === id && t.isManual);
+    if (!tx) return;
+
+    const siblings = tx.parentId
+      ? transactions.filter((t) => t.isManual && t.parentId === tx.parentId)
+      : [tx];
+
+    const paidByDay = {};
+    for (const s of siblings) {
+      const day = String(s.date || '').slice(0, 10);
+      if (s.isPaid && day) {
+        paidByDay[day] = { isPaid: true, paidAt: s.paidAt || null };
+      }
+    }
+
+    for (const s of siblings) {
+      await deleteStoredManualTransaction(s.id);
+    }
+
+    const removeIds = new Set(siblings.map((s) => s.id));
+    const removeParentId = tx.parentId || null;
+
+    const isRecurring = Boolean(txData.isRecurring);
+    const isContinuous = isRecurring && Boolean(txData.isContinuous);
+    const occurrences = isContinuous
+      ? 24
+      : isRecurring
+        ? parseInt(txData.occurrences, 10) || 12
+        : 1;
+    const baseDate = new Date(txData.date || new Date());
+    const parentId = crypto.randomUUID();
+    const amount = -Math.abs(parseFloat(txData.amount));
+    const description = String(txData.description || '').trim();
+    const category = txData.category || 'Other';
+    const frequency = txData.frequency || 'monthly';
+
+    const newTxs = [];
+    for (let i = 0; i < occurrences; i++) {
+      const txDate = new Date(baseDate);
+      if (isRecurring) {
+        if (frequency === 'weekly') {
+          txDate.setDate(baseDate.getDate() + i * 7);
+        } else if (frequency === 'yearly') {
+          txDate.setFullYear(baseDate.getFullYear() + i);
+        } else {
+          txDate.setMonth(baseDate.getMonth() + i);
+        }
+      }
+
+      const day = txDate.toISOString().slice(0, 10);
+      const paid = paidByDay[day];
+      let suffix = '';
+      if (isRecurring) {
+        suffix = isContinuous ? ' (Recorrente)' : ` (${i + 1}/${occurrences})`;
+      }
+
+      const newTx = {
+        id: crypto.randomUUID(),
+        description: `${description}${suffix}`,
+        originalDescription: description,
+        amount,
+        category,
+        date: txDate.toISOString(),
+        type: 'DEBIT',
+        status: 'POSTED',
+        accountId: 'manual',
+        isManual: true,
+        isRecurring,
+        isContinuous,
+        parentId: isRecurring ? parentId : null,
+        isPaid: Boolean(paid?.isPaid),
+        paidAt: paid?.isPaid ? paid.paidAt : null,
+        merchant: { name: 'Manual' },
+      };
+
+      await saveStoredManualTransaction(newTx);
+      newTxs.push(newTx);
+    }
+
+    set((state) => ({
+      transactions: [
+        ...state.transactions.filter((t) => {
+          if (removeParentId) return t.parentId !== removeParentId;
+          return !removeIds.has(t.id);
+        }),
+        ...newTxs,
+      ],
+    }));
+  },
+
   getFilteredTransactions: () => {
     const { transactions, filters } = get();
     return transactions.filter(t => {
