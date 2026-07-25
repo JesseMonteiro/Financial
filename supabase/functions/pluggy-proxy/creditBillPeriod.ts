@@ -134,6 +134,18 @@ export function hasInstallmentNumber(transactions, seriesKey, n) {
   return false;
 }
 
+/**
+ * Signed contribution of a credit-card tx toward a bill total.
+ * Prefers Pluggy `type` so CREDIT always reduces the bill even if `amount` arrives positive.
+ */
+export function signedTxAmount(tx) {
+  const raw = Number(tx?.amount) || 0;
+  const abs = Math.abs(raw);
+  if (tx?.type === 'CREDIT') return -abs;
+  if (tx?.type === 'DEBIT') return abs;
+  return raw;
+}
+
 export function sumCycleCharges(items = [], { includeProjected = false, chargeSumMode = 'signed_net' } = {}) {
   const filtered = items.filter(
     (t) => !isBillPayment(t) && (includeProjected || !t.isProjected)
@@ -141,10 +153,10 @@ export function sumCycleCharges(items = [], { includeProjected = false, chargeSu
   if (chargeSumMode === 'absolute') {
     return filtered.reduce((s, t) => s + Math.abs(Number(t.amount) || 0), 0);
   }
-  // Pluggy credit-card convention: purchases DEBIT (>0), credits/refunds CREDIT (<0).
+  // Pluggy credit-card convention: purchases DEBIT, credits/refunds CREDIT.
   // Signed net lets cancelling pairs (e.g. Nubank Saldo em atraso + Crédito de atraso)
   // net to the real statement total instead of double-counting via Math.abs.
-  const net = filtered.reduce((s, t) => s + (Number(t.amount) || 0), 0);
+  const net = filtered.reduce((s, t) => s + signedTxAmount(t), 0);
   return Math.abs(net);
 }
 

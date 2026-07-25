@@ -24,9 +24,11 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGri
 import { useReceivableStore } from '../stores/receivableStore';
 import {
   buildCreditCardBills,
+  summarizeCardOpenBill,
   formatDueMonthTitle,
   formatDueMonthShort,
   isBillPayment,
+  signedTxAmount,
 } from '../utils/creditBillPeriod';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -120,6 +122,22 @@ export function CreditCards() {
   const currentOpenKey = billPeriod.openDueKey;
   const billsData = billPeriod.bills;
 
+  // Open-bill total per card (same signed-net logic as FATURA EM ABERTO) — not account.balance
+  const openTotalByCardId = useMemo(() => {
+    const map = {};
+    for (const card of creditCards) {
+      const txs = transactionsByAccount[card.id] || [];
+      const bills = billsByAccount[card.id] || [];
+      if (!txs.length && !bills.length) {
+        map[card.id] = null;
+        continue;
+      }
+      const summary = summarizeCardOpenBill(card, txs, bills);
+      map[card.id] = summary.openTotal;
+    }
+    return map;
+  }, [creditCards, transactionsByAccount, billsByAccount]);
+
   const [selectedBillKey, setSelectedBillKey] = useState(null);
 
   useEffect(() => {
@@ -184,16 +202,17 @@ export function CreditCards() {
     };
   }, [billsData, activeSelectedKey, currentOpenKey]);
 
-  // Category breakdown for selected bill
+  // Category breakdown for selected bill (signed so credits reduce the category slice)
   const selectedBillCategories = useMemo(() => {
     const map = {};
     (currentSelectedBill.items || []).forEach(t => {
       if (isBillPayment(t)) return;
       const label = translateCategory(t.category);
-      map[label] = (map[label] || 0) + Math.abs(t.amount);
+      map[label] = (map[label] || 0) + signedTxAmount(t);
     });
     return Object.entries(map)
-      .map(([name, value]) => ({ name, value }))
+      .map(([name, value]) => ({ name, value: Math.abs(value) }))
+      .filter((c) => c.value > 0.005)
       .sort((a, b) => b.value - a.value);
   }, [currentSelectedBill]);
 
@@ -303,7 +322,8 @@ export function CreditCards() {
 
           {creditCards.map(card => {
             const isSelected = selectedCardId === card.id;
-            const debt = Math.abs(card.balance || 0);
+            const openBill = openTotalByCardId[card.id];
+            const debtLabel = openBill != null ? openBill : Math.abs(card.balance || 0);
             return (
               <div
                 key={card.id}
@@ -327,7 +347,7 @@ export function CreditCards() {
                     {card.name}
                   </span>
                   <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                    Final {card.number || '****'} • Fatura: {formatCurrency(debt)}
+                    Final {card.number || '****'} • Fatura: {formatCurrency(debtLabel)}
                   </span>
                 </div>
               </div>
@@ -573,6 +593,7 @@ export function CreditCards() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: 520, overflowY: 'auto' }}>
               {filteredTransactions.map((tx, idx) => {
                 const isPayment = isBillPayment(tx);
+                const isCredit = isPayment || tx.type === 'CREDIT' || signedTxAmount(tx) < 0;
                 const cardObj = creditCards.find(c => c.id === tx.accountId);
                 return (
                   <div key={tx.id || idx} className="list-row" style={{ padding: '0.75rem 0.85rem' }}>
@@ -627,9 +648,9 @@ export function CreditCards() {
                     <div className="list-row-amount">
                       <span style={{
                         fontWeight: 700, fontSize: 'var(--font-size-sm)',
-                        color: isPayment ? 'var(--success)' : 'var(--danger)'
+                        color: isCredit ? 'var(--success)' : 'var(--danger)'
                       }}>
-                        {isPayment ? '+ ' : '- '}{formatCurrency(Math.abs(tx.amount))}
+                        {isCredit ? '+ ' : '- '}{formatCurrency(Math.abs(tx.amount))}
                       </span>
                       <p style={{ fontSize: '10px', marginTop: '2px', marginBottom: 0, color: tx.isProjected ? 'var(--info)' : tx.status === 'POSTED' ? 'var(--success)' : 'var(--warning)' }}>
                         {tx.isProjected ? 'Parcela Projetada' : tx.status === 'POSTED' ? 'Confirmado' : 'Pendente'}
