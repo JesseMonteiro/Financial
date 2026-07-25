@@ -31,16 +31,12 @@ import {
   signedTxAmount,
   installmentNumberOf,
   installmentTotalOf,
+  resolvePurchaseDate,
 } from '../utils/creditBillPeriod';
 
-function transactionTimestamp(tx) {
-  const timestamp = new Date(tx?.date).getTime();
+function purchaseTimestamp(tx) {
+  const timestamp = new Date(resolvePurchaseDate(tx)).getTime();
   return Number.isFinite(timestamp) ? timestamp : Number.NEGATIVE_INFINITY;
-}
-
-/** Prefer real purchase date; fall back to posted/scheduled `date`. */
-function displayTxDate(tx) {
-  return tx?.creditCardMetadata?.purchaseDate || tx?.date;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -241,7 +237,7 @@ export function CreditCards() {
         return true;
       })
       .sort((a, b) => {
-        const byPurchaseDate = transactionTimestamp({ date: displayTxDate(b) }) - transactionTimestamp({ date: displayTxDate(a) });
+        const byPurchaseDate = purchaseTimestamp(b) - purchaseTimestamp(a);
         if (byPurchaseDate !== 0) return byPurchaseDate;
         return String(a.id || '').localeCompare(String(b.id || ''));
       });
@@ -616,8 +612,7 @@ export function CreditCards() {
                 const installmentNum = installmentNumberOf(tx);
                 const installmentTotal = installmentTotalOf(tx);
                 const hasInstallments = Number(installmentTotal) > 1 && Number(installmentNum) > 0;
-                const shownDate = displayTxDate(tx);
-                const dateIsFuture = String(shownDate || '').slice(0, 10) > new Date().toISOString().slice(0, 10);
+                const purchaseDate = resolvePurchaseDate(tx);
                 return (
                   <div key={tx.id || idx} className="list-row" style={{ padding: '0.75rem 0.85rem' }}>
                     <div className="list-row-main" style={{ gap: '0.75rem' }}>
@@ -663,9 +658,7 @@ export function CreditCards() {
                             );
                           })()}
                           <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                            {hasInstallments && dateIsFuture
-                              ? `Prevista ${formatDate(shownDate)}`
-                              : formatDate(shownDate)}
+                            {formatDate(purchaseDate)}
                           </span>
                           {tx.merchant?.businessName && (
                             <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>

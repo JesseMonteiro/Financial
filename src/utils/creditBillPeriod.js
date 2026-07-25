@@ -32,6 +32,43 @@ export function ymFromIso(iso) {
   return String(iso).slice(0, 7);
 }
 
+/**
+ * Shift an ISO date by whole months (UTC calendar), clamping the day.
+ * Used to recover purchase date from installment N when Pluggy omits purchaseDate.
+ */
+export function shiftIsoMonths(iso, deltaMonths) {
+  if (!iso || !deltaMonths) return iso || null;
+  const s = String(iso);
+  const y = Number(s.slice(0, 4));
+  const m = Number(s.slice(5, 7));
+  const d = Number(s.slice(8, 10)) || 1;
+  if (!y || !m) return iso;
+  let nm = m + Number(deltaMonths);
+  let ny = y;
+  while (nm > 12) { nm -= 12; ny += 1; }
+  while (nm < 1) { nm += 12; ny -= 1; }
+  const dim = new Date(Date.UTC(ny, nm, 0)).getUTCDate();
+  const day = Math.min(d, dim);
+  const time = s.length > 10 && s[10] === 'T' ? s.slice(10) : 'T12:00:00.000Z';
+  return `${ny}-${String(nm).padStart(2, '0')}-${String(day).padStart(2, '0')}${time}`;
+}
+
+/**
+ * Best-effort purchase date for sorting/display.
+ * Inter PENDING installments use `date` as the parcel's scheduled charge date;
+ * `purchaseDate` is often null — walk back (N-1) months from parcel date.
+ */
+export function resolvePurchaseDate(tx) {
+  const meta = tx?.creditCardMetadata || {};
+  if (meta.purchaseDate) return meta.purchaseDate;
+  const num = installmentNumberOf(tx);
+  const total = installmentTotalOf(tx);
+  if (tx?.date && Number(total) > 1 && Number(num) > 1) {
+    return shiftIsoMonths(tx.date, -(Number(num) - 1));
+  }
+  return tx?.date || null;
+}
+
 export function formatDueMonthTitle(dueYm) {
   if (!dueYm || dueYm === 'Outros') return 'Outros Lançamentos';
   const [y, m] = dueYm.split('-').map(Number);
