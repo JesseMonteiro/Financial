@@ -15,6 +15,7 @@ Cada banco envia metadados de fatura de forma diferente. A lógica canônica viv
 6. Fatura **oficial liquidada** (`payments[]` ou pagamento no ciclo seguinte) nunca é `CURRENT_OPEN`.
 7. **Telegram `/faturas`**: usar `summarizeCardOpenBill` → total do ciclo aberto, **nunca** `account.balance` (dívida total).
 8. **PENDING sem `billId` em ciclo já oficial**: só remapeia para a fatura aberta se a **data da compra** for **depois** do fechamento (`billClosingDate` / `dueDate`) da última fatura oficial. Conectores como Carrefour deixam compras antigas como `PENDING` para sempre — remapar tudo infla a fatura aberta com o ledger histórico.
+9. **Remap ≠ “tudo na aberta”**: se a compra for **depois do vencimento** da fatura aberta (ex.: compra `2026-09-04` com fatura aberta venc. `2026-08-07`), avançar para o ciclo seguinte (`advanceDueMonthPastPurchaseDate`). Sem isso, Inter/Nubank puxam PENDING futuros para a fatura atual.
 
 ## Conectores documentados
 

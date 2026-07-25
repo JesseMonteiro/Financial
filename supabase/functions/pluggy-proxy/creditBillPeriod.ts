@@ -87,7 +87,8 @@ export function inferDueDateForMonth(dueYm, officialBills = []) {
 
 /**
  * Fingerprint for an installment series (dedupe real vs projected).
- * Amount is intentionally excluded — Pluggy sometimes drifts by R$ 0.01.
+ * Amount is rounded to cents so Pluggy ±R$ 0.01 drift still matches, while
+ * distinct purchases (R$ 5,70 vs R$ 40,56) stay separate.
  * accountId is included so consolidated multi-card views do not merge series.
  */
 export function installmentSeriesKey(tx) {
@@ -96,7 +97,8 @@ export function installmentSeriesKey(tx) {
   if (meta.purchaseId) return `${acct}|pid:${meta.purchaseId}`;
   const total = meta.totalInstallments || tx?.totalInstallmentsCount;
   if (!total) return null;
-  return `${acct}|${normalizeInstallmentDesc(tx.description)}|${total}`;
+  const amt = Math.round(Math.abs(Number(tx?.amount) || 0) * 100);
+  return `${acct}|${normalizeInstallmentDesc(tx.description)}|${total}|${amt}`;
 }
 
 export function normalizeInstallmentDesc(description) {
@@ -187,8 +189,15 @@ export function resolveOpenBillTotal(account, cycleItems = [], profile) {
  * Pluggy often tags several future installments with the same billForecastDate.
  * Spread them across consecutive due months by installment number so the open
  * bill only keeps the next parcel of each series.
+ *
+ * Do NOT move charges that already have a resolvable official `billId` (Inter OF
+ * returns future bills + PENDING parcels with billId). Also skip series that are
+ * not actually stacked on the same due month — otherwise recurring same-merchant
+ * installments (e.g. many "99PAY 2/2") collapse into one fake series and parcels
+ * jump to the wrong fatura.
  */
 export function redistributeStackedInstallments(map, officialBills = []) {
+  const billMap = billMapFromList(officialBills);
   const series = new Map();
   for (const dueYm of Object.keys(map)) {
     if (dueYm === 'Outros') continue;
@@ -204,32 +213,68 @@ export function redistributeStackedInstallments(map, officialBills = []) {
 
   for (const [, entries] of series) {
     if (entries.length < 2) continue;
-    entries.sort((a, b) => a.num - b.num || a.dueYm.localeCompare(b.dueYm));
-    const minNum = entries[0].num;
-    const anchorDue = entries[0].dueYm;
 
-    for (const entry of entries) {
-      const correctDue = ymAdd(anchorDue, entry.num - minNum);
-      if (!correctDue || correctDue === entry.dueYm || correctDue === 'Outros') continue;
+    // Already placed by official billId — trust Pluggy, do not reshuffle
+    const movable = entries.filter((entry) => {
+      const billId = entry.t.creditCardMetadata?.billId || entry.t.billId;
+      return !(billId && billMap[billId]?.dueDate);
+    });
+    if (movable.length < 2) continue;
 
-      // Remove from current bucket
-      const from = map[entry.dueYm];
-      if (from) from.items = from.items.filter((x) => x !== entry.t && x.id !== entry.t.id);
+    // Only act when 2+ parcels without billId share the same due month (true stack)
+    const stackedInSameMonth = new Map();
+    for (const entry of movable) {
+      if (!stackedInSameMonth.has(entry.dueYm)) stackedInSameMonth.set(entry.dueYm, []);
+      stackedInSameMonth.get(entry.dueYm).push(entry);
+    }
+    const stackedGroups = [...stackedInSameMonth.values()].filter((g) => g.length > 1);
+    if (!stackedGroups.length) continue;
 
-      if (!map[correctDue]) {
-        map[correctDue] = {
-          dueMonthKey: correctDue,
-          items: [],
-          total: 0,
-          dueDate: inferDueDateForMonth(correctDue, officialBills),
-        };
+    for (const group of stackedGroups) {
+      group.sort((a, b) => a.num - b.num || a.dueYm.localeCompare(b.dueYm));
+      const minNum = group[0].num;
+      const anchorDue = group[0].dueYm;
+
+      for (const entry of group) {
+        const correctDue = ymAdd(anchorDue, entry.num - minNum);
+        if (!correctDue || correctDue === entry.dueYm || correctDue === 'Outros') continue;
+
+        const from = map[entry.dueYm];
+        if (from) from.items = from.items.filter((x) => x !== entry.t && x.id !== entry.t.id);
+
+        if (!map[correctDue]) {
+          map[correctDue] = {
+            dueMonthKey: correctDue,
+            items: [],
+            total: 0,
+            dueDate: inferDueDateForMonth(correctDue, officialBills),
+          };
+        }
+        if (!map[correctDue].items.some((x) => x.id === entry.t.id)) {
+          map[correctDue].items.push(entry.t);
+        }
+        entry.dueYm = correctDue;
       }
-      if (!map[correctDue].items.some((x) => x.id === entry.t.id)) {
-        map[correctDue].items.push(entry.t);
-      }
-      entry.dueYm = correctDue;
     }
   }
+}
+
+/**
+ * PENDING without billId that landed on a due-month whose due date is already
+ * before the purchase date belongs to a later cycle (e.g. Inter open Aug/07
+ * must not absorb Sep/04 charges remapped from a stale forecast).
+ */
+export function advanceDueMonthPastPurchaseDate(key, tx, officialBills = []) {
+  if (!key || key === 'Outros' || !tx?.date) return key;
+  const txDate = String(tx.date).slice(0, 10);
+  if (!txDate) return key;
+  let current = key;
+  for (let i = 0; i < 24; i++) {
+    const dueDate = inferDueDateForMonth(current, officialBills);
+    if (!dueDate || txDate <= dueDate) return current;
+    current = ymAdd(current, 1);
+  }
+  return current;
 }
 
 /**
@@ -507,29 +552,49 @@ export function buildCreditCardBills({
     const latestOfficial = latestOfficialByAccount[t.accountId];
     const profile = profileByAccount[t.accountId];
     const remapMode = profile?.remapStalePending || 'after_cycle_end';
+    const acctBills = officialBills.filter((b) => !t.accountId || b.accountId === t.accountId);
+    const billsForDue = acctBills.length ? acctBills : officialBills;
     // PENDING without billId that map into a closed official cycle may be:
-    // (a) a NEW purchase with stale billForecastDate → remap to open, OR
+    // (a) a NEW purchase with stale billForecastDate → remap toward open, OR
     // (b) historical charges some connectors never mark POSTED (e.g. Carrefour)
     //     → must stay in history, otherwise the open bill sums the whole ledger.
-    if (
-      remapMode === 'never' ||
-      t.status !== 'PENDING' ||
-      isBillPayment(t) ||
-      t.creditCardMetadata?.billId ||
-      t.billId ||
-      !latestOfficial ||
-      !key ||
-      key === 'Outros' ||
-      key > latestOfficial ||
-      !openForCard
-    ) {
-      return key;
+    const canRemap =
+      remapMode !== 'never' &&
+      t.status === 'PENDING' &&
+      !isBillPayment(t) &&
+      !t.creditCardMetadata?.billId &&
+      !t.billId &&
+      Boolean(latestOfficial) &&
+      Boolean(key) &&
+      key !== 'Outros' &&
+      key <= latestOfficial &&
+      Boolean(openForCard);
+
+    if (canRemap) {
+      if (remapMode === 'always') {
+        key = openForCard;
+      } else {
+        // after_cycle_end: only remap purchases posted after the last closed cycle
+        const cycleEnd = latestCycleEndByAccount[t.accountId];
+        const txDate = t.date ? String(t.date).slice(0, 10) : null;
+        if (txDate && cycleEnd && txDate > cycleEnd) key = openForCard;
+      }
     }
-    if (remapMode === 'always') return openForCard;
-    // after_cycle_end: only remap purchases posted after the last closed cycle
-    const cycleEnd = latestCycleEndByAccount[t.accountId];
-    const txDate = t.date ? String(t.date).slice(0, 10) : null;
-    if (txDate && cycleEnd && txDate > cycleEnd) return openForCard;
+
+    // Never keep unbound PENDING on a cycle already due before the purchase date
+    // (remap to open Aug must not pull Sep purchases into the Aug statement).
+    // Skip installments: on Inter, `date` is often the scheduled parcel date, not purchase date.
+    const installmentTotal = t.creditCardMetadata?.totalInstallments || t.totalInstallmentsCount;
+    if (
+      t.status === 'PENDING' &&
+      !isBillPayment(t) &&
+      !t.creditCardMetadata?.billId &&
+      !t.billId &&
+      !(Number(installmentTotal) > 1)
+    ) {
+      key = advanceDueMonthPastPurchaseDate(key, t, billsForDue);
+    }
+
     return key;
   };
 
@@ -640,7 +705,11 @@ export function buildCreditCardBills({
           ...(sample.creditCardMetadata || {}),
           installmentNumber: n,
           totalInstallments: total,
+          // Projected parcels are not tied to the sample's official bill
+          billId: undefined,
+          billForecastDate: futureDue,
         },
+        billId: undefined,
         currentInstallment: n,
         totalInstallmentsCount: total,
         isProjected: true,

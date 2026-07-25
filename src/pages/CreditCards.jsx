@@ -29,11 +29,18 @@ import {
   formatDueMonthShort,
   isBillPayment,
   signedTxAmount,
+  installmentNumberOf,
+  installmentTotalOf,
 } from '../utils/creditBillPeriod';
 
 function transactionTimestamp(tx) {
   const timestamp = new Date(tx?.date).getTime();
   return Number.isFinite(timestamp) ? timestamp : Number.NEGATIVE_INFINITY;
+}
+
+/** Prefer real purchase date; fall back to posted/scheduled `date`. */
+function displayTxDate(tx) {
+  return tx?.creditCardMetadata?.purchaseDate || tx?.date;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -234,7 +241,7 @@ export function CreditCards() {
         return true;
       })
       .sort((a, b) => {
-        const byPurchaseDate = transactionTimestamp(b) - transactionTimestamp(a);
+        const byPurchaseDate = transactionTimestamp({ date: displayTxDate(b) }) - transactionTimestamp({ date: displayTxDate(a) });
         if (byPurchaseDate !== 0) return byPurchaseDate;
         return String(a.id || '').localeCompare(String(b.id || ''));
       });
@@ -606,6 +613,11 @@ export function CreditCards() {
                 const isPayment = isBillPayment(tx);
                 const isCredit = isPayment || tx.type === 'CREDIT' || signedTxAmount(tx) < 0;
                 const cardObj = creditCards.find(c => c.id === tx.accountId);
+                const installmentNum = installmentNumberOf(tx);
+                const installmentTotal = installmentTotalOf(tx);
+                const hasInstallments = Number(installmentTotal) > 1 && Number(installmentNum) > 0;
+                const shownDate = displayTxDate(tx);
+                const dateIsFuture = String(shownDate || '').slice(0, 10) > new Date().toISOString().slice(0, 10);
                 return (
                   <div key={tx.id || idx} className="list-row" style={{ padding: '0.75rem 0.85rem' }}>
                     <div className="list-row-main" style={{ gap: '0.75rem' }}>
@@ -633,6 +645,11 @@ export function CreditCards() {
                           <Badge variant={isPayment ? 'success' : 'neutral'}>
                             {translateCategory(tx.category)}
                           </Badge>
+                          {hasInstallments && (
+                            <Badge variant="info">
+                              Parcela {installmentNum}/{installmentTotal}
+                            </Badge>
+                          )}
                           {(() => {
                             const linked = receivables.find(r => r.linkedTransactionId === tx.id);
                             if (!linked) return null;
@@ -646,7 +663,9 @@ export function CreditCards() {
                             );
                           })()}
                           <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                            {formatDate(tx.date)}
+                            {hasInstallments && dateIsFuture
+                              ? `Prevista ${formatDate(shownDate)}`
+                              : formatDate(shownDate)}
                           </span>
                           {tx.merchant?.businessName && (
                             <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
