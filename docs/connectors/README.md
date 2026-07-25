@@ -18,12 +18,13 @@ Cada banco envia metadados de fatura de forma diferente. A lógica canônica viv
 
 ## Conectores documentados
 
-| Perfil | Guia | Offset forecast→due | Balance típico | Total fatura aberta |
-|--------|------|---------------------|----------------|---------------------|
-| Nubank | [nubank.md](./nubank.md) | 0 | Dívida total | Soma do ciclo |
-| Mercado Pago | [mercado-pago.md](./mercado-pago.md) | 0 | Dívida total | Soma do ciclo |
-| Santander | [santander.md](./santander.md) | 1 | Variável | Soma do ciclo |
-| Inter | [inter.md](./inter.md) | 0 | Dívida total | Soma do ciclo (`payments[]` costuma vazio) |
-| MeuPluggy | [meupluggy.md](./meupluggy.md) | inferir | Dívida total (sandbox) | Soma do ciclo |
+| Perfil | Guia | Offset forecast→due | Balance típico | Total fatura aberta | Remap PENDING stale |
+|--------|------|---------------------|----------------|---------------------|---------------------|
+| Nubank | [nubank.md](./nubank.md) | 0 | Dívida total | Soma **com sinal** do ciclo | após fechamento |
+| Carrefour | (perfil em `profiles.js`) | inferir | Dívida total | Soma com sinal | após fechamento (nunca dump histórico) |
+| Mercado Pago | [mercado-pago.md](./mercado-pago.md) | 0 | Dívida total | Soma com sinal | após fechamento |
+| Santander | [santander.md](./santander.md) | 1 | Variável | Soma com sinal | após fechamento |
+| Inter | [inter.md](./inter.md) | 0 | Dívida total | Soma com sinal (`payments[]` costuma vazio) | após fechamento |
+| MeuPluggy | [meupluggy.md](./meupluggy.md) | inferir | Dívida total (sandbox) | Soma com sinal | após fechamento |
 
-Ao conectar um banco novo: copiar o template de `nubank.md`, registrar o perfil em `profiles.js`, e validar com 1 ciclo fechado + 1 aberto contra o app do banco.
+Ao conectar um banco novo: copiar o template de `nubank.md`, registrar o perfil em `profiles.js` (`chargeSumMode`, `remapStalePending`), e validar com 1 ciclo fechado + 1 aberto contra o app do banco.

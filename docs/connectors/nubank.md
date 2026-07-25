@@ -20,8 +20,8 @@
 
 1. Última fatura oficial com `payments[]` cobrindo o total → ciclo **fechado/pago**.
 2. Aberto = mês seguinte ao último `dueDate` oficial, ou `PENDING` com `billForecastDate` **depois** desse mês.
-3. Total aberto = Σ \|amount\| dos itens do ciclo (`!pagamento`, incluir parcelas projetadas **faltantes**).
-4. Exemplo validado (Lucas, jul/2026): app Nubank **R$ 295,79**; Pluggy `balance` era **R$ 1.232,29** (dívida total).
+3. Total aberto = **soma com sinal** dos itens do ciclo (`chargeSumMode: signed_net`), excluindo `Pagamento recebido`. Não usar `Σ |amount|` — o Nubank posta pares que se cancelam (`Saldo em atraso` DEBIT + `Crédito de atraso` CREDIT, `Juros` + `Encerramento de dívida`).
+4. Exemplo validado (Jesse, ago/2026): app Nubank **R$ 226,71**; `Σ |amount|` dava **R$ 986,30**; signed net ≈ **R$ 226,72**.
 
 ## Parcelas
 
@@ -34,3 +34,4 @@
 - Mostrar fatura oficial paga como “Em Aberto” porque ainda há `PENDING` com forecast no mês pago.
 - Usar `balance` como total da aberta → valores inflados (dívida de todas as parcelas restantes).
 - Duplicar parcela real + projetada na mesma fatura.
+- Somar `Math.abs` de todos os lançamentos → infla com créditos de atraso / encerramento de dívida.

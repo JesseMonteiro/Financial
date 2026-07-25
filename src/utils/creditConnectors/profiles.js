@@ -10,6 +10,8 @@
 
 /** @typedef {'cycle_charges' | 'balance'} OpenTotalSource */
 /** @typedef {'total_outstanding' | 'open_bill' | 'unknown'} BalanceMeaning */
+/** @typedef {'signed_net' | 'absolute'} ChargeSumMode */
+/** @typedef {'after_cycle_end' | 'always' | 'never'} RemapStalePendingMode */
 
 /**
  * @typedef {object} CreditConnectorProfile
@@ -19,6 +21,13 @@
  * @property {0|1|null} forecastToDueOffset  null = infer from data
  * @property {BalanceMeaning} balanceMeaning
  * @property {OpenTotalSource} openTotalSource
+ * @property {ChargeSumMode} chargeSumMode
+ *   signed_net = Σ amount then |net| (Pluggy: DEBIT>0, CREDIT<0). Needed when
+ *   Nubank posts cancelling pairs (Saldo em atraso + Crédito de atraso).
+ *   absolute = Σ |amount| (legacy; inflates bills that include credits).
+ * @property {RemapStalePendingMode} remapStalePending
+ *   after_cycle_end = only remap PENDING without billId when purchase date is
+ *   after last official close (Carrefour-safe). always = old Nubank-only remap.
  * @property {boolean} paymentOftenOnNextCycle
  * @property {string} guidePath
  */
@@ -31,6 +40,8 @@ export const defaultProfile = {
   balanceMeaning: 'unknown',
   // Prefer cycle charges: safer when Pluggy balance = total outstanding
   openTotalSource: 'cycle_charges',
+  chargeSumMode: 'signed_net',
+  remapStalePending: 'after_cycle_end',
   paymentOftenOnNextCycle: true,
   guidePath: 'docs/connectors/README.md',
 };
@@ -47,8 +58,27 @@ export const CONNECTOR_PROFILES = [
     forecastToDueOffset: 0,
     balanceMeaning: 'total_outstanding',
     openTotalSource: 'cycle_charges',
+    // Late-payment accounting entries cancel as CREDIT+DEBIT pairs
+    chargeSumMode: 'signed_net',
+    remapStalePending: 'after_cycle_end',
     paymentOftenOnNextCycle: true,
     guidePath: 'docs/connectors/nubank.md',
+  },
+  {
+    id: 'carrefour',
+    label: 'Carrefour',
+    match: ({ account, connectorName }) => {
+      const blob = `${connectorName || ''} ${account?.name || ''} ${account?.marketingName || ''}`.toLowerCase();
+      return /carrefour|cartão carrefour|cartao carrefour|\bcrf\b/.test(blob);
+    },
+    forecastToDueOffset: null,
+    balanceMeaning: 'total_outstanding',
+    openTotalSource: 'cycle_charges',
+    chargeSumMode: 'signed_net',
+    // Connector leaves paid purchases as PENDING forever — never dump history into open
+    remapStalePending: 'after_cycle_end',
+    paymentOftenOnNextCycle: true,
+    guidePath: 'docs/connectors/README.md',
   },
   {
     id: 'mercado-pago',
@@ -60,6 +90,8 @@ export const CONNECTOR_PROFILES = [
     forecastToDueOffset: 0,
     balanceMeaning: 'total_outstanding',
     openTotalSource: 'cycle_charges',
+    chargeSumMode: 'signed_net',
+    remapStalePending: 'after_cycle_end',
     paymentOftenOnNextCycle: true,
     guidePath: 'docs/connectors/mercado-pago.md',
   },
@@ -73,6 +105,8 @@ export const CONNECTOR_PROFILES = [
     forecastToDueOffset: 1,
     balanceMeaning: 'unknown',
     openTotalSource: 'cycle_charges',
+    chargeSumMode: 'signed_net',
+    remapStalePending: 'after_cycle_end',
     paymentOftenOnNextCycle: false,
     guidePath: 'docs/connectors/santander.md',
   },
@@ -86,6 +120,8 @@ export const CONNECTOR_PROFILES = [
     forecastToDueOffset: 0,
     balanceMeaning: 'total_outstanding',
     openTotalSource: 'cycle_charges',
+    chargeSumMode: 'signed_net',
+    remapStalePending: 'after_cycle_end',
     // Payment tx often lands on next billId; payments[] usually empty
     paymentOftenOnNextCycle: true,
     guidePath: 'docs/connectors/inter.md',
@@ -95,10 +131,13 @@ export const CONNECTOR_PROFILES = [
     label: 'MeuPluggy (sandbox)',
     match: ({ connectorName, connectorId }) =>
       connectorId === 200 || /meupluggy/i.test(connectorName || ''),
-    // Sandbox mixes bank-shaped fixtures; infer offset from data.
+    // Sandbox mixes bank-shaped fixtures (Nubank platinum, Santander, …); infer offset from data.
     forecastToDueOffset: null,
     balanceMeaning: 'total_outstanding',
     openTotalSource: 'cycle_charges',
+    // Nubank-shaped platinum fixture includes cancelling late-payment CREDITS
+    chargeSumMode: 'signed_net',
+    remapStalePending: 'after_cycle_end',
     paymentOftenOnNextCycle: true,
     guidePath: 'docs/connectors/meupluggy.md',
   },

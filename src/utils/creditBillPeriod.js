@@ -134,10 +134,18 @@ export function hasInstallmentNumber(transactions, seriesKey, n) {
   return false;
 }
 
-export function sumCycleCharges(items = [], { includeProjected = false } = {}) {
-  return items
-    .filter((t) => !isBillPayment(t) && (includeProjected || !t.isProjected))
-    .reduce((s, t) => s + Math.abs(Number(t.amount) || 0), 0);
+export function sumCycleCharges(items = [], { includeProjected = false, chargeSumMode = 'signed_net' } = {}) {
+  const filtered = items.filter(
+    (t) => !isBillPayment(t) && (includeProjected || !t.isProjected)
+  );
+  if (chargeSumMode === 'absolute') {
+    return filtered.reduce((s, t) => s + Math.abs(Number(t.amount) || 0), 0);
+  }
+  // Pluggy credit-card convention: purchases DEBIT (>0), credits/refunds CREDIT (<0).
+  // Signed net lets cancelling pairs (e.g. Nubank Saldo em atraso + Crédito de atraso)
+  // net to the real statement total instead of double-counting via Math.abs.
+  const net = filtered.reduce((s, t) => s + (Number(t.amount) || 0), 0);
+  return Math.abs(net);
 }
 
 /**
@@ -145,7 +153,10 @@ export function sumCycleCharges(items = [], { includeProjected = false } = {}) {
  * Never use account.balance when it equals total outstanding (limit − available).
  */
 export function resolveOpenBillTotal(account, cycleItems = [], profile) {
-  const cycleSum = sumCycleCharges(cycleItems, { includeProjected: true });
+  const cycleSum = sumCycleCharges(cycleItems, {
+    includeProjected: true,
+    chargeSumMode: profile?.chargeSumMode || 'signed_net',
+  });
   const outstanding = balanceLooksLikeTotalOutstanding(account);
   const preferCycle =
     (profile?.openTotalSource || 'cycle_charges') === 'cycle_charges' ||
@@ -422,10 +433,18 @@ export function buildCreditCardBills({
   const latestOfficialByAccount = {};
   /** ISO date (YYYY-MM-DD) of latest official bill close (or due) per account */
   const latestCycleEndByAccount = {};
+  /** @type {Record<string, import('./creditConnectors/profiles.js').CreditConnectorProfile>} */
+  const profileByAccount = {};
   for (const accountId of accountIds) {
     const offset = offsetForAccount(accountId, transactions, officialBills, offsetCache);
     const acctBills = officialBills.filter((b) => b.accountId === accountId);
     const acctTxs = transactions.filter((t) => t.accountId === accountId);
+    const cardAcc = creditCards.find((c) => c.id === accountId);
+    profileByAccount[accountId] = resolveConnectorProfile({
+      account: cardAcc,
+      connectorName: cardAcc?.connectorName || cardAcc?._connector,
+      connectorId: cardAcc?.connectorId || cardAcc?._connectorId,
+    });
     const settleOpts = {
       transactions: acctTxs,
       officialBills: acctBills,
@@ -474,27 +493,31 @@ export function buildCreditCardBills({
     let key = getDueMonthKey(t, billMap, offset);
     const openForCard = openByAccount[t.accountId] || openDueKey;
     const latestOfficial = latestOfficialByAccount[t.accountId];
+    const profile = profileByAccount[t.accountId];
+    const remapMode = profile?.remapStalePending || 'after_cycle_end';
     // PENDING without billId that map into a closed official cycle may be:
     // (a) a NEW purchase with stale billForecastDate → remap to open, OR
     // (b) historical charges some connectors never mark POSTED (e.g. Carrefour)
     //     → must stay in history, otherwise the open bill sums the whole ledger.
-    // Only remap when the purchase date is after the last closed cycle.
     if (
-      t.status === 'PENDING' &&
-      !isBillPayment(t) &&
-      !(t.creditCardMetadata?.billId || t.billId) &&
-      latestOfficial &&
-      key &&
-      key !== 'Outros' &&
-      key <= latestOfficial &&
-      openForCard
+      remapMode === 'never' ||
+      t.status !== 'PENDING' ||
+      isBillPayment(t) ||
+      t.creditCardMetadata?.billId ||
+      t.billId ||
+      !latestOfficial ||
+      !key ||
+      key === 'Outros' ||
+      key > latestOfficial ||
+      !openForCard
     ) {
-      const cycleEnd = latestCycleEndByAccount[t.accountId];
-      const txDate = t.date ? String(t.date).slice(0, 10) : null;
-      if (txDate && cycleEnd && txDate > cycleEnd) {
-        return openForCard;
-      }
+      return key;
     }
+    if (remapMode === 'always') return openForCard;
+    // after_cycle_end: only remap purchases posted after the last closed cycle
+    const cycleEnd = latestCycleEndByAccount[t.accountId];
+    const txDate = t.date ? String(t.date).slice(0, 10) : null;
+    if (txDate && cycleEnd && txDate > cycleEnd) return openForCard;
     return key;
   };
 
@@ -669,7 +692,10 @@ export function buildCreditCardBills({
       } else {
         // Past without official, or future: sum cycle charges (+ projections for future)
         const includeProjected = dueYm > openDueKey;
-        const sumTxs = sumCycleCharges(scopedItems, { includeProjected });
+        const sumTxs = sumCycleCharges(scopedItems, {
+          includeProjected,
+          chargeSumMode: profile?.chargeSumMode || 'signed_net',
+        });
         totalAmount += sumTxs;
         if (sumTxs > 0 && dueYm <= openDueKey) isPaid = false;
       }
@@ -678,6 +704,7 @@ export function buildCreditCardBills({
     if (!activeCards.length && !hasOfficial) {
       totalAmount = sumCycleCharges(bucket.items, {
         includeProjected: dueYm > openDueKey || dueYm === openDueKey,
+        chargeSumMode: 'signed_net',
       });
       if (totalAmount > 0 && dueYm <= openDueKey) isPaid = false;
     }
