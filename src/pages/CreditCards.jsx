@@ -146,6 +146,20 @@ export function CreditCards() {
     return map;
   }, [creditCards, transactionsByAccount, billsByAccount]);
 
+  /** Chip list: highest open bill first (fallback to outstanding balance). */
+  const creditCardsByOpenBill = useMemo(() => {
+    const billAmount = (card) => {
+      const open = openTotalByCardId[card.id];
+      if (open != null) return Number(open) || 0;
+      return Math.abs(Number(card.balance) || 0);
+    };
+    return [...creditCards].sort((a, b) => {
+      const byBill = billAmount(b) - billAmount(a);
+      if (byBill !== 0) return byBill;
+      return String(a.name || '').localeCompare(String(b.name || ''), 'pt-BR');
+    });
+  }, [creditCards, openTotalByCardId]);
+
   const [selectedBillKey, setSelectedBillKey] = useState(null);
 
   useEffect(() => {
@@ -334,7 +348,7 @@ export function CreditCards() {
             </div>
           </div>
 
-          {creditCards.map(card => {
+          {creditCardsByOpenBill.map(card => {
             const isSelected = selectedCardId === card.id;
             const openBill = openTotalByCardId[card.id];
             const debtLabel = openBill != null ? openBill : Math.abs(card.balance || 0);

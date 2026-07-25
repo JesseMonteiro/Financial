@@ -16,7 +16,7 @@ Cada banco envia metadados de fatura de forma diferente. A lógica canônica viv
 7. **Telegram `/faturas`**: usar `summarizeCardOpenBill` → total do ciclo aberto, **nunca** `account.balance` (dívida total).
 8. **PENDING sem `billId` em ciclo já oficial**: só remapeia para a fatura aberta se a **data da compra** for **depois** do fechamento (`billClosingDate` / `dueDate`) da última fatura oficial. Conectores como Carrefour deixam compras antigas como `PENDING` para sempre — remapar tudo infla a fatura aberta com o ledger histórico.
 9. **Remap ≠ “tudo na aberta”**: se a compra for **depois do vencimento** da fatura aberta (ex.: compra `2026-09-04` com fatura aberta venc. `2026-08-07`), avançar para o ciclo seguinte (`advanceDueMonthPastPurchaseDate`). Sem isso, Inter/Nubank puxam PENDING futuros para a fatura atual.
-10. **Fechada sem bill oficial (Bradesco/Amazon)**: após o fechamento, o conector pode manter o ciclo fechado como `PENDING` sem `billId` (`billForecastDate` = mês de fechamento) e já marcar compras novas com o **próximo** `billForecastDate`. Se houver ≥2 forecast months unbound, a fatura aberta é a do forecast mais novo (não a do ciclo que o banco já fechou).
+10. **Fechada sem bill oficial (Bradesco/Amazon)**: após o fechamento, o conector pode manter o ciclo fechado como `PENDING` sem `billId` (`billForecastDate` = mês de fechamento) e já marcar **compras novas** (à vista ou parcela 1) com o próximo `billForecastDate`. Só então a fatura aberta avança. Parcelas futuras `2/N` sozinhas no forecast seguinte (Nubank/MP) **não** avançam a aberta.
 
 ## Conectores documentados
 

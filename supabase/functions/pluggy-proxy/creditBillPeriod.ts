@@ -176,6 +176,33 @@ export function hasInstallmentNumber(transactions, seriesKey, n) {
 }
 
 /**
+ * Mercado Pago (and similar) truncates later-parcel descriptions
+ * (`MERCADOLIVRE*MERCADOLIVRE` → `MERCADOLIVRE*MERC`), splitting series keys.
+ * Treat same account + totalInstallments + N + amount±R$0,50 as already present.
+ */
+export function hasSimilarInstallment(transactions, sample, n) {
+  const total = Number(installmentTotalOf(sample));
+  if (!total || !n) return false;
+  const sampleAmt = Math.abs(Number(sample?.amount) || 0);
+  const acct = sample?.accountId || '';
+  const sampleDesc = normalizeInstallmentDesc(sample?.description);
+  for (const t of transactions) {
+    if (isBillPayment(t)) continue;
+    if (acct && t.accountId && t.accountId !== acct) continue;
+    if (Number(installmentNumberOf(t)) !== Number(n)) continue;
+    if (Number(installmentTotalOf(t)) !== total) continue;
+    const amt = Math.abs(Number(t.amount) || 0);
+    if (Math.abs(amt - sampleAmt) <= 0.5) return true;
+    const desc = normalizeInstallmentDesc(t.description);
+    const prefix = sampleDesc.slice(0, 14);
+    if (prefix.length >= 8 && (desc.startsWith(prefix) || sampleDesc.startsWith(desc.slice(0, 14)))) {
+      if (Math.abs(amt - sampleAmt) <= 1) return true;
+    }
+  }
+  return false;
+}
+
+/**
  * Signed contribution of a credit-card tx toward a bill total.
  * Prefers Pluggy `type` so CREDIT always reduces the bill even if `amount` arrives positive.
  */
@@ -203,25 +230,65 @@ export function sumCycleCharges(items = [], { includeProjected = false, chargeSu
 
 /**
  * Open-bill total for ONE due cycle.
- * Never use account.balance when it equals total outstanding (limit − available).
- * Exclude projected parcels — they belong on future due months, not the open total
- * (including them double-counts when amount-drift splits a series).
+ * Never use account.balance alone when it equals total outstanding (limit − available).
+ * Exclude projected parcels — they belong on future due months, not the open total.
+ *
+ * When Pluggy omits some open-cycle charges that still sit in `account.balance`
+ * (common on Mercado Pago with additional cards), reconcile:
+ *   open ≈ outstanding − PENDING(due > open) − PENDING(due < open)
  */
-export function resolveOpenBillTotal(account, cycleItems = [], profile) {
+export function resolveOpenBillTotal(account, cycleItems = [], profile, opts = {}) {
+  const chargeSumMode = profile?.chargeSumMode || 'signed_net';
   const cycleSum = sumCycleCharges(cycleItems, {
     includeProjected: false,
-    chargeSumMode: profile?.chargeSumMode || 'signed_net',
+    chargeSumMode,
   });
-  const outstanding = balanceLooksLikeTotalOutstanding(account);
+
+  const {
+    transactions = [],
+    openDueKey = null,
+    officialBills = [],
+    forecastToDueOffset = 0,
+  } = opts;
+
+  const outstandingAmt = Math.abs(Number(account?.balance) || 0);
+  // Only when the connector profile opts in (Mercado Pago additional cards).
+  // Do NOT do this for every total_outstanding balance — missing future
+  // installments in PENDING would be mis-attributed to the open cycle (Amazon).
+  if (
+    profile?.reconcileOpenWithBalance &&
+    openDueKey &&
+    outstandingAmt > 0 &&
+    transactions.length
+  ) {
+    const billMap = billMapFromList(officialBills);
+    let futurePending = 0;
+    let pastUnpaidPending = 0;
+    for (const t of transactions) {
+      if (t.isProjected || isBillPayment(t)) continue;
+      if (t.status !== 'PENDING') continue;
+      if (account?.id && t.accountId && t.accountId !== account.id) continue;
+      const due = getDueMonthKey(t, billMap, forecastToDueOffset);
+      if (!due || due === 'Outros') continue;
+      const amt = Math.abs(Number(t.amount) || 0);
+      if (due > openDueKey) futurePending += amt;
+      else if (due < openDueKey) pastUnpaidPending += amt;
+    }
+    const impliedOpen = outstandingAmt - futurePending - pastUnpaidPending;
+    if (impliedOpen > cycleSum + 0.05) {
+      return Math.round(impliedOpen * 100) / 100;
+    }
+  }
+
   const preferCycle =
     (profile?.openTotalSource || 'cycle_charges') === 'cycle_charges' ||
-    outstanding ||
+    balanceLooksLikeTotalOutstanding(account) ||
     profile?.balanceMeaning === 'total_outstanding';
 
   if (preferCycle) return cycleSum;
   if (cycleSum > 0) return cycleSum;
-  if (account?.balance != null && !outstanding) {
-    return Math.abs(Number(account.balance) || 0);
+  if (account?.balance != null && !balanceLooksLikeTotalOutstanding(account)) {
+    return outstandingAmt;
   }
   return cycleSum;
 }
@@ -461,24 +528,35 @@ export function resolveOpenDueMonthKey({
   // Bradesco/Amazon (and similar): after close, Pluggy keeps the closed cycle as
   // PENDING without billId (billForecastDate = close month) and already tags new
   // purchases with the *next* forecast month — before publishing an official bill.
-  // Treat the earliest unbound forecast cluster as Fechada; open = next forecast.
-  const unboundForecastMonths = new Set();
+  // Only advance when the later forecast has a *new* purchase (à vista or parcel 1);
+  // otherwise Nubank/MP future installments (2/N, 3/N…) would steal CURRENT_OPEN.
+  const unboundByForecast = new Map();
   for (const t of transactions) {
     if (t.status !== 'PENDING' || isBillPayment(t)) continue;
     if (t.creditCardMetadata?.billId || t.billId) continue;
     const fcRaw = t.creditCardMetadata?.billForecastDate;
     const fc = ymFromIso(fcRaw) || (fcRaw ? String(fcRaw).slice(0, 7) : null);
-    if (fc) unboundForecastMonths.add(fc);
+    if (!fc) continue;
+    if (!unboundByForecast.has(fc)) unboundByForecast.set(fc, []);
+    unboundByForecast.get(fc).push(t);
   }
-  const fcSorted = [...unboundForecastMonths].sort();
+  const fcSorted = [...unboundByForecast.keys()].sort();
   if (fcSorted.length >= 2) {
-    const openFromFc = ymAdd(fcSorted[1], forecastToDueOffset);
-    if (
-      openFromFc &&
-      openFromFc !== 'Outros' &&
-      (!latestOfficialDue || openFromFc > latestOfficialDue)
-    ) {
-      return openFromFc;
+    const laterFc = fcSorted[1];
+    const laterHasNewPurchase = (unboundByForecast.get(laterFc) || []).some((t) => {
+      const num = installmentNumberOf(t);
+      const total = installmentTotalOf(t);
+      return !(Number(total) > 1) || Number(num) === 1;
+    });
+    if (laterHasNewPurchase) {
+      const openFromFc = ymAdd(laterFc, forecastToDueOffset);
+      if (
+        openFromFc &&
+        openFromFc !== 'Outros' &&
+        (!latestOfficialDue || openFromFc > latestOfficialDue)
+      ) {
+        return openFromFc;
+      }
     }
   }
 
@@ -749,6 +827,7 @@ export function buildCreditCardBills({
     const openFor = openByAccount[accountId] || openDueKey;
     for (let n = maxNum + 1; n <= total; n++) {
       if (hasInstallmentNumber(transactions, seriesKey, n)) continue;
+      if (hasSimilarInstallment(transactions, sample, n)) continue;
       const futureDue = ymAdd(maxDue, n - maxNum);
       // Do not project into already-closed cycles
       if (futureDue < openFor) continue;
@@ -761,6 +840,7 @@ export function buildCreditCardBills({
         };
       }
       if (hasInstallmentNumber(map[futureDue].items, seriesKey, n)) continue;
+      if (hasSimilarInstallment(map[futureDue].items, sample, n)) continue;
       const baseDesc = normalizeInstallmentDesc(sample.description);
       map[futureDue].items.push({
         ...sample,
@@ -832,7 +912,14 @@ export function buildCreditCardBills({
           isPaid = false;
         }
       } else if (dueYm === (openByAccount[card.id] || openDueKey)) {
-        const openTotal = resolveOpenBillTotal(cardAcc, scopedItems, profile);
+        const openTotal = resolveOpenBillTotal(cardAcc, scopedItems, profile, {
+          transactions: transactions.filter((t) => !card.id || t.accountId === card.id),
+          openDueKey: dueYm,
+          officialBills: officialBills.filter((b) => !card.id || b.accountId === card.id),
+          forecastToDueOffset: card.id
+            ? offsetForAccount(card.id, transactions, officialBills, offsetCache)
+            : globalOffset,
+        });
         totalAmount += openTotal;
         if (openTotal > 0) isPaid = false;
       } else {
@@ -914,7 +1001,12 @@ export function summarizeCardOpenBill(card, transactions = [], officialBills = [
   const openTotal =
     open?.total != null
       ? Number(open.total)
-      : resolveOpenBillTotal(card, open?.items || [], profile);
+      : resolveOpenBillTotal(card, open?.items || [], profile, {
+          transactions: txs,
+          openDueKey: built.openDueKey,
+          officialBills: bills,
+          forecastToDueOffset: built.forecastToDueOffset,
+        });
 
   return {
     openDueKey: built.openDueKey,

@@ -25,6 +25,10 @@
  *   signed_net = Σ amount then |net| (Pluggy: DEBIT>0, CREDIT<0). Needed when
  *   Nubank posts cancelling pairs (Saldo em atraso + Crédito de atraso).
  *   absolute = Σ |amount| (legacy; inflates bills that include credits).
+ * @property {boolean} [reconcileOpenWithBalance]
+ *   When true (or balance looks like total outstanding), open total may be
+ *   raised to outstanding − future PENDING − past unpaid PENDING if Pluggy
+ *   omitted charges that still affect balance (Mercado Pago additional cards).
  * @property {RemapStalePendingMode} remapStalePending
  *   after_cycle_end = only remap PENDING without billId when purchase date is
  *   after last official close (Carrefour-safe). always = old Nubank-only remap.
@@ -90,6 +94,9 @@ export const CONNECTOR_PROFILES = [
     forecastToDueOffset: 0,
     balanceMeaning: 'total_outstanding',
     openTotalSource: 'cycle_charges',
+    // Pluggy often omits additional-card charges from /transactions while still
+    // counting them in account.balance — reconcile open total against outstanding.
+    reconcileOpenWithBalance: true,
     chargeSumMode: 'signed_net',
     remapStalePending: 'after_cycle_end',
     paymentOftenOnNextCycle: true,
