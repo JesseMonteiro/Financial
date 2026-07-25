@@ -123,6 +123,19 @@ export function inferDueDateForMonth(dueYm, officialBills = []) {
 }
 
 /**
+ * Amount that hits the credit bill in the account currency (BRL).
+ * Foreign purchases often have `amount` in USD and the BRL charge in
+ * `amountInAccountCurrency` (e.g. CURSOR US$ 20 → R$ 107,02).
+ */
+export function txBillingAmount(tx) {
+  const accountAmt = tx?.amountInAccountCurrency;
+  if (accountAmt != null && Number.isFinite(Number(accountAmt))) {
+    return Number(accountAmt);
+  }
+  return Number(tx?.amount) || 0;
+}
+
+/**
  * Fingerprint for an installment series (dedupe real vs projected).
  * Amount is rounded to R$ 0.10 so Pluggy cent-drift (18,32 vs 18,33 across
  * parcels of the same purchase) still matches, while distinct purchases
@@ -136,7 +149,7 @@ export function installmentSeriesKey(tx) {
   const total = meta.totalInstallments || tx?.totalInstallmentsCount;
   if (!total) return null;
   // Tenths of a real — absorbs ±R$ 0.05 drift without merging unrelated amounts
-  const amt = Math.round(Math.abs(Number(tx?.amount) || 0) * 10);
+  const amt = Math.round(Math.abs(txBillingAmount(tx)) * 10);
   return `${acct}|${normalizeInstallmentDesc(tx.description)}|${total}|${amt}`;
 }
 
@@ -183,7 +196,7 @@ export function hasInstallmentNumber(transactions, seriesKey, n) {
 export function hasSimilarInstallment(transactions, sample, n) {
   const total = Number(installmentTotalOf(sample));
   if (!total || !n) return false;
-  const sampleAmt = Math.abs(Number(sample?.amount) || 0);
+  const sampleAmt = Math.abs(txBillingAmount(sample));
   const acct = sample?.accountId || '';
   const sampleDesc = normalizeInstallmentDesc(sample?.description);
   for (const t of transactions) {
@@ -191,7 +204,7 @@ export function hasSimilarInstallment(transactions, sample, n) {
     if (acct && t.accountId && t.accountId !== acct) continue;
     if (Number(installmentNumberOf(t)) !== Number(n)) continue;
     if (Number(installmentTotalOf(t)) !== total) continue;
-    const amt = Math.abs(Number(t.amount) || 0);
+    const amt = Math.abs(txBillingAmount(t));
     if (Math.abs(amt - sampleAmt) <= 0.5) return true;
     const desc = normalizeInstallmentDesc(t.description);
     const prefix = sampleDesc.slice(0, 14);
@@ -205,9 +218,10 @@ export function hasSimilarInstallment(transactions, sample, n) {
 /**
  * Signed contribution of a credit-card tx toward a bill total.
  * Prefers Pluggy `type` so CREDIT always reduces the bill even if `amount` arrives positive.
+ * Uses account-currency amount for foreign-currency purchases.
  */
 export function signedTxAmount(tx) {
-  const raw = Number(tx?.amount) || 0;
+  const raw = txBillingAmount(tx);
   const abs = Math.abs(raw);
   if (tx?.type === 'CREDIT') return -abs;
   if (tx?.type === 'DEBIT') return abs;
@@ -219,13 +233,13 @@ export function sumCycleCharges(items = [], { includeProjected = false, chargeSu
     (t) => !isBillPayment(t) && (includeProjected || !t.isProjected)
   );
   if (chargeSumMode === 'absolute') {
-    return filtered.reduce((s, t) => s + Math.abs(Number(t.amount) || 0), 0);
+    return Math.round(filtered.reduce((s, t) => s + Math.abs(txBillingAmount(t)), 0) * 100) / 100;
   }
   // Pluggy credit-card convention: purchases DEBIT, credits/refunds CREDIT.
   // Signed net lets cancelling pairs (e.g. Nubank Saldo em atraso + Crédito de atraso)
   // net to the real statement total instead of double-counting via Math.abs.
   const net = filtered.reduce((s, t) => s + signedTxAmount(t), 0);
-  return Math.abs(net);
+  return Math.round(Math.abs(net) * 100) / 100;
 }
 
 /**
@@ -270,7 +284,7 @@ export function resolveOpenBillTotal(account, cycleItems = [], profile, opts = {
       if (account?.id && t.accountId && t.accountId !== account.id) continue;
       const due = getDueMonthKey(t, billMap, forecastToDueOffset);
       if (!due || due === 'Outros') continue;
-      const amt = Math.abs(Number(t.amount) || 0);
+      const amt = Math.abs(txBillingAmount(t));
       if (due > openDueKey) futurePending += amt;
       else if (due < openDueKey) pastUnpaidPending += amt;
     }
@@ -478,7 +492,7 @@ export function isBillSettled(bill, opts = {}) {
 
   for (const t of transactions) {
     if (!isBillPayment(t)) continue;
-    const amt = Math.abs(Number(t.amount) || 0);
+    const amt = Math.abs(txBillingAmount(t));
     if (Math.abs(amt - total) > 0.05) continue;
     const tDue = getDueMonthKey(t, billMap, forecastToDueOffset);
     const tDate = String(t.date || '').slice(0, 10);

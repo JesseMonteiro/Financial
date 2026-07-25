@@ -29,6 +29,7 @@ import {
   formatDueMonthShort,
   isBillPayment,
   signedTxAmount,
+  txBillingAmount,
   installmentNumberOf,
   installmentTotalOf,
   resolvePurchaseDate,
@@ -627,6 +628,11 @@ export function CreditCards() {
                 const installmentTotal = installmentTotalOf(tx);
                 const hasInstallments = Number(installmentTotal) > 1 && Number(installmentNum) > 0;
                 const purchaseDate = resolvePurchaseDate(tx);
+                const billingAmt = Math.abs(txBillingAmount(tx));
+                const foreignUsd =
+                  String(tx.currencyCode || '').toUpperCase() === 'USD' &&
+                  tx.amountInAccountCurrency != null &&
+                  Math.abs(Number(tx.amount) || 0) !== billingAmt;
                 return (
                   <div key={tx.id || idx} className="list-row" style={{ padding: '0.75rem 0.85rem' }}>
                     <div className="list-row-main" style={{ gap: '0.75rem' }}>
@@ -659,6 +665,11 @@ export function CreditCards() {
                               Parcela {installmentNum}/{installmentTotal}
                             </Badge>
                           )}
+                          {foreignUsd && (
+                            <Badge variant="neutral" style={{ fontSize: '10px' }}>
+                              US$ {Math.abs(Number(tx.amount) || 0).toFixed(2).replace('.', ',')}
+                            </Badge>
+                          )}
                           {(() => {
                             const linked = receivables.find(r => r.linkedTransactionId === tx.id);
                             if (!linked) return null;
@@ -687,7 +698,7 @@ export function CreditCards() {
                         fontWeight: 700, fontSize: 'var(--font-size-sm)',
                         color: isCredit ? 'var(--success)' : 'var(--danger)'
                       }}>
-                        {isCredit ? '+ ' : '- '}{formatCurrency(Math.abs(tx.amount))}
+                        {isCredit ? '+ ' : '- '}{formatCurrency(billingAmt)}
                       </span>
                       <p style={{ fontSize: '10px', marginTop: '2px', marginBottom: 0, color: tx.isProjected ? 'var(--info)' : tx.status === 'POSTED' ? 'var(--success)' : 'var(--warning)' }}>
                         {tx.isProjected ? 'Parcela Projetada' : tx.status === 'POSTED' ? 'Confirmado' : 'Pendente'}
