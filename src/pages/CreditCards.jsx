@@ -31,6 +31,11 @@ import {
   signedTxAmount,
 } from '../utils/creditBillPeriod';
 
+function transactionTimestamp(tx) {
+  const timestamp = new Date(tx?.date).getTime();
+  return Number.isFinite(timestamp) ? timestamp : Number.NEGATIVE_INFINITY;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // COMPONENT
 // ─────────────────────────────────────────────────────────────────────────────
@@ -218,15 +223,21 @@ export function CreditCards() {
 
   // Filtered transactions
   const filteredTransactions = useMemo(() => {
-    return (currentSelectedBill.items || []).filter(t => {
-      if (search) {
-        const q = search.toLowerCase();
-        if (!t.description?.toLowerCase().includes(q) &&
-            !t.merchant?.businessName?.toLowerCase().includes(q)) return false;
-      }
-      if (selectedCategory !== 'all' && translateCategory(t.category) !== selectedCategory) return false;
-      return true;
-    });
+    return (currentSelectedBill.items || [])
+      .filter(t => {
+        if (search) {
+          const q = search.toLowerCase();
+          if (!t.description?.toLowerCase().includes(q) &&
+              !t.merchant?.businessName?.toLowerCase().includes(q)) return false;
+        }
+        if (selectedCategory !== 'all' && translateCategory(t.category) !== selectedCategory) return false;
+        return true;
+      })
+      .sort((a, b) => {
+        const byPurchaseDate = transactionTimestamp(b) - transactionTimestamp(a);
+        if (byPurchaseDate !== 0) return byPurchaseDate;
+        return String(a.id || '').localeCompare(String(b.id || ''));
+      });
   }, [currentSelectedBill, search, selectedCategory]);
 
   // Bar chart data — keys are already due months
