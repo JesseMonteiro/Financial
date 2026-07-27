@@ -216,6 +216,41 @@ export function hasSimilarInstallment(transactions, sample, n) {
 }
 
 /**
+ * Carrefour (and similar) often keep a PENDING row with the **full purchase**
+ * amount tagged as installment N/M, alongside real rows with the **parcel** amount.
+ * Those get different `installmentSeriesKey`s (amount is part of the key) and the
+ * app would show/project both — e.g. R$ 209,96 and R$ 21,00 as "Parcela 4/10".
+ *
+ * True when another installment tx shares account + description + M and
+ * `this.amount ≈ other.amount × M` (this is the purchase-total ghost).
+ */
+export function isInstallmentPurchaseTotalGhost(tx, transactions = []) {
+  if (tx?.isProjected || isBillPayment(tx)) return false;
+  const total = Number(installmentTotalOf(tx));
+  if (!total || total < 2) return false;
+  const amt = Math.abs(txBillingAmount(tx));
+  if (amt <= 0) return false;
+  const desc = normalizeInstallmentDesc(tx.description);
+  if (!desc) return false;
+  const acct = tx.accountId || '';
+  const tol = Math.max(0.5, total * 0.05);
+
+  for (const other of transactions) {
+    if (!other || other === tx) continue;
+    if (other.id && tx.id && other.id === tx.id) continue;
+    if (other.isProjected || isBillPayment(other)) continue;
+    if (acct && other.accountId && other.accountId !== acct) continue;
+    if (Number(installmentTotalOf(other)) !== total) continue;
+    if (normalizeInstallmentDesc(other.description) !== desc) continue;
+    const otherAmt = Math.abs(txBillingAmount(other));
+    if (otherAmt <= 0) continue;
+    // this ≈ parcel × M  → this is the total ghost; other is the real parcel
+    if (Math.abs(otherAmt * total - amt) <= tol) return true;
+  }
+  return false;
+}
+
+/**
  * Signed contribution of a credit-card tx toward a bill total.
  * Prefers Pluggy `type` so CREDIT always reduces the bill even if `amount` arrives positive.
  * Uses account-currency amount for foreign-currency purchases.
@@ -787,6 +822,8 @@ export function buildCreditCardBills({
 
   // Group transactions by due month (per-account offset)
   for (const t of transactions) {
+    // Drop Carrefour-style purchase-total ghosts (full amount tagged as N/M)
+    if (isInstallmentPurchaseTotalGhost(t, transactions)) continue;
     const key = dueKeyForTx(t);
     if (!map[key]) {
       map[key] = {
@@ -823,6 +860,7 @@ export function buildCreditCardBills({
   const series = new Map();
   for (const t of transactions) {
     if (t.isProjected || isBillPayment(t)) continue;
+    if (isInstallmentPurchaseTotalGhost(t, transactions)) continue;
     const total = installmentTotalOf(t);
     const num = installmentNumberOf(t);
     if (!total || !num) continue;
