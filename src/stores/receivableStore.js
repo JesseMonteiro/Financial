@@ -124,9 +124,14 @@ export const useReceivableStore = create((set, get) => ({
       paidInstallments = installmentHistory.filter(i => i.paidAt).length;
     }
 
+    const {
+      firstDueDate: _firstDueDate,
+      ...dataWithoutFormOnly
+    } = data;
+
     const updatedReceivable = {
       ...existing,
-      ...data,
+      ...dataWithoutFormOnly,
       totalAmount: (data.isContinuous || existing.isContinuous) ? ((data.totalAmount || existing.originalTotalAmount || existing.totalAmount) * 24) : (data.totalAmount !== undefined ? data.totalAmount : existing.totalAmount),
       originalTotalAmount: data.totalAmount !== undefined ? data.totalAmount : (existing.originalTotalAmount || existing.totalAmount),
       installments,

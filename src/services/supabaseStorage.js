@@ -114,14 +114,37 @@ export async function getStoredReceivables() {
 export async function saveStoredReceivable(receivable) {
   const userId = await getCurrentUserId();
   if (!userId) return;
-  const snakeReceivable = toSnakeCase(receivable);
-  snakeReceivable.user_id = userId;
-  
+  // Whitelist DB columns — form-only fields like firstDueDate must not be upserted
+  // (PostgREST PGRST204 if an unknown column is sent).
+  const snakeReceivable = {
+    id: receivable.id,
+    user_id: userId,
+    person_name: receivable.personName ?? receivable.person_name,
+    person_color: receivable.personColor ?? receivable.person_color ?? null,
+    description: receivable.description ?? null,
+    total_amount: receivable.totalAmount ?? receivable.total_amount,
+    original_total_amount: receivable.originalTotalAmount ?? receivable.original_total_amount ?? null,
+    installments: receivable.installments,
+    paid_installments: receivable.paidInstallments ?? receivable.paid_installments ?? 0,
+    is_continuous: receivable.isContinuous ?? receivable.is_continuous ?? false,
+    linked_transaction_id: receivable.linkedTransactionId ?? receivable.linked_transaction_id ?? null,
+    linked_bill_forecast_date: receivable.linkedBillForecastDate ?? receivable.linked_bill_forecast_date ?? null,
+    notes: receivable.notes ?? null,
+    installment_history: receivable.installmentHistory ?? receivable.installment_history ?? [],
+    updated_at: new Date().toISOString(),
+  };
+  if (receivable.createdAt || receivable.created_at) {
+    snakeReceivable.created_at = receivable.createdAt || receivable.created_at;
+  }
+
   const { error } = await supabase
     .from('receivables')
     .upsert(snakeReceivable, { onConflict: 'id' });
-    
-  if (error) console.error('Error saving receivable:', error);
+
+  if (error) {
+    console.error('Error saving receivable:', error);
+    throw error;
+  }
 }
 
 export async function deleteStoredReceivable(id) {
