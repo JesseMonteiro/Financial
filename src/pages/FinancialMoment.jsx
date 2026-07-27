@@ -16,6 +16,7 @@ import {
   isBillPayment,
   isBillSettled,
   sumCycleCharges,
+  sumProjectedCharges,
   MONTHS_PT,
 } from '../utils/creditBillPeriod';
 import { resolveMonthSalary, withSavedMonthSalary } from '../utils/monthSalary';
@@ -186,9 +187,16 @@ export function FinancialMoment() {
     const matchingBill = cardBills.find(
       (b) => b.accountId === card.id && String(b.dueDate || '').startsWith(ym)
     );
+    const periodBill = creditBillPeriod.bills[ym];
+    const scoped = (periodBill?.items || []).filter(
+      (t) => (!t.accountId || t.accountId === card.id) && !isBillPayment(t)
+    );
+
     if (matchingBill) {
+      // Official total + app-projected parcels in this cycle (Amazon open drafts omit them)
+      const projectedAmt = sumProjectedCharges(scoped);
       return {
-        amount: Number(matchingBill.totalAmount) || 0,
+        amount: (Number(matchingBill.totalAmount) || 0) + projectedAmt,
         dueDate: matchingBill.dueDate,
         // Inter often leaves payments[] empty; settle via payment txs too
         isPaid: isBillSettled(matchingBill, {
@@ -200,14 +208,10 @@ export function FinancialMoment() {
       };
     }
 
-    const periodBill = creditBillPeriod.bills[ym];
     if (!periodBill) return null;
 
     const openKey = creditBillPeriod.openDueKey;
     const includeProjected = ym >= openKey;
-    const scoped = periodBill.items.filter(
-      (t) => (!t.accountId || t.accountId === card.id) && !isBillPayment(t)
-    );
     const amount = sumCycleCharges(scoped, { includeProjected });
     if (amount <= 0) return null;
 

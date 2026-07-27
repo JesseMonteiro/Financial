@@ -243,9 +243,21 @@ export function sumCycleCharges(items = [], { includeProjected = false, chargeSu
 }
 
 /**
+ * App-projected parcels already placed in a due-month bucket.
+ * Official Pluggy `totalAmount` often omits them (Amazon/Bradesco open draft).
+ */
+export function sumProjectedCharges(items = [], { chargeSumMode = 'signed_net' } = {}) {
+  return sumCycleCharges(
+    items.filter((t) => t?.isProjected),
+    { includeProjected: true, chargeSumMode }
+  );
+}
+
+/**
  * Open-bill total for ONE due cycle.
  * Never use account.balance alone when it equals total outstanding (limit − available).
- * Exclude projected parcels — they belong on future due months, not the open total.
+ * `cycleItems` are already scoped to this due month — include projected parcels
+ * that belong in this bucket (they are not "future months"; those live in other buckets).
  *
  * When Pluggy omits some open-cycle charges that still sit in `account.balance`
  * (common on Mercado Pago with additional cards), reconcile:
@@ -254,7 +266,7 @@ export function sumCycleCharges(items = [], { includeProjected = false, chargeSu
 export function resolveOpenBillTotal(account, cycleItems = [], profile, opts = {}) {
   const chargeSumMode = profile?.chargeSumMode || 'signed_net';
   const cycleSum = sumCycleCharges(cycleItems, {
-    includeProjected: false,
+    includeProjected: true,
     chargeSumMode,
   });
 
@@ -911,9 +923,15 @@ export function buildCreditCardBills({
       const scopedItems = bucket.items.filter(
         (t) => !card.id || !t.accountId || t.accountId === card.id
       );
+      const cardOpenKey = openByAccount[card.id] || openDueKey;
+      const chargeSumMode = profile?.chargeSumMode || 'signed_net';
 
       if (official) {
-        totalAmount += Number(official.totalAmount) || 0;
+        // Official total is authoritative for real charges, but Amazon/Bradesco
+        // open drafts often omit installment parcels we project into this bucket.
+        const officialAmt = Number(official.totalAmount) || 0;
+        const projectedAmt = sumProjectedCharges(scopedItems, { chargeSumMode });
+        totalAmount += officialAmt + projectedAmt;
         hasOfficial = true;
         dueDate = String(official.dueDate).slice(0, 10);
         if (
@@ -925,7 +943,7 @@ export function buildCreditCardBills({
         ) {
           isPaid = false;
         }
-      } else if (dueYm === (openByAccount[card.id] || openDueKey)) {
+      } else if (dueYm === cardOpenKey) {
         const openTotal = resolveOpenBillTotal(cardAcc, scopedItems, profile, {
           transactions: transactions.filter((t) => !card.id || t.accountId === card.id),
           openDueKey: dueYm,
@@ -938,10 +956,10 @@ export function buildCreditCardBills({
         if (openTotal > 0) isPaid = false;
       } else {
         // Past without official, or future: sum cycle charges (+ projections for future)
-        const includeProjected = dueYm > openDueKey;
+        const includeProjected = dueYm > cardOpenKey;
         const sumTxs = sumCycleCharges(scopedItems, {
           includeProjected,
-          chargeSumMode: profile?.chargeSumMode || 'signed_net',
+          chargeSumMode,
         });
         totalAmount += sumTxs;
         if (sumTxs > 0 && dueYm <= openDueKey) isPaid = false;
