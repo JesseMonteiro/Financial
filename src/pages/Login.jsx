@@ -1,20 +1,21 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Mail, Lock, Eye, EyeOff, ArrowRight, Wallet, Loader2 } from 'lucide-react';
+import { Mail, Lock, User, Eye, EyeOff, ArrowRight, Wallet, Loader2 } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
 import './Login.css';
 
 export function Login() {
-  const [mode, setMode] = useState('signin'); // signin | reset
+  const [mode, setMode] = useState('signin'); // signin | signup | reset
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [fullName, setFullName] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [localError, setLocalError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
   const navigate = useNavigate();
-  const { signIn, resetPassword, loading } = useAuthStore();
+  const { signIn, signUp, resetPassword, loading } = useAuthStore();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -37,6 +38,19 @@ export function Login() {
           setLocalError(error.message || 'Erro ao entrar.');
         } else {
           navigate('/');
+        }
+      } else if (mode === 'signup') {
+        if (!password || !fullName) {
+          setLocalError('Preencha todos os campos.');
+          return;
+        }
+        const { error } = await signUp(email, password, fullName);
+        if (error) {
+          setLocalError(error.message || 'Erro ao criar conta.');
+        } else {
+          setSuccessMsg('Conta criada! Verifique seu email.');
+          setMode('signin');
+          setPassword('');
         }
       } else if (mode === 'reset') {
         const { error } = await resetPassword(email);
@@ -67,6 +81,25 @@ export function Login() {
           <h1 className="login-title">FinanceHub</h1>
           <p className="login-subtitle">Assuma o controle do seu dinheiro</p>
         </div>
+
+        {mode !== 'reset' && (
+          <div className="login-tabs">
+            <button
+              className={`login-tab ${mode === 'signin' ? 'active' : ''}`}
+              onClick={() => { setMode('signin'); setLocalError(''); setSuccessMsg(''); }}
+              type="button"
+            >
+              Entrar
+            </button>
+            <button
+              className={`login-tab ${mode === 'signup' ? 'active' : ''}`}
+              onClick={() => { setMode('signup'); setLocalError(''); setSuccessMsg(''); }}
+              type="button"
+            >
+              Criar conta
+            </button>
+          </div>
+        )}
 
         {mode === 'reset' && (
           <div className="login-tabs">
@@ -106,6 +139,25 @@ export function Login() {
         </AnimatePresence>
 
         <form className="login-form" onSubmit={handleSubmit}>
+          {mode === 'signup' && (
+            <motion.div
+              className="input-group"
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+            >
+              <User className="input-icon" size={20} />
+              <input
+                type="text"
+                className="login-input"
+                placeholder="Nome completo"
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                autoComplete="name"
+              />
+            </motion.div>
+          )}
+
           <div className="input-group">
             <Mail className="input-icon" size={20} />
             <input
@@ -127,7 +179,7 @@ export function Login() {
                 placeholder="Senha"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                autoComplete="current-password"
+                autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
               />
               <button
                 type="button"
@@ -160,7 +212,9 @@ export function Login() {
               <Loader2 className="spinner" size={20} />
             ) : (
               <>
-                {mode === 'signin' ? 'Entrar' : 'Enviar email'}
+                {mode === 'signin' && 'Entrar'}
+                {mode === 'signup' && 'Criar conta'}
+                {mode === 'reset' && 'Enviar email'}
                 <ArrowRight size={20} />
               </>
             )}
