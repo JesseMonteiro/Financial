@@ -73,7 +73,8 @@ function AmountEditRow({ value, onChange, onSave, onCancel, hint }) {
         display: 'flex',
         alignItems: 'center',
         gap: '0.4rem',
-        flexShrink: 0,
+        flexWrap: 'wrap',
+        justifyContent: 'flex-end',
       }}
       onClick={(e) => e.stopPropagation()}
     >
@@ -544,18 +545,22 @@ export function ManualExpenses() {
                   >
                     <div
                       style={{
-                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                        padding: '0.85rem 1rem', gap: '0.75rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '0.85rem 1rem',
+                        gap: '0.75rem',
+                        flexWrap: 'wrap',
                       }}
                     >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: '1 1 12rem', minWidth: 0 }}>
                         {isSeries ? (
                           <button
                             type="button"
                             onClick={() => toggleExpanded(groupKey)}
                             style={{
                               border: 'none', background: 'transparent', cursor: 'pointer',
-                              color: 'var(--text-muted)', padding: 0, display: 'flex',
+                              color: 'var(--text-muted)', padding: 0, display: 'flex', flexShrink: 0,
                             }}
                             aria-label={expanded ? 'Recolher parcelas' : 'Expandir parcelas'}
                             aria-expanded={expanded}
@@ -599,7 +604,17 @@ export function ManualExpenses() {
                           </div>
                         </div>
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', flexShrink: 0 }}>
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.65rem',
+                          flex: '1 1 auto',
+                          justifyContent: 'flex-end',
+                          flexWrap: 'wrap',
+                          minWidth: 0,
+                        }}
+                      >
                         {!isSeries && single && (
                           <PaidCheckbox
                             checked={single.isPaid}
@@ -658,7 +673,8 @@ export function ManualExpenses() {
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'space-between',
-                                gap: '0.75rem',
+                                gap: '0.5rem',
+                                flexWrap: 'wrap',
                                 padding: '0.5rem 0.65rem',
                                 borderRadius: 'var(--radius-sm)',
                                 backgroundColor: inst.isPaid ? 'var(--success-bg)' : 'var(--bg-tertiary)',
@@ -666,7 +682,7 @@ export function ManualExpenses() {
                                 opacity: inst.isPaid ? 0.92 : 1,
                               }}
                             >
-                              <div style={{ minWidth: 0 }}>
+                              <div style={{ minWidth: 0, flex: '1 1 8rem' }}>
                                 <span style={{
                                   fontSize: 'var(--font-size-xs)',
                                   fontWeight: 600,
@@ -682,7 +698,17 @@ export function ManualExpenses() {
                                   {inst.paidAt ? ` · marcado em ${formatDate(inst.paidAt)}` : ''}
                                 </div>
                               </div>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
+                              <div
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '0.5rem',
+                                  flex: '1 1 auto',
+                                  justifyContent: 'flex-end',
+                                  flexWrap: 'wrap',
+                                  minWidth: 0,
+                                }}
+                              >
                                 {isEditingThis ? (
                                   <AmountEditRow
                                     value={editingAmount.draft}
