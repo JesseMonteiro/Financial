@@ -511,8 +511,8 @@ function PersonCard({ personName, personColor, receivables, onMarkPaid, onDelete
         </div>
 
         {/* Progress */}
-        <div style={{ width: 150, flexShrink: 0, marginRight: '1rem' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
+        <div style={{ width: '100%', maxWidth: 150, flex: '1 1 9rem', marginRight: '1rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem', gap: '0.5rem', flexWrap: 'wrap' }}>
             <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{pct}% recebido</span>
             <span style={{ fontSize: '10px', fontWeight: 700, color: pct === 100 ? 'var(--success)' : 'var(--primary)' }}>
               {formatCurrency(totalDue)} a receber
@@ -561,12 +561,16 @@ function PersonCard({ personName, personColor, receivables, onMarkPaid, onDelete
               }}>
                 {/* Receivable header */}
                 <div style={{
-                  display: 'flex', alignItems: 'center', gap: '0.75rem',
-                  padding: '0.85rem 1rem', cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.75rem',
+                  padding: '0.85rem 1rem',
+                  cursor: 'pointer',
+                  flexWrap: 'wrap',
                 }}
                   onClick={() => setExpandedReceivableId(isExpanded ? null : rec.id)}
                 >
-                  <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ flex: '1 1 12rem', minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
                       <span style={{ fontWeight: 600, fontSize: 'var(--font-size-sm)', color: 'var(--text-primary)' }}>
                         {rec.description}
@@ -589,7 +593,18 @@ function PersonCard({ personName, personColor, receivables, onMarkPaid, onDelete
                       )}
                     </div>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexShrink: 0 }} onClick={e => e.stopPropagation()}>
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.35rem',
+                      flex: '1 1 auto',
+                      justifyContent: 'flex-end',
+                      flexWrap: 'wrap',
+                      minWidth: 0,
+                    }}
+                    onClick={e => e.stopPropagation()}
+                  >
                     <span style={{ fontWeight: 700, fontSize: 'var(--font-size-sm)', color: 'var(--text-primary)', marginRight: '0.5rem' }}>
                       {rec.isContinuous ? `${formatCurrency(rec.installmentHistory[0]?.amount)} /mês` : `${formatCurrency(recPaid)} / ${formatCurrency(rec.totalAmount)}`}
                     </span>
@@ -637,21 +652,34 @@ function PersonCard({ personName, personColor, receivables, onMarkPaid, onDelete
                       .sort((a, b) => dueKey(a).localeCompare(dueKey(b)))
                       .map(inst => (
                       <div key={inst.installmentNumber} style={{
-                        display: 'flex', alignItems: 'center', gap: '0.75rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.5rem',
                         padding: '0.65rem 1rem',
                         borderBottom: '1px solid var(--border-color)',
                         backgroundColor: inst.paidAt ? 'rgba(34,197,94,0.05)' : 'transparent',
                         justifyContent: 'space-between',
+                        flexWrap: 'wrap',
                       }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                          <span style={{ fontSize: 'var(--font-size-xs)', fontWeight: 600, color: 'var(--text-secondary)', width: 80 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: '1 1 8rem', minWidth: 0, flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: 'var(--font-size-xs)', fontWeight: 600, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
                             Parcela {inst.installmentNumber}/{total}
                           </span>
-                          <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>
+                          <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
                             Vence {formatDate(inst.dueDate)}
                           </span>
                         </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.65rem',
+                            flex: '1 1 auto',
+                            justifyContent: 'flex-end',
+                            flexWrap: 'wrap',
+                            minWidth: 0,
+                          }}
+                        >
                           <span style={{ fontSize: 'var(--font-size-sm)', fontWeight: 700, color: 'var(--text-primary)' }}>
                             {formatCurrency(inst.amount)}
                           </span>
