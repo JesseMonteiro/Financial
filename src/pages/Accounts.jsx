@@ -1,14 +1,25 @@
 import React, { useEffect, useState } from 'react';
-import { Wallet, CreditCard, Building2, ShieldCheck, Plus, Edit2, Check, X } from 'lucide-react';
+import { Wallet, CreditCard, Building2, Plus, Edit2, Check, X, Clock } from 'lucide-react';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { useAccountStore } from '../stores/accountStore';
-import { formatCurrency } from '../utils/formatters';
+import { formatCurrency, getDataSyncMeta } from '../utils/formatters';
 import { Link } from 'react-router-dom';
 
+function SyncUpdatedBadge({ updatedAt }) {
+  const sync = getDataSyncMeta(updatedAt);
+  if (!sync) return null;
+  return (
+    <Badge variant={sync.variant} title={sync.title} style={{ whiteSpace: 'nowrap' }}>
+      <Clock size={10} aria-hidden />
+      {sync.label}
+    </Badge>
+  );
+}
+
 export function Accounts() {
-  const { accounts, loadAccounts, renameAccount, loading } = useAccountStore();
+  const { accounts, loadAccounts, renameAccount } = useAccountStore();
   const [editingId, setEditingId] = useState(null);
   const [tempName, setTempName] = useState('');
 
@@ -69,8 +80,8 @@ export function Accounts() {
             const isEditing = editingId === acc.id;
             return (
               <Card key={acc.id} className="col-4">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: 1 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem', gap: '0.5rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: 1, minWidth: 0 }}>
                     <div style={{
                       width: 40,
                       height: 40,
@@ -85,7 +96,7 @@ export function Accounts() {
                     }}>
                       <Building2 size={20} />
                     </div>
-                    <div style={{ flex: 1 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
                       {isEditing ? (
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
                           <input
@@ -117,7 +128,10 @@ export function Accounts() {
                       </span>
                     </div>
                   </div>
-                  <Badge variant="success">Ativa</Badge>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.35rem', flexShrink: 0 }}>
+                    <Badge variant="success">Ativa</Badge>
+                    <SyncUpdatedBadge updatedAt={acc.updatedAt} />
+                  </div>
                 </div>
                 <div style={{ marginTop: '1rem' }}>
                   <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>Saldo Atual</span>
@@ -141,8 +155,8 @@ export function Accounts() {
             const isEditing = editingId === acc.id;
             return (
               <Card key={acc.id} className="col-4">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
-                  <div style={{ flex: 1, marginRight: '0.5rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem', gap: '0.5rem' }}>
+                  <div style={{ flex: 1, minWidth: 0, marginRight: '0.5rem' }}>
                     {isEditing ? (
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', marginBottom: '0.2rem' }}>
                         <input
@@ -173,7 +187,10 @@ export function Accounts() {
                       {acc.creditData?.institutionName || 'Cartão'} • Final {acc.number || '4410'}
                     </span>
                   </div>
-                  <Badge variant="neutral">Fatura Aberta</Badge>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.35rem', flexShrink: 0 }}>
+                    <Badge variant="neutral">Fatura Aberta</Badge>
+                    <SyncUpdatedBadge updatedAt={acc.updatedAt} />
+                  </div>
                 </div>
                 <div>
                   <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>Fatura Atual</span>
