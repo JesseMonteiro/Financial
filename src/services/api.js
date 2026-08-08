@@ -241,6 +241,65 @@ export async function generateTelegramLinkToken() {
   }
 }
 
+export async function fetchJointStatus({ force = false } = {}) {
+  const scope = await cacheScope();
+  const key = cacheKey(scope, ['joint', 'status']);
+  return cachedFetch(
+    key,
+    async () => {
+      const res = await api.get('/joint/status');
+      return res.data?.link || null;
+    },
+    { force, ttlMs: 60_000 }
+  );
+}
+
+export async function generateJointInvite() {
+  try {
+    const res = await api.post('/joint/invite');
+    clearApiCache();
+    return res.data?.token || null;
+  } catch (err) {
+    const message = err.response?.data?.error || err.message || 'Falha ao gerar convite';
+    throw new Error(message);
+  }
+}
+
+export async function acceptJointInvite(token) {
+  try {
+    const res = await api.post('/joint/accept', { token });
+    clearApiCache();
+    return res.data;
+  } catch (err) {
+    const message = err.response?.data?.error || err.message || 'Falha ao aceitar convite';
+    throw new Error(message);
+  }
+}
+
+export async function unlinkJoint() {
+  try {
+    const res = await api.delete('/joint/unlink');
+    clearApiCache();
+    return res.data;
+  } catch (err) {
+    const message = err.response?.data?.error || err.message || 'Falha ao desvincular';
+    throw new Error(message);
+  }
+}
+
+export async function fetchJointMomentData({ force = false } = {}) {
+  const scope = await cacheScope();
+  const key = cacheKey(scope, ['joint', 'moment-data']);
+  return cachedFetch(
+    key,
+    async () => {
+      const res = await api.get('/joint/moment-data');
+      return res.data;
+    },
+    { force, ttlMs: 5 * 60_000 }
+  );
+}
+
 export async function checkServerHealth() {
   try {
     const res = await api.get('/health');

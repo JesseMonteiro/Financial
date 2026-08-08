@@ -178,17 +178,32 @@ export async function getStoredManualTransactions() {
 export async function saveStoredManualTransaction(tx) {
   const userId = await getCurrentUserId();
   if (!userId) return;
+
+  // Never reassign ownership: existing rows keep DB user_id; new rows belong to caller
+  let ownerId = userId;
+  if (tx.id) {
+    const { data: existing } = await supabase
+      .from('manual_transactions')
+      .select('user_id')
+      .eq('id', tx.id)
+      .maybeSingle();
+    if (existing?.user_id) {
+      ownerId = existing.user_id;
+    }
+  }
+
   const snakeTx = toSnakeCase(tx);
-  snakeTx.user_id = userId;
+  snakeTx.user_id = ownerId;
   delete snakeTx.is_manual;
   delete snakeTx.account_id;
-  // Ensure paid flag persists even if undefined on older clients
+  delete snakeTx.owner_user_id;
+  delete snakeTx.owner_label;
   if (snakeTx.is_paid == null) snakeTx.is_paid = false;
-  
+
   const { error } = await supabase
     .from('manual_transactions')
     .upsert(snakeTx, { onConflict: 'id' });
-    
+
   if (error) console.error('Error saving manual transaction:', error);
 }
 
@@ -338,20 +353,40 @@ export async function getMonthlySalaries() {
   return merged;
 }
 
-export async function saveMonthlySalaries(salaries) {
+export async function saveMonthlySalaries(salaries, opts = {}) {
   const safe = salaries && typeof salaries === 'object' ? salaries : {};
-  try {
-    localStorage.setItem('financehub_monthly_salaries', JSON.stringify(safe));
-  } catch (_) { /* ignore */ }
+  const currentUserId = await getCurrentUserId();
+  if (!currentUserId) return;
 
-  const userId = await getCurrentUserId();
-  if (!userId) return;
-  const { error } = await supabase
-    .from('profiles')
-    .update({ monthly_salaries: safe })
-    .eq('id', userId);
+  const targetUserId = opts.userId || currentUserId;
 
-  if (error) console.error('Error saving monthly salaries:', error);
+  // Only cache locally when saving own salaries
+  if (targetUserId === currentUserId) {
+    try {
+      localStorage.setItem('financehub_monthly_salaries', JSON.stringify(safe));
+    } catch (_) { /* ignore */ }
+  }
+
+  if (targetUserId === currentUserId) {
+    const { error } = await supabase
+      .from('profiles')
+      .update({ monthly_salaries: safe })
+      .eq('id', currentUserId);
+    if (error) console.error('Error saving monthly salaries:', error);
+    return;
+  }
+
+  const { data, error } = await supabase.rpc('update_linked_monthly_salaries', {
+    p_target_user_id: targetUserId,
+    p_salaries: safe,
+  });
+  if (error) {
+    console.error('Error saving partner monthly salaries:', error);
+    throw error;
+  }
+  if (data && data.success === false) {
+    throw new Error(data.message || 'Falha ao salvar salário do parceiro');
+  }
 }
 
 // --- Custom Pluggy Credentials ---

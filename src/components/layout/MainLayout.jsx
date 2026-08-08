@@ -4,17 +4,23 @@ import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import { LiquidGlassTabBar } from './LiquidGlassTabBar';
 import { useSettingsStore } from '../../stores/settingsStore';
+import { useJointStore } from '../../stores/jointStore';
 import { useIsMobile } from '../../hooks/useMediaQuery';
 
 export function MainLayout() {
   const [collapsed, setCollapsed] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const { initTheme } = useSettingsStore();
+  const loadJointStatus = useJointStore((s) => s.loadStatus);
   const isMobile = useIsMobile();
 
   useEffect(() => {
     initTheme();
   }, [initTheme]);
+
+  useEffect(() => {
+    loadJointStatus().catch(console.error);
+  }, [loadJointStatus]);
 
   useEffect(() => {
     if (!isMobile) setMoreOpen(false);

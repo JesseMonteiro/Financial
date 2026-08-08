@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Settings as SettingsIcon, Moon, Sun, Palette, LayoutGrid, Check, MessageSquare, Link2 } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Settings as SettingsIcon, Moon, Sun, Palette, LayoutGrid, Check, MessageSquare, Link2, Users } from 'lucide-react';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { useSettingsStore } from '../stores/settingsStore';
+import { useJointStore } from '../stores/jointStore';
 import { getPluggyCredentials, savePluggyCredentials, getPluggyItemIds } from '../services/storage';
 import { supabase } from '../services/supabaseClient';
 import { generateTelegramLinkToken, syncItemIds } from '../services/api';
@@ -19,6 +21,13 @@ export function Settings() {
     setAnimationsEnabled
   } = useSettingsStore();
 
+  const jointLink = useJointStore((s) => s.link);
+  const jointStatusLoading = useJointStore((s) => s.statusLoading);
+  const loadJointStatus = useJointStore((s) => s.loadStatus);
+  const jointInvite = useJointStore((s) => s.invite);
+  const jointAccept = useJointStore((s) => s.accept);
+  const jointUnlink = useJointStore((s) => s.unlink);
+
   const [telegramLinked, setTelegramLinked] = React.useState(false);
   const [linkToken, setLinkToken] = React.useState('');
   const [loadingToken, setLoadingToken] = React.useState(false);
@@ -33,6 +42,11 @@ export function Settings() {
   const [savingItems, setSavingItems] = useState(false);
   const [itemsMsg, setItemsMsg] = useState(null);
 
+  const [jointInviteToken, setJointInviteToken] = useState('');
+  const [jointAcceptCode, setJointAcceptCode] = useState('');
+  const [jointBusy, setJointBusy] = useState(false);
+  const [jointMsg, setJointMsg] = useState(null);
+
   useEffect(() => {
     async function loadCreds() {
       const [creds, itemIds] = await Promise.all([
@@ -46,7 +60,8 @@ export function Settings() {
       setPluggyItemIdsText((itemIds || []).join('\n'));
     }
     loadCreds();
-  }, []);
+    loadJointStatus({ force: true }).catch(console.error);
+  }, [loadJointStatus]);
 
   const handleSaveCredentials = async () => {
     setSavingCreds(true);
@@ -288,6 +303,137 @@ export function Settings() {
                   </a>
                 </div>
               )}
+            </div>
+          )}
+        </div>
+      </Card>
+
+      {/* Conta conjunta */}
+      <Card title="Conta conjunta" subtitle="Vincule sua conta à de outra pessoa para um Momento Financeiro consolidado (casal, por exemplo).">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: '1rem' }}>
+          {jointStatusLoading && !jointLink ? (
+            <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--text-muted)' }}>Carregando status...</p>
+          ) : jointLink?.status === 'active' ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '1rem', backgroundColor: 'rgba(16, 185, 129, 0.1)', borderRadius: 'var(--radius-md)', border: '1px solid rgba(16, 185, 129, 0.2)' }}>
+                <Users size={18} color="#10b981" />
+                <div style={{ flex: 1 }}>
+                  <p style={{ fontSize: 'var(--font-size-sm)', fontWeight: 600 }}>Vinculado com {jointLink.partner_display_name || 'parceiro'}</p>
+                  <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>Ambos veem e editam o Momento consolidado na aba Conta conjunta.</p>
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                <Link to="/joint-account" style={{ textDecoration: 'none' }}>
+                  <Button variant="primary" size="sm" icon={Users}>Abrir conta conjunta</Button>
+                </Link>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={jointBusy}
+                  onClick={async () => {
+                    if (!confirm('Desvincular a conta conjunta? Cada um volta a ver só a própria conta.')) return;
+                    setJointBusy(true);
+                    setJointMsg(null);
+                    try {
+                      await jointUnlink();
+                      setJointInviteToken('');
+                      setJointMsg({ type: 'success', text: 'Conta conjunta desvinculada.' });
+                    } catch (e) {
+                      setJointMsg({ type: 'danger', text: e.message });
+                    } finally {
+                      setJointBusy(false);
+                    }
+                  }}
+                >
+                  Desvincular
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', padding: '1rem', backgroundColor: 'var(--bg-card-hover)', borderRadius: 'var(--radius-md)' }}>
+                <div style={{ flex: 1 }}>
+                  <p style={{ fontSize: 'var(--font-size-sm)', fontWeight: 600 }}>Criar convite</p>
+                  <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>
+                    Gere um código de 6 dígitos e compartilhe com a outra pessoa. Válido por 30 minutos.
+                  </p>
+                </div>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  disabled={jointBusy}
+                  onClick={async () => {
+                    setJointBusy(true);
+                    setJointMsg(null);
+                    try {
+                      const token = await jointInvite();
+                      setJointInviteToken(token);
+                      setJointMsg({ type: 'success', text: 'Código gerado. Compartilhe com o parceiro.' });
+                    } catch (e) {
+                      setJointMsg({ type: 'danger', text: e.message });
+                    } finally {
+                      setJointBusy(false);
+                    }
+                  }}
+                >
+                  {jointBusy ? 'Gerando...' : 'Gerar código'}
+                </Button>
+              </div>
+
+              {(jointInviteToken || jointLink?.invite_token) && (
+                <div style={{ padding: '1rem', border: '1px dashed var(--border-color)', borderRadius: 'var(--radius-md)' }}>
+                  <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)', marginBottom: '0.35rem' }}>Código para compartilhar:</p>
+                  <code style={{ fontSize: '1.5rem', fontWeight: 700, letterSpacing: '0.2em', color: 'var(--primary)' }}>
+                    {jointInviteToken || jointLink?.invite_token}
+                  </code>
+                </div>
+              )}
+
+              <div style={{ paddingTop: '0.5rem', borderTop: '1px solid var(--border-color)' }}>
+                <p style={{ fontSize: 'var(--font-size-sm)', fontWeight: 600, marginBottom: '0.5rem' }}>Aceitar convite</p>
+                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                  <input
+                    className="input"
+                    placeholder="Código de 6 dígitos"
+                    value={jointAcceptCode}
+                    onChange={(e) => setJointAcceptCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    maxLength={6}
+                    style={{ flex: 1, fontFamily: 'monospace', letterSpacing: '0.15em' }}
+                  />
+                  <Button
+                    size="sm"
+                    disabled={jointBusy || jointAcceptCode.length < 6}
+                    onClick={async () => {
+                      setJointBusy(true);
+                      setJointMsg(null);
+                      try {
+                        await jointAccept(jointAcceptCode);
+                        setJointAcceptCode('');
+                        setJointMsg({ type: 'success', text: 'Conta conjunta ativada!' });
+                      } catch (e) {
+                        setJointMsg({ type: 'danger', text: e.message });
+                      } finally {
+                        setJointBusy(false);
+                      }
+                    }}
+                  >
+                    Aceitar
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {jointMsg && (
+            <div style={{
+              padding: '0.5rem 0.75rem',
+              borderRadius: 'var(--radius-md)',
+              backgroundColor: jointMsg.type === 'success' ? 'var(--success-bg)' : 'var(--danger-bg)',
+              color: jointMsg.type === 'success' ? 'var(--success)' : 'var(--danger)',
+              fontSize: 'var(--font-size-sm)',
+              fontWeight: 500
+            }}>
+              {jointMsg.text}
             </div>
           )}
         </div>

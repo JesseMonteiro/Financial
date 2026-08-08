@@ -7,10 +7,14 @@ import {
   LogOut,
 } from 'lucide-react';
 import { useAuthStore } from '../../stores/authStore';
-import { navItems } from './navItems';
+import { useJointStore } from '../../stores/jointStore';
+import { getVisibleNavItems } from './navItems';
 
 export function Sidebar({ collapsed, onToggle }) {
   const { user, signOut } = useAuthStore();
+  const jointLink = useJointStore((s) => s.link);
+  const hasJoint = jointLink?.status === 'active';
+  const items = getVisibleNavItems(hasJoint);
 
   return (
     <aside className={`sidebar ${collapsed ? 'collapsed' : ''}`}>
@@ -65,7 +69,7 @@ export function Sidebar({ collapsed, onToggle }) {
 
       <nav style={{ flex: 1, padding: '1rem 0.75rem', overflowY: 'auto' }}>
         <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-          {navItems.map(item => {
+          {items.map(item => {
             const Icon = item.icon;
             return (
               <li key={item.path}>

@@ -1,9 +1,10 @@
 import React, { useEffect } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { LogOut, X, ShieldCheck } from 'lucide-react';
-import { navItems, mobilePrimaryTabs, mobileTabPaths } from './navItems';
+import { mobilePrimaryTabs, mobileTabPaths, getVisibleNavItems } from './navItems';
 import { useScrollDirection } from '../../hooks/useScrollDirection';
 import { useAuthStore } from '../../stores/authStore';
+import { useJointStore } from '../../stores/jointStore';
 
 export function LiquidGlassTabBar({ moreOpen, onMoreOpen, onMoreClose }) {
   const { hidden } = useScrollDirection({ threshold: 10 });
@@ -63,6 +64,8 @@ export function LiquidGlassTabBar({ moreOpen, onMoreOpen, onMoreClose }) {
 
 function MobileMoreDrawer({ open, onClose }) {
   const { user, signOut } = useAuthStore();
+  const jointLink = useJointStore((s) => s.link);
+  const items = getVisibleNavItems(jointLink?.status === 'active');
   const location = useLocation();
 
   useEffect(() => {
@@ -108,7 +111,7 @@ function MobileMoreDrawer({ open, onClose }) {
 
         <nav className="mobile-more-sheet__nav">
           <ul>
-            {navItems.map((item) => {
+            {items.map((item) => {
               const Icon = item.icon;
               const isActive =
                 item.path === '/'

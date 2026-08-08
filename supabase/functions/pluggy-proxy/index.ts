@@ -982,6 +982,188 @@ async function handleTelegramWebhook(payload: unknown): Promise<void> {
   );
 }
 
+async function loadMemberPluggyBundleEdge(profile: {
+  pluggy_item_ids?: unknown;
+  pluggy_client_id?: string | null;
+  pluggy_client_secret?: string | null;
+}): Promise<{
+  accounts: Record<string, unknown>[];
+  transactions: Record<string, unknown>[];
+  billsByAccount: Record<string, Record<string, unknown>[]>;
+}> {
+  const itemIds = asItemIdList(profile?.pluggy_item_ids);
+  const clientId = profile?.pluggy_client_id || Deno.env.get('PLUGGY_CLIENT_ID') || '';
+  const clientSecret = profile?.pluggy_client_secret || Deno.env.get('PLUGGY_CLIENT_SECRET') || '';
+  if (!clientId || !clientSecret || itemIds.length === 0) {
+    return { accounts: [], transactions: [], billsByAccount: {} };
+  }
+  const creds = { clientId, clientSecret };
+  const accounts: Record<string, unknown>[] = [];
+  for (const itemId of itemIds) {
+    try {
+      const d = await pluggyJson(creds, '/accounts', { params: { itemId } }) as { results?: Record<string, unknown>[] };
+      accounts.push(...(d.results || []));
+    } catch (e) {
+      console.warn('[joint] accounts', itemId, e);
+    }
+  }
+  const transactions: Record<string, unknown>[] = [];
+  for (const acc of accounts) {
+    const accountId = String(acc.id || '');
+    if (!accountId) continue;
+    try {
+      const d = await pluggyJson(creds, '/v2/transactions', { params: { accountId } }) as { results?: Record<string, unknown>[] };
+      transactions.push(...(d.results || []));
+    } catch (e) {
+      console.warn('[joint] txs', accountId, e);
+    }
+  }
+  const billsByAccount: Record<string, Record<string, unknown>[]> = {};
+  for (const acc of accounts) {
+    if (acc.type !== 'CREDIT') continue;
+    const accountId = String(acc.id || '');
+    if (!accountId) continue;
+    try {
+      const d = await pluggyJson(creds, '/bills', { params: { accountId } }) as { results?: Record<string, unknown>[] } | Record<string, unknown>[];
+      const list = Array.isArray(d) ? d : (d.results || []);
+      billsByAccount[accountId] = list;
+    } catch (e) {
+      console.warn('[joint] bills', accountId, e);
+      billsByAccount[accountId] = [];
+    }
+  }
+  return { accounts, transactions, billsByAccount };
+}
+
+async function handleJoint(
+  supabaseClient: SupabaseClient,
+  userId: string,
+  method: string,
+  actionOrId: string | undefined,
+  body: unknown
+): Promise<Response> {
+  if (method === 'GET' && (!actionOrId || actionOrId === 'status')) {
+    const { data, error } = await supabaseClient.rpc('get_my_joint_link');
+    if (error) return errorResponse(error.message, 500);
+    return jsonResponse({ link: data || null });
+  }
+
+  if (method === 'POST' && actionOrId === 'invite') {
+    const { data: token, error } = await supabaseClient.rpc('generate_joint_invite_token', {
+      p_user_id: userId,
+    });
+    if (error) return errorResponse(error.message, 400);
+    return jsonResponse({ success: true, token });
+  }
+
+  if (method === 'POST' && actionOrId === 'accept') {
+    const token = String((body as { token?: string })?.token || '').trim();
+    if (!token) return errorResponse('token é obrigatório', 400);
+    const { data, error } = await supabaseClient.rpc('accept_joint_invite', { p_token: token });
+    if (error) return errorResponse(error.message, 400);
+    if (!data?.success) return errorResponse(data?.message || 'Falha ao aceitar convite', 400);
+    return jsonResponse(data);
+  }
+
+  if (method === 'DELETE' && actionOrId === 'unlink') {
+    const { data, error } = await supabaseClient.rpc('unlink_joint_account');
+    if (error) return errorResponse(error.message, 400);
+    if (!data?.success) return errorResponse(data?.message || 'Falha ao desvincular', 400);
+    return jsonResponse(data);
+  }
+
+  if (method === 'GET' && actionOrId === 'moment-data') {
+    const { data: link, error: linkError } = await supabaseClient.rpc('get_my_joint_link');
+    if (linkError) return errorResponse(linkError.message, 500);
+    if (!link || link.status !== 'active' || !link.partner_id) {
+      return errorResponse('Nenhuma conta conjunta ativa', 404);
+    }
+
+    const memberIds = [userId, link.partner_id as string];
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+    const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    const service = serviceKey
+      ? createClient(supabaseUrl, serviceKey)
+      : supabaseClient;
+
+    const { data: profiles, error: profileError } = await service
+      .from('profiles')
+      .select('id, display_name, pluggy_item_ids, pluggy_client_id, pluggy_client_secret, monthly_salaries')
+      .in('id', memberIds);
+    if (profileError) return errorResponse(profileError.message, 500);
+
+    const profileById = Object.fromEntries((profiles || []).map((p) => [p.id, p]));
+    const members = memberIds.map((id) => ({
+      id,
+      displayName: profileById[id]?.display_name || (id === userId ? 'Você' : 'Parceiro'),
+      monthlySalaries: profileById[id]?.monthly_salaries || {},
+    }));
+
+    const accounts: Record<string, unknown>[] = [];
+    const transactions: Record<string, unknown>[] = [];
+    const billsByAccount: Record<string, Record<string, unknown>[]> = {};
+    const seenAccountIds = new Set<string>();
+
+    for (const id of memberIds) {
+      const label = members.find((m) => m.id === id)?.displayName || 'Usuário';
+      const bundle = await loadMemberPluggyBundleEdge(profileById[id] || {});
+      for (const acc of bundle.accounts) {
+        const accId = String(acc.id || '');
+        if (!accId || seenAccountIds.has(accId)) continue;
+        seenAccountIds.add(accId);
+        accounts.push({ ...acc, ownerUserId: id, ownerLabel: label });
+      }
+      for (const tx of bundle.transactions) {
+        transactions.push({ ...tx, ownerUserId: id, ownerLabel: label });
+      }
+      for (const [accId, bills] of Object.entries(bundle.billsByAccount)) {
+        billsByAccount[accId] = bills.map((b) => ({
+          ...b,
+          accountId: (b as { accountId?: string }).accountId || accId,
+          ownerUserId: id,
+          ownerLabel: label,
+        }));
+      }
+    }
+
+    const { data: manuals, error: manualError } = await service
+      .from('manual_transactions')
+      .select('*')
+      .in('user_id', memberIds);
+    if (manualError) return errorResponse(manualError.message, 500);
+
+    const { data: receivables, error: recvError } = await service
+      .from('receivables')
+      .select('*')
+      .in('user_id', memberIds);
+    if (recvError) return errorResponse(recvError.message, 500);
+
+    const labelById = Object.fromEntries(members.map((m) => [m.id, m.displayName]));
+
+    return jsonResponse({
+      link,
+      members,
+      accounts,
+      transactions,
+      billsByAccount,
+      manuals: (manuals || []).map((row) => ({
+        ...row,
+        ownerUserId: row.user_id,
+        ownerLabel: labelById[row.user_id as string] || 'Usuário',
+        isManual: true,
+        accountId: 'manual',
+      })),
+      receivables: (receivables || []).map((row) => ({
+        ...row,
+        ownerUserId: row.user_id,
+        ownerLabel: labelById[row.user_id as string] || 'Usuário',
+      })),
+    });
+  }
+
+  return errorResponse(`Route /joint/${actionOrId || ''} not found`, 404);
+}
+
 // ─── Main router ───
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
@@ -1057,8 +1239,13 @@ Deno.serve(async (req: Request) => {
   if (authError || !user) return errorResponse('Invalid or expired authentication token', 401);
 
   let body: unknown = {};
-  if (['POST', 'PATCH', 'PUT'].includes(method)) {
+  if (['POST', 'PATCH', 'PUT', 'DELETE'].includes(method)) {
     try { body = await req.json(); } catch (_) {}
+  }
+
+  // Joint account routes (no Pluggy credentials required for invite/status)
+  if (resource === 'joint') {
+    return await handleJoint(supabaseClient, user.id, method, actionOrId, body);
   }
 
   const { data: profile } = await supabaseClient

@@ -10,7 +10,7 @@
 import {
   resolveConnectorProfile,
   balanceLooksLikeTotalOutstanding,
-} from './creditConnectors/profiles.js';
+} from './creditConnectors/profiles.ts';
 
 export const MONTHS_PT = [
   'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',

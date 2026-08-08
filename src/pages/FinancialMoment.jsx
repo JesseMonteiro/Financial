@@ -13,14 +13,13 @@ import { formatCurrency, formatDate } from '../utils/formatters';
 import { translateCategory } from '../utils/categories';
 import {
   buildCreditCardBills,
-  isBillPayment,
-  isBillSettled,
-  sumCycleCharges,
-  sumProjectedCharges,
-  MONTHS_PT,
 } from '../utils/creditBillPeriod';
 import { resolveMonthSalary, withSavedMonthSalary } from '../utils/monthSalary';
-import { automaticDebitsForMonth, isAutomaticDebitPending } from '../utils/analytics';
+import {
+  buildFinancialMomentMonthList,
+  computeFinancialMomentMonth,
+  computeFinancialMomentMonthsStatus,
+} from '../utils/financialMomentMonth';
 import { 
   ChevronLeft, 
   ChevronRight, 
@@ -125,21 +124,7 @@ export function FinancialMoment() {
   );
 
   // 12-month calendar list around today
-  const monthList = useMemo(() => {
-    const list = [];
-    const baseDate = new Date();
-    for (let i = -6; i <= 5; i++) {
-      const d = new Date(baseDate.getFullYear(), baseDate.getMonth() + i, 1);
-      const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      list.push({
-        ym,
-        label: `${MONTHS_PT[d.getMonth()]} de ${d.getFullYear()}`,
-        year: d.getFullYear(),
-        month: d.getMonth() + 1
-      });
-    }
-    return list;
-  }, []);
+  const monthList = useMemo(() => buildFinancialMomentMonthList(), []);
 
   // Default to current calendar month
   useEffect(() => {
@@ -182,192 +167,62 @@ export function FinancialMoment() {
     await saveMonthlySalaries(updated);
   };
 
-  /** Amount for one card in a due-month — never use outstanding balance. */
-  const cardBillAmountForMonth = (card, ym) => {
-    const matchingBill = cardBills.find(
-      (b) => b.accountId === card.id && String(b.dueDate || '').startsWith(ym)
-    );
-    const periodBill = creditBillPeriod.bills[ym];
-    const scoped = (periodBill?.items || []).filter(
-      (t) => (!t.accountId || t.accountId === card.id) && !isBillPayment(t)
-    );
-
-    if (matchingBill) {
-      // Official total + app-projected parcels in this cycle (Amazon open drafts omit them)
-      const projectedAmt = sumProjectedCharges(scoped);
-      return {
-        amount: (Number(matchingBill.totalAmount) || 0) + projectedAmt,
-        dueDate: matchingBill.dueDate,
-        // Inter often leaves payments[] empty; settle via payment txs too
-        isPaid: isBillSettled(matchingBill, {
-          transactions: cardTransactions,
-          officialBills: cardBills,
-          forecastToDueOffset: creditBillPeriod.forecastToDueOffset || 0,
-        }),
-        isFallback: false,
-      };
-    }
-
-    if (!periodBill) return null;
-
-    const openKey = creditBillPeriod.openDueKey;
-    const includeProjected = ym >= openKey;
-    const amount = sumCycleCharges(scoped, { includeProjected });
-    if (amount <= 0) return null;
-
-    return {
-      amount,
-      dueDate: periodBill.dueDate || `${ym}-10`,
-      isPaid: false,
-      isFallback: true,
-    };
-  };
-
   // ── Calculation details for selected month ──
-  const activeMonthData = useMemo(() => {
-    if (!selectedMonth) return null;
-    
-    // 1. Incomes - Salary
-    const salary = resolveMonthSalary(salaries, selectedMonth);
-
-    // 2. Incomes - Receivables due in this month (format: YYYY-MM-DD starts with YYYY-MM)
-    const activeReceivables = [];
-    let receivablesTotal = 0;
-
-    receivables.forEach(r => {
-      (r.installmentHistory || []).forEach(inst => {
-        if ((inst.dueDate || '').startsWith(selectedMonth)) {
-          activeReceivables.push({
-            personName: r.personName,
-            personColor: r.personColor,
-            description: r.description,
-            amount: inst.amount,
-            installmentNumber: inst.installmentNumber,
-            totalInstallments: r.installments,
-            paidAt: inst.paidAt
-          });
-          // All installments due in this month count as credit/receivable entries
-          receivablesTotal += inst.amount;
-        }
-      });
-    });
-
-    const entriesTotal = salary + receivablesTotal;
-
-    // 3. Expenses - Credit Card bills due in this month (canonical due-month index)
-    const activeBills = [];
-    let creditCardsTotal = 0;
-
-    creditCards.forEach(card => {
-      const bill = cardBillAmountForMonth(card, selectedMonth);
-      if (!bill) return;
-      activeBills.push({
-        cardName: card.name,
-        dueDate: bill.dueDate,
-        amount: bill.amount,
-        isPaid: bill.isPaid,
-        isFallback: bill.isFallback,
-      });
-      creditCardsTotal += bill.amount;
-    });
-
-    // 4. Expenses - Manual expenses dated in this month
-    const activeManual = transactions.filter(t => 
-      t.isManual === true && 
-      t.date?.startsWith(selectedMonth)
-    );
-    const manualExpensesTotal = activeManual.reduce((s, t) => s + Math.abs(t.amount), 0);
-
-    // 5. Expenses - Automatic debits scheduled/posted on connected bank accounts
-    const activeAutomaticDebits = automaticDebitsForMonth(transactions, selectedMonth, {
-      bankAccountIds,
-    }).map((t) => ({
-      ...t,
-      accountName: bankAccountNameById[t.accountId] || 'Conta conectada',
-      amountAbs: Math.abs(Number(t.amount) || 0),
-      isPending: isAutomaticDebitPending(t),
-    }));
-    const automaticDebitsTotal = activeAutomaticDebits.reduce((s, t) => s + t.amountAbs, 0);
-
-    // Contas a pagar: faturas, manuais e débitos automáticos ainda não liquidados no mês
-    const unpaidBills = activeBills.filter((b) => !b.isPaid);
-    const unpaidManual = activeManual.filter((t) => !t.isPaid);
-    const unpaidAutomaticDebits = activeAutomaticDebits.filter((t) => t.isPending);
-    const unpaidCreditTotal = unpaidBills.reduce((s, b) => s + (Number(b.amount) || 0), 0);
-    const unpaidManualTotal = unpaidManual.reduce((s, t) => s + Math.abs(t.amount), 0);
-    const unpaidAutomaticDebitsTotal = unpaidAutomaticDebits.reduce((s, t) => s + t.amountAbs, 0);
-    const accountsPayableTotal = unpaidCreditTotal + unpaidManualTotal + unpaidAutomaticDebitsTotal;
-
-    const expensesTotal = creditCardsTotal + manualExpensesTotal + automaticDebitsTotal;
-    const netBalance = entriesTotal - expensesTotal;
-
-    return {
-      salary,
-      activeReceivables,
-      receivablesTotal,
-      entriesTotal,
-      activeBills,
-      creditCardsTotal,
-      activeManual,
-      manualExpensesTotal,
-      activeAutomaticDebits,
-      automaticDebitsTotal,
-      unpaidBills,
-      unpaidManual,
-      unpaidAutomaticDebits,
-      unpaidCreditTotal,
-      unpaidManualTotal,
-      unpaidAutomaticDebitsTotal,
-      accountsPayableTotal,
-      expensesTotal,
-      netBalance
-    };
-  }, [selectedMonth, salaries, receivables, cardBills, cardTransactions, creditBillPeriod, transactions, creditCards, bankAccountIds, bankAccountNameById]);
-
-  const monthsStatus = useMemo(() => {
-    const statuses = {};
-    if (creditCards.length === 0 && creditLoading) return statuses;
-
-    monthList.forEach(m => {
-      const ym = m.ym;
-      const salary = resolveMonthSalary(salaries, ym);
-
-      let receivablesTotal = 0;
-      receivables.forEach(r => {
-        (r.installmentHistory || []).forEach(inst => {
-          if ((inst.dueDate || '').startsWith(ym)) {
-            receivablesTotal += inst.amount;
-          }
-        });
-      });
-
-      const entriesTotal = salary + receivablesTotal;
-
-      let creditCardsTotal = 0;
-      creditCards.forEach(card => {
-        const bill = cardBillAmountForMonth(card, ym);
-        if (bill) creditCardsTotal += bill.amount;
-      });
-
-      const manualExpensesTotal = transactions
-        .filter(t => t.isManual === true && t.date?.startsWith(ym))
-        .reduce((s, t) => s + Math.abs(t.amount), 0);
-
-      const automaticDebitsTotal = automaticDebitsForMonth(transactions, ym, {
+  const activeMonthData = useMemo(
+    () =>
+      computeFinancialMomentMonth({
+        selectedMonth,
+        salaries,
+        receivables,
+        transactions,
+        creditCards,
+        cardBills,
+        cardTransactions,
         bankAccountIds,
-      }).reduce((s, t) => s + Math.abs(Number(t.amount) || 0), 0);
+        bankAccountNameById,
+        creditBillPeriod,
+      }),
+    [
+      selectedMonth,
+      salaries,
+      receivables,
+      cardBills,
+      cardTransactions,
+      creditBillPeriod,
+      transactions,
+      creditCards,
+      bankAccountIds,
+      bankAccountNameById,
+    ]
+  );
 
-      const expensesTotal = creditCardsTotal + manualExpensesTotal + automaticDebitsTotal;
-      const netVal = entriesTotal - expensesTotal;
-
-      statuses[ym] = {
-        isPositive: netVal >= 0,
-        net: netVal
-      };
-    });
-
-    return statuses;
-  }, [monthList, salaries, receivables, cardBills, creditBillPeriod, transactions, creditCards, creditLoading, bankAccountIds]);
+  const monthsStatus = useMemo(
+    () =>
+      computeFinancialMomentMonthsStatus({
+        monthList,
+        salaries,
+        receivables,
+        transactions,
+        creditCards,
+        cardBills,
+        cardTransactions,
+        bankAccountIds,
+        creditBillPeriod,
+        skipWhileLoading: creditCards.length === 0 && creditLoading,
+      }),
+    [
+      monthList,
+      salaries,
+      receivables,
+      cardBills,
+      creditBillPeriod,
+      transactions,
+      creditCards,
+      creditLoading,
+      bankAccountIds,
+      cardTransactions,
+    ]
+  );
 
   const monthIndex = monthList.findIndex(m => m.ym === selectedMonth);
   const handlePrev = () => {

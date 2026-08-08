@@ -15,6 +15,7 @@ import {
   Activity,
   MoreHorizontal,
   Repeat,
+  Users,
 } from 'lucide-react';
 
 export const navItems = [
@@ -27,6 +28,7 @@ export const navItems = [
   { label: 'Orçamento', shortLabel: 'Orçamento', path: '/budget', icon: PieChart },
   { label: 'Valores a Receber', shortLabel: 'Receber', path: '/receivables', icon: HandCoins },
   { label: 'Momento Financeiro', shortLabel: 'Momento', path: '/financial-moment', icon: Activity },
+  { label: 'Conta conjunta', shortLabel: 'Conjunta', path: '/joint-account', icon: Users, requiresJoint: true },
   { label: 'Despesas Manuais', shortLabel: 'Despesas', path: '/manual-expenses', icon: PlusCircle },
   { label: 'Assinaturas & Agenda', shortLabel: 'Agenda', path: '/subscriptions', icon: Repeat },
   { label: 'Metas', shortLabel: 'Metas', path: '/goals', icon: Target },
@@ -42,3 +44,8 @@ export const mobilePrimaryTabs = [
   ...mobileTabPaths.map((path) => navItems.find((item) => item.path === path)).filter(Boolean),
   { label: 'Mais', shortLabel: 'Mais', path: '__more__', icon: MoreHorizontal, isMore: true },
 ];
+
+/** Filter nav for sidebar / more drawer (hide joint until linked). */
+export function getVisibleNavItems(hasJointLink) {
+  return navItems.filter((item) => !item.requiresJoint || hasJointLink);
+}
