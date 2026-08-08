@@ -411,3 +411,169 @@
   }
 }
 
+/* Agenda — monthly calendar strip + grid */
+.agenda-month-strip {
+  gap: 0.75rem;
+  padding-bottom: 0.5rem;
+  scroll-snap-type: x mandatory;
+}
+
+.agenda-month-card {
+  flex: 0 0 min(72vw, 168px);
+  scroll-snap-align: center;
+  text-align: left;
+  padding: 0.9rem 1rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-family: inherit;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast), background var(--transition-fast);
+}
+
+.agenda-month-card:hover {
+  border-color: var(--primary);
+}
+
+.agenda-month-card--active {
+  border-color: var(--primary);
+  background: var(--primary-light);
+  box-shadow: var(--shadow-sm);
+}
+
+.agenda-month-card--overdue:not(.agenda-month-card--active) {
+  border-color: rgba(244, 63, 94, 0.35);
+}
+
+.agenda-month-card__label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: 700;
+  font-size: var(--font-size-sm);
+}
+
+.agenda-month-card__year {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 0.15rem;
+}
+
+.agenda-month-card__total {
+  font-weight: 700;
+  font-size: var(--font-size-base);
+  margin-top: 0.65rem;
+  color: var(--text-primary);
+}
+
+.agenda-month-card--overdue .agenda-month-card__total {
+  color: var(--danger);
+}
+
+.agenda-month-card__meta {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 0.2rem;
+}
+
+.agenda-cal-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 0.25rem;
+  margin-bottom: 0.35rem;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.agenda-cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 0.35rem;
+}
+
+.agenda-cal-cell {
+  aspect-ratio: 1;
+  min-height: 44px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  font-family: inherit;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 0.2rem;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.agenda-cal-cell--empty {
+  border: none;
+  background: transparent;
+  cursor: default;
+  pointer-events: none;
+}
+
+.agenda-cal-cell__day {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.agenda-cal-cell__dots {
+  display: flex;
+  gap: 3px;
+  min-height: 6px;
+}
+
+.agenda-cal-cell__dots .dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.dot--danger { background: var(--danger); }
+.dot--warn { background: var(--warning); }
+.dot--ok { background: var(--success); }
+
+.agenda-cal-cell--today {
+  box-shadow: inset 0 0 0 1.5px var(--primary);
+}
+
+.agenda-cal-cell--active {
+  background: var(--primary-light);
+  border-color: var(--primary);
+}
+
+.agenda-cal-cell--overdue {
+  background: rgba(244, 63, 94, 0.1);
+  border-color: rgba(244, 63, 94, 0.35);
+}
+
+.agenda-cal-cell--due {
+  background: rgba(245, 158, 11, 0.1);
+  border-color: rgba(245, 158, 11, 0.35);
+}
+
+.agenda-cal-cell--paid {
+  background: rgba(16, 185, 129, 0.1);
+  border-color: rgba(16, 185, 129, 0.35);
+}
+
+@media (max-width: 480px) {
+  .agenda-month-card {
+    flex-basis: min(78vw, 150px);
+  }
+
+  .agenda-cal-cell {
+    min-height: 40px;
+  }
+}
+
+

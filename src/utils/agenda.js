@@ -1,6 +1,7 @@
 import { isExpenseTx } from './analytics';
 import { buildCreditCardBills, formatDueMonthShort } from './creditBillPeriod';
 import { detectSubscriptions } from './subscriptions';
+import { translateCategory } from './categories';
 
 const FREQ_LABEL = {
   weekly: 'Semanal',
@@ -8,6 +9,11 @@ const FREQ_LABEL = {
   bimonthly: 'Bimestral',
   yearly: 'Anual',
 };
+
+const MONTHS_PT = [
+  'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+  'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro',
+];
 
 /** How far back unpaid credit bills may stay listed as overdue (days). */
 const CREDIT_OVERDUE_LOOKBACK_DAYS = 93;
@@ -22,6 +28,25 @@ function toIsoDay(value) {
   if (!value) return null;
   const s = String(value).slice(0, 10);
   return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null;
+}
+
+function normalizeName(value) {
+  return String(value || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s*\(\d+\/\d+\)\s*/g, ' ')
+    .replace(/\s*\(recorrente\)\s*/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** Robust paid flag (boolean, string, or paidAt timestamp). */
+export function isTxPaid(t) {
+  if (!t) return false;
+  if (t.isPaid === true || t.isPaid === 1 || t.isPaid === 'true') return true;
+  if (t.paidAt) return true;
+  return false;
 }
 
 /**
@@ -64,6 +89,28 @@ export function resolveAgendaStatus(item, now = new Date()) {
 }
 
 /**
+ * Rolling month keys around today for the calendar strip.
+ * @param {Date} [now]
+ * @param {{ before?: number, after?: number }} [opts]
+ */
+export function buildAgendaMonthKeys(now = new Date(), { before = 2, after = 3 } = {}) {
+  const keys = [];
+  for (let i = -before; i <= after; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
+    const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    keys.push({
+      ym,
+      label: MONTHS_PT[d.getMonth()],
+      year: d.getFullYear(),
+      monthIndex: d.getMonth(),
+      isCurrent:
+        d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth(),
+    });
+  }
+  return keys;
+}
+
+/**
  * Build unified bill/agenda items for a date window.
  *
  * @param {object} opts
@@ -73,8 +120,8 @@ export function resolveAgendaStatus(item, now = new Date()) {
  * @param {(ids: string[]) => { transactions?: object[], bills?: object[] }} [opts.getMerged]
  * @param {object[]} [opts.loans]
  * @param {object[]} [opts.expenseSources] — bank + card txs for subscription detection
- * @param {number} [opts.pastDays=30]
- * @param {number} [opts.futureDays=60]
+ * @param {number} [opts.pastDays=100]
+ * @param {number} [opts.futureDays=120]
  * @param {Date} [opts.now]
  */
 export function buildAgendaItems({
@@ -84,8 +131,8 @@ export function buildAgendaItems({
   getMerged,
   loans = [],
   expenseSources,
-  pastDays = 30,
-  futureDays = 60,
+  pastDays = 100,
+  futureDays = 120,
   now = new Date(),
 } = {}) {
   const today = startOfDay(now);
@@ -109,27 +156,33 @@ export function buildAgendaItems({
   };
 
   const items = [];
+  const manualNameByDay = new Map(); // `${day}|${normName}` → isPaid
 
-  // Manual expenses (contas lançadas pelo usuário)
+  // Manual expenses (contas lançadas pelo usuário) — source of truth for paid status
   transactions
     .filter((t) => t.isManual && isExpenseTx(t))
     .forEach((t) => {
       const date = toIsoDay(t.date);
-      const isPaid = Boolean(t.isPaid);
+      const isPaid = isTxPaid(t);
+      const title = t.originalDescription || t.description || 'Despesa manual';
+      const norm = normalizeName(title);
+      if (date && norm) manualNameByDay.set(`${date}|${norm}`, isPaid);
+
       if (!shouldInclude(date, isPaid)) return;
       items.push({
         id: `manual_${t.id}`,
         date,
-        title: t.originalDescription || t.description || 'Despesa manual',
+        title,
         amount: Math.abs(Number(t.amount) || 0),
         type: 'manual',
-        meta: 'Despesa manual',
+        meta: `Despesa manual · ${translateCategory(t.category)}`,
         isPaid,
         sourceId: t.id,
+        category: t.category,
       });
     });
 
-  // Credit card bills — one row per card (name + bank), not a vague consolidated blob
+  // Credit card bills — one row per card (name + bank)
   if (creditCards.length && typeof getMerged === 'function') {
     try {
       const { transactions: cardTxs, bills: officialBills } = getMerged(creditIds);
@@ -152,8 +205,6 @@ export function buildAgendaItems({
           const amount = Math.abs(Number(bill.total || 0));
           if (amount <= 0) return;
 
-          // Cap false/ancient overdue: credit statements older than ~3 months
-          // that still look unpaid are almost always missing payment metadata.
           if (!isPaid && bill.type === 'PAST') {
             const ageDays = -daysUntil(date, now);
             if (ageDays > CREDIT_OVERDUE_LOOKBACK_DAYS) isPaid = true;
@@ -206,11 +257,26 @@ export function buildAgendaItems({
     });
   });
 
-  // Detected subscriptions — upcoming charge as "a pagar"
-  const sources = expenseSources || transactions;
-  detectSubscriptions(sources).forEach((sub) => {
+  // Detected subscriptions from bank/card only — never re-add manuals
+  // (manuals already appear above with correct isPaid; Rent→Utilidades was
+  // duplicating Aluguel/Condomínio as always-unpaid "subscriptions").
+  const bankSources = (expenseSources || transactions).filter((t) => !t.isManual);
+  detectSubscriptions(bankSources).forEach((sub) => {
+    if (sub.isManual) return;
     const date = toIsoDay(sub.nextDate);
     if (!date || !inWindow(date)) return;
+
+    const norm = normalizeName(sub.name);
+    const manualKey = `${date}|${norm}`;
+    if (manualNameByDay.has(manualKey)) return;
+
+    // Also skip if any recurring manual series shares this name
+    const coveredByManualSeries = transactions.some((t) => {
+      if (!t.isManual || !t.isRecurring) return false;
+      return normalizeName(t.originalDescription || t.description) === norm;
+    });
+    if (coveredByManualSeries) return;
+
     items.push({
       id: `sub_${sub.id}`,
       date,
@@ -227,6 +293,7 @@ export function buildAgendaItems({
       ...item,
       status: resolveAgendaStatus(item, now),
       days: daysUntil(item.date, now),
+      monthKey: String(item.date || '').slice(0, 7),
     }))
     .sort((a, b) => {
       if (a.date !== b.date) return a.date.localeCompare(b.date);
@@ -253,6 +320,71 @@ export function groupAgendaByDate(items = []) {
     totalPaid: dayItems.filter((i) => i.isPaid).reduce((s, i) => s + i.amount, 0),
     hasOverdue: dayItems.some((i) => i.status === 'overdue'),
   }));
+}
+
+/**
+ * Summarize items for one YYYY-MM month.
+ * @param {ReturnType<typeof buildAgendaItems>} items
+ * @param {string} ym
+ */
+export function summarizeAgendaMonth(items = [], ym) {
+  const monthItems = items.filter((i) => i.monthKey === ym || String(i.date || '').startsWith(ym));
+  const unpaid = monthItems.filter((i) => !i.isPaid);
+  const overdue = unpaid.filter((i) => i.status === 'overdue');
+  const paid = monthItems.filter((i) => i.isPaid);
+  const daysWithItems = new Set(monthItems.map((i) => i.date));
+  return {
+    ym,
+    items: monthItems,
+    count: monthItems.length,
+    unpaidCount: unpaid.length,
+    overdueCount: overdue.length,
+    paidCount: paid.length,
+    unpaidTotal: unpaid.reduce((s, i) => s + i.amount, 0),
+    paidTotal: paid.reduce((s, i) => s + i.amount, 0),
+    daysWithItems,
+  };
+}
+
+/**
+ * Calendar cells for a month (weeks start on Sunday, matching pt-BR common UI).
+ * @param {string} ym YYYY-MM
+ * @param {ReturnType<typeof buildAgendaItems>} items
+ */
+export function buildMonthCalendarCells(ym, items = []) {
+  const [y, m] = ym.split('-').map(Number);
+  const first = new Date(y, m - 1, 1);
+  const daysInMonth = new Date(y, m, 0).getDate();
+  const startPad = first.getDay(); // 0=Sun
+  const byDay = new Map();
+  items
+    .filter((i) => String(i.date || '').startsWith(ym))
+    .forEach((i) => {
+      const day = Number(String(i.date).slice(8, 10));
+      if (!byDay.has(day)) byDay.set(day, []);
+      byDay.get(day).push(i);
+    });
+
+  const cells = [];
+  for (let i = 0; i < startPad; i++) {
+    cells.push({ key: `pad-${i}`, empty: true });
+  }
+  for (let day = 1; day <= daysInMonth; day++) {
+    const dayItems = byDay.get(day) || [];
+    const iso = `${ym}-${String(day).padStart(2, '0')}`;
+    cells.push({
+      key: iso,
+      empty: false,
+      day,
+      date: iso,
+      items: dayItems,
+      hasOverdue: dayItems.some((i) => i.status === 'overdue'),
+      hasUnpaid: dayItems.some((i) => !i.isPaid),
+      hasPaid: dayItems.some((i) => i.isPaid),
+      unpaidTotal: dayItems.filter((i) => !i.isPaid).reduce((s, i) => s + i.amount, 0),
+    });
+  }
+  return cells;
 }
 
 export function summarizeAgenda(items = []) {

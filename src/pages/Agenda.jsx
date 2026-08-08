@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   CalendarDays,
   Info,
@@ -17,8 +17,11 @@ import { useCreditDataStore } from '../stores/creditDataStore';
 import { formatCurrency, formatDate, formatDateRelative } from '../utils/formatters';
 import {
   buildAgendaItems,
+  buildAgendaMonthKeys,
+  buildMonthCalendarCells,
   groupAgendaByDate,
   summarizeAgenda,
+  summarizeAgendaMonth,
 } from '../utils/agenda';
 
 const FILTERS = [
@@ -27,6 +30,8 @@ const FILTERS = [
   { id: 'overdue', label: 'Vencidas' },
   { id: 'paid', label: 'Pagas' },
 ];
+
+const WEEKDAYS = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'];
 
 function statusBadge(status) {
   if (status === 'paid') return <Badge variant="success">Paga</Badge>;
@@ -51,14 +56,22 @@ function relativeLabel(days) {
   return `em ${days} dias`;
 }
 
+function currentYm(now = new Date()) {
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+}
+
 export function Agenda() {
   const { loadTransactions, transactions, setManualPaid } = useTransactionStore();
   const { loadAccounts, accounts, loans } = useAccountStore();
   const { loadForAccounts, getMerged, transactionsByAccount } = useCreditDataStore();
   const [filter, setFilter] = useState('all');
+  const [selectedYm, setSelectedYm] = useState(() => currentYm());
+  const [selectedDay, setSelectedDay] = useState(null);
+  const monthStripRef = useRef(null);
 
   const creditCards = useMemo(() => accounts.filter((a) => a.type === 'CREDIT'), [accounts]);
   const creditIds = useMemo(() => creditCards.map((c) => c.id), [creditCards]);
+  const months = useMemo(() => buildAgendaMonthKeys(new Date(), { before: 2, after: 3 }), []);
 
   useEffect(() => {
     loadTransactions();
@@ -68,6 +81,16 @@ export function Agenda() {
   useEffect(() => {
     if (creditIds.length) loadForAccounts(creditIds);
   }, [creditIds.join(',')]);
+
+  // Center current month card on first paint
+  useEffect(() => {
+    const el = monthStripRef.current;
+    if (!el) return;
+    const current = el.querySelector('[data-month-current="true"]');
+    if (current) {
+      current.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
+    }
+  }, []);
 
   const allExpenseSources = useMemo(() => {
     const { transactions: cardTxs } = getMerged(creditIds);
@@ -104,8 +127,32 @@ export function Agenda() {
     return agendaItems;
   }, [agendaItems, filter]);
 
-  const groups = useMemo(() => groupAgendaByDate(filtered), [filtered]);
   const summary = useMemo(() => summarizeAgenda(agendaItems), [agendaItems]);
+
+  const monthSummaries = useMemo(
+    () =>
+      Object.fromEntries(months.map((m) => [m.ym, summarizeAgendaMonth(filtered, m.ym)])),
+    [months, filtered]
+  );
+
+  const selectedMonthMeta = months.find((m) => m.ym === selectedYm) || months.find((m) => m.isCurrent);
+  const selectedSummary = monthSummaries[selectedYm] || summarizeAgendaMonth(filtered, selectedYm);
+
+  const calendarCells = useMemo(
+    () => buildMonthCalendarCells(selectedYm, selectedSummary.items || []),
+    [selectedYm, selectedSummary]
+  );
+
+  const dayGroups = useMemo(() => {
+    let list = selectedSummary.items || [];
+    if (selectedDay) list = list.filter((i) => i.date === selectedDay);
+    return groupAgendaByDate(list);
+  }, [selectedSummary, selectedDay]);
+
+  const handleSelectMonth = (ym) => {
+    setSelectedYm(ym);
+    setSelectedDay(null);
+  };
 
   const handleToggleManualPaid = async (item, next) => {
     if (item.type !== 'manual' || item.sourceId == null) return;
@@ -118,7 +165,7 @@ export function Agenda() {
         <div>
           <h1 style={{ fontSize: 'var(--font-size-2xl)', fontWeight: 700 }}>Agenda</h1>
           <p style={{ color: 'var(--text-muted)', fontSize: 'var(--font-size-sm)' }}>
-            Contas e vencimentos por data — veja o que já foi pago, o que vence em breve e o que está atrasado.
+            Visão mensal das contas — deslize pelos meses, veja o calendário e o que está pago, a pagar ou vencido.
           </p>
         </div>
       </div>
@@ -161,21 +208,14 @@ export function Agenda() {
 
       {summary.overdueCount > 0 && (
         <Card>
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'flex-start',
-              gap: '0.75rem',
-              padding: '0.25rem 0',
-            }}
-          >
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', padding: '0.25rem 0' }}>
             <AlertTriangle size={20} style={{ color: 'var(--danger)', flexShrink: 0, marginTop: 2 }} />
             <div>
               <div style={{ fontWeight: 700, fontSize: 'var(--font-size-sm)' }}>
                 Você tem {summary.overdueCount} conta(s) vencida(s)
               </div>
               <p style={{ margin: '0.25rem 0 0', fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>
-                Total em atraso: {formatCurrency(summary.overdueTotal)}. Filtre por “Vencidas” para priorizar o que precisa de atenção.
+                Total em atraso: {formatCurrency(summary.overdueTotal)}. Use o filtro “Vencidas” ou o calendário do mês.
               </p>
             </div>
           </div>
@@ -206,19 +246,140 @@ export function Agenda() {
         ))}
       </div>
 
-      {groups.length === 0 ? (
-        <Card title="Contas">
+      {/* Horizontal month cards */}
+      <div>
+        <div style={{ fontSize: 'var(--font-size-xs)', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.5rem' }}>
+          MESES
+        </div>
+        <div className="agenda-month-strip chip-scroll" ref={monthStripRef}>
+          {months.map((m) => {
+            const s = monthSummaries[m.ym] || { unpaidCount: 0, overdueCount: 0, unpaidTotal: 0, count: 0 };
+            const active = selectedYm === m.ym;
+            return (
+              <button
+                key={m.ym}
+                type="button"
+                data-month-current={m.isCurrent ? 'true' : undefined}
+                className={`agenda-month-card ${active ? 'agenda-month-card--active' : ''} ${s.overdueCount ? 'agenda-month-card--overdue' : ''}`}
+                onClick={() => handleSelectMonth(m.ym)}
+              >
+                <div className="agenda-month-card__label">
+                  {m.label}
+                  {m.isCurrent && <Badge variant="info" style={{ fontSize: 9 }}>Atual</Badge>}
+                </div>
+                <div className="agenda-month-card__year">{m.year}</div>
+                <div className="agenda-month-card__total">
+                  {s.unpaidCount > 0 ? formatCurrency(s.unpaidTotal) : s.count > 0 ? 'Em dia' : '—'}
+                </div>
+                <div className="agenda-month-card__meta">
+                  {s.overdueCount > 0
+                    ? `${s.overdueCount} vencida(s)`
+                    : s.unpaidCount > 0
+                      ? `${s.unpaidCount} a pagar`
+                      : s.count > 0
+                        ? `${s.count} lançamento(s)`
+                        : 'Sem contas'}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Month calendar grid */}
+      <Card
+        title={
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <CalendarDays size={16} />
+            {selectedMonthMeta ? `${selectedMonthMeta.label} de ${selectedMonthMeta.year}` : selectedYm}
+            {selectedSummary.overdueCount > 0 && (
+              <Badge variant="danger">{selectedSummary.overdueCount} vencida(s)</Badge>
+            )}
+          </span>
+        }
+        subtitle={
+          selectedSummary.unpaidCount > 0
+            ? `A pagar no mês: ${formatCurrency(selectedSummary.unpaidTotal)}`
+            : selectedSummary.count > 0
+              ? 'Nenhuma pendência neste mês no filtro atual'
+              : 'Nenhuma conta neste mês'
+        }
+      >
+        <div className="agenda-cal-weekdays">
+          {WEEKDAYS.map((w, i) => (
+            <span key={`${w}-${i}`}>{w}</span>
+          ))}
+        </div>
+        <div className="agenda-cal-grid">
+          {calendarCells.map((cell) => {
+            if (cell.empty) {
+              return <div key={cell.key} className="agenda-cal-cell agenda-cal-cell--empty" />;
+            }
+            const active = selectedDay === cell.date;
+            const todayIso = new Date().toISOString().slice(0, 10);
+            const isToday = cell.date === todayIso;
+            return (
+              <button
+                key={cell.key}
+                type="button"
+                className={[
+                  'agenda-cal-cell',
+                  active ? 'agenda-cal-cell--active' : '',
+                  isToday ? 'agenda-cal-cell--today' : '',
+                  cell.hasOverdue ? 'agenda-cal-cell--overdue' : '',
+                  cell.hasUnpaid && !cell.hasOverdue ? 'agenda-cal-cell--due' : '',
+                  cell.hasPaid && !cell.hasUnpaid ? 'agenda-cal-cell--paid' : '',
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
+                onClick={() => setSelectedDay((d) => (d === cell.date ? null : cell.date))}
+                title={
+                  cell.items.length
+                    ? `${cell.items.length} conta(s)${cell.unpaidTotal ? ` · a pagar ${formatCurrency(cell.unpaidTotal)}` : ''}`
+                    : 'Sem contas'
+                }
+              >
+                <span className="agenda-cal-cell__day">{cell.day}</span>
+                {cell.items.length > 0 && (
+                  <span className="agenda-cal-cell__dots">
+                    {cell.hasOverdue && <i className="dot dot--danger" />}
+                    {cell.hasUnpaid && !cell.hasOverdue && <i className="dot dot--warn" />}
+                    {cell.hasPaid && <i className="dot dot--ok" />}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+        {selectedDay && (
+          <div style={{ marginTop: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <Badge variant="info">Dia {formatDate(selectedDay)}</Badge>
+            <button
+              type="button"
+              className="input"
+              style={{ padding: '0.25rem 0.6rem', fontSize: 12, cursor: 'pointer' }}
+              onClick={() => setSelectedDay(null)}
+            >
+              Ver mês inteiro
+            </button>
+          </div>
+        )}
+      </Card>
+
+      {/* Day lists for selected month / day */}
+      {dayGroups.length === 0 ? (
+        <Card title="Contas do período">
           <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
             <Info size={32} style={{ marginBottom: 8 }} />
             <p>
               {filter === 'all'
-                ? 'Nenhuma conta no período. Cadastre despesas manuais, conecte cartões ou aguarde próximos vencimentos.'
-                : 'Nenhuma conta neste filtro.'}
+                ? 'Nenhuma conta neste mês. Cadastre despesas manuais ou aguarde próximos vencimentos.'
+                : 'Nenhuma conta neste filtro para o mês selecionado.'}
             </p>
           </div>
         </Card>
       ) : (
-        groups.map((group) => {
+        dayGroups.map((group) => {
           const accent = group.hasOverdue
             ? 'var(--danger)'
             : group.items.every((i) => i.isPaid)
