@@ -60,6 +60,16 @@ function currentYm(now = new Date()) {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 }
 
+/** Compact label that fits inside a calendar day cell. */
+function shortCommitmentTitle(title, max = 16) {
+  let t = String(title || '').replace(/^Fatura ·\s*/i, 'Fat. ');
+  t = t.replace(/\s*\(recorrente\)\s*/gi, '').trim();
+  if (t.length <= max) return t;
+  return `${t.slice(0, Math.max(1, max - 1))}…`;
+}
+
+const CELL_EVENTS_MAX = 2;
+
 export function Agenda() {
   const { loadTransactions, transactions, setManualPaid } = useTransactionStore();
   const { loadAccounts, accounts, loans } = useAccountStore();
@@ -67,7 +77,9 @@ export function Agenda() {
   const [filter, setFilter] = useState('all');
   const [selectedYm, setSelectedYm] = useState(() => currentYm());
   const [selectedDay, setSelectedDay] = useState(null);
+  const [focusedItemId, setFocusedItemId] = useState(null);
   const monthStripRef = useRef(null);
+  const dayDetailsRef = useRef(null);
 
   const creditCards = useMemo(() => accounts.filter((a) => a.type === 'CREDIT'), [accounts]);
   const creditIds = useMemo(() => creditCards.map((c) => c.id), [creditCards]);
@@ -152,6 +164,20 @@ export function Agenda() {
   const handleSelectMonth = (ym) => {
     setSelectedYm(ym);
     setSelectedDay(null);
+    setFocusedItemId(null);
+  };
+
+  const openDayDetails = (date, itemId = null) => {
+    setSelectedDay(date);
+    setFocusedItemId(itemId);
+    requestAnimationFrame(() => {
+      dayDetailsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      if (itemId) {
+        document
+          .getElementById(`agenda-item-${itemId}`)
+          ?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    });
   };
 
   const handleToggleManualPaid = async (item, next) => {
@@ -318,10 +344,13 @@ export function Agenda() {
             const active = selectedDay === cell.date;
             const todayIso = new Date().toISOString().slice(0, 10);
             const isToday = cell.date === todayIso;
+            const visible = (cell.items || []).slice(0, CELL_EVENTS_MAX);
+            const overflow = Math.max(0, (cell.items || []).length - visible.length);
             return (
-              <button
+              <div
                 key={cell.key}
-                type="button"
+                role="button"
+                tabIndex={0}
                 className={[
                   'agenda-cal-cell',
                   active ? 'agenda-cal-cell--active' : '',
@@ -329,36 +358,75 @@ export function Agenda() {
                   cell.hasOverdue ? 'agenda-cal-cell--overdue' : '',
                   cell.hasUnpaid && !cell.hasOverdue ? 'agenda-cal-cell--due' : '',
                   cell.hasPaid && !cell.hasUnpaid ? 'agenda-cal-cell--paid' : '',
+                  cell.items.length ? 'agenda-cal-cell--has-items' : '',
                 ]
                   .filter(Boolean)
                   .join(' ')}
-                onClick={() => setSelectedDay((d) => (d === cell.date ? null : cell.date))}
+                onClick={() => {
+                  if (selectedDay === cell.date && !focusedItemId) {
+                    setSelectedDay(null);
+                    return;
+                  }
+                  openDayDetails(cell.date);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    openDayDetails(cell.date);
+                  }
+                }}
                 title={
                   cell.items.length
-                    ? `${cell.items.length} conta(s)${cell.unpaidTotal ? ` · a pagar ${formatCurrency(cell.unpaidTotal)}` : ''}`
-                    : 'Sem contas'
+                    ? `${cell.items.length} compromisso(s)${cell.unpaidTotal ? ` · a pagar ${formatCurrency(cell.unpaidTotal)}` : ''}`
+                    : 'Sem compromissos'
                 }
               >
                 <span className="agenda-cal-cell__day">{cell.day}</span>
-                {cell.items.length > 0 && (
-                  <span className="agenda-cal-cell__dots">
-                    {cell.hasOverdue && <i className="dot dot--danger" />}
-                    {cell.hasUnpaid && !cell.hasOverdue && <i className="dot dot--warn" />}
-                    {cell.hasPaid && <i className="dot dot--ok" />}
-                  </span>
+                {visible.length > 0 && (
+                  <div className="agenda-cal-cell__events">
+                    {visible.map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        className={`agenda-cal-event agenda-cal-event--${item.status} ${focusedItemId === item.id ? 'agenda-cal-event--focus' : ''}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openDayDetails(cell.date, item.id);
+                        }}
+                        title={`${item.title} · ${formatCurrency(item.amount)}`}
+                      >
+                        <span className="agenda-cal-event__title">{shortCommitmentTitle(item.title)}</span>
+                      </button>
+                    ))}
+                    {overflow > 0 && (
+                      <button
+                        type="button"
+                        className="agenda-cal-event agenda-cal-event--more"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openDayDetails(cell.date);
+                        }}
+                      >
+                        +{overflow}
+                      </button>
+                    )}
+                  </div>
                 )}
-              </button>
+              </div>
             );
           })}
         </div>
         {selectedDay && (
           <div style={{ marginTop: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-            <Badge variant="info">Dia {formatDate(selectedDay)}</Badge>
+            <Badge variant="info">Detalhes · {formatDate(selectedDay)}</Badge>
             <button
               type="button"
               className="input"
               style={{ padding: '0.25rem 0.6rem', fontSize: 12, cursor: 'pointer' }}
-              onClick={() => setSelectedDay(null)}
+              onClick={() => {
+                setSelectedDay(null);
+                setFocusedItemId(null);
+              }}
             >
               Ver mês inteiro
             </button>
@@ -367,6 +435,7 @@ export function Agenda() {
       </Card>
 
       {/* Day lists for selected month / day */}
+      <div ref={dayDetailsRef}>
       {dayGroups.length === 0 ? (
         <Card title="Contas do período">
           <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
@@ -410,21 +479,26 @@ export function Agenda() {
                 {group.items.map((item) => {
                   const overdue = item.status === 'overdue';
                   const paid = item.status === 'paid';
+                  const focused = focusedItemId === item.id;
                   return (
                     <div
                       key={item.id}
+                      id={`agenda-item-${item.id}`}
                       className="list-row"
                       style={{
                         padding: '0.75rem 1rem',
-                        background: paid
-                          ? 'var(--success-bg)'
-                          : overdue
-                            ? 'rgba(239, 68, 68, 0.08)'
-                            : 'var(--bg-tertiary)',
+                        background: focused
+                          ? 'var(--primary-light)'
+                          : paid
+                            ? 'var(--success-bg)'
+                            : overdue
+                              ? 'rgba(239, 68, 68, 0.08)'
+                              : 'var(--bg-tertiary)',
                         borderRadius: 'var(--radius-md)',
                         borderLeft: `3px solid ${paid ? 'var(--success)' : overdue ? 'var(--danger)' : 'var(--primary)'}`,
-                        border: `1px solid ${paid ? 'rgba(16,185,129,0.35)' : overdue ? 'rgba(239,68,68,0.25)' : 'transparent'}`,
+                        border: `1px solid ${focused ? 'var(--primary)' : paid ? 'rgba(16,185,129,0.35)' : overdue ? 'rgba(239,68,68,0.25)' : 'transparent'}`,
                         opacity: paid ? 0.92 : 1,
+                        boxShadow: focused ? '0 0 0 2px rgba(99, 102, 241, 0.25)' : undefined,
                       }}
                     >
                       <div className="list-row-main" style={{ gap: '0.75rem', minWidth: 0 }}>
@@ -510,6 +584,7 @@ export function Agenda() {
           );
         })
       )}
+      </div>
     </div>
   );
 }

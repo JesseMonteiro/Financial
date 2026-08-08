@@ -257,25 +257,47 @@ export function buildAgendaItems({
     });
   });
 
-  // Detected subscriptions from bank/card only — never re-add manuals
-  // (manuals already appear above with correct isPaid; Rent→Utilidades was
-  // duplicating Aluguel/Condomínio as always-unpaid "subscriptions").
+  // Detected subscriptions from bank/card — upcoming charge *forecasts* only.
+  // These are not separate bills: the amount lands on the card and is paid with
+  // the statement. Never list past nextDates as overdue (Alipay / Meli+ noise).
   const bankSources = (expenseSources || transactions).filter((t) => !t.isManual);
   detectSubscriptions(bankSources).forEach((sub) => {
     if (sub.isManual) return;
     const date = toIsoDay(sub.nextDate);
     if (!date || !inWindow(date)) return;
 
+    // Past forecast = charge already due/posted or subscription stopped — not a bill.
+    if (daysUntil(date, now) < 0) return;
+
     const norm = normalizeName(sub.name);
     const manualKey = `${date}|${norm}`;
     if (manualNameByDay.has(manualKey)) return;
 
-    // Also skip if any recurring manual series shares this name
     const coveredByManualSeries = transactions.some((t) => {
       if (!t.isManual || !t.isRecurring) return false;
       return normalizeName(t.originalDescription || t.description) === norm;
     });
     if (coveredByManualSeries) return;
+
+    // If a matching card/bank debit already posted on/after the forecast date,
+    // the cycle advanced in reality even when grouping missed the amount drift.
+    const alreadyCharged = bankSources.some((t) => {
+      if (!isExpenseTx(t)) return false;
+      const td = toIsoDay(t.date);
+      if (!td || td < date) return false;
+      const txName = normalizeName(
+        t.merchant?.businessName ||
+          t.merchant?.name ||
+          t.originalDescription ||
+          t.description
+      );
+      if (!txName || !norm) return false;
+      return (
+        txName.includes(norm.slice(0, 10)) ||
+        norm.includes(txName.slice(0, 10))
+      );
+    });
+    if (alreadyCharged) return;
 
     items.push({
       id: `sub_${sub.id}`,
@@ -283,7 +305,7 @@ export function buildAgendaItems({
       title: sub.name,
       amount: Math.abs(Number(sub.amount) || 0),
       type: 'subscription',
-      meta: sub.subscriptionKindLabel || FREQ_LABEL[sub.frequency] || 'Assinatura',
+      meta: `Previsão · ${sub.subscriptionKindLabel || FREQ_LABEL[sub.frequency] || 'Assinatura'}`,
       isPaid: false,
     });
   });
