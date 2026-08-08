@@ -979,7 +979,11 @@ export function buildCreditCardBills({
             forecastToDueOffset: globalOffset,
           })
         ) {
-          isPaid = false;
+          // Open / near-open cycles: trust unsettled. Older history often lacks
+          // payments[] (Inter/Nubank) — treating years of paid statements as
+          // unpaid floods Agenda and Moment with false overdue.
+          const unpaidCutoff = ymAdd(cardOpenKey, -2);
+          if (dueYm >= unpaidCutoff) isPaid = false;
         }
       } else if (dueYm === cardOpenKey) {
         const openTotal = resolveOpenBillTotal(cardAcc, scopedItems, profile, {
@@ -1000,7 +1004,10 @@ export function buildCreditCardBills({
           chargeSumMode,
         });
         totalAmount += sumTxs;
-        if (sumTxs > 0 && dueYm <= openDueKey) isPaid = false;
+        // Reconstructed past (no official bill) is assumed settled — Pluggy drops
+        // paid statements; marking every historical bucket unpaid is wrong.
+        // Future stays unpaid (also forced below when type === FUTURE).
+        if (dueYm > cardOpenKey && sumTxs > 0) isPaid = false;
       }
     }
 
@@ -1009,7 +1016,7 @@ export function buildCreditCardBills({
         includeProjected: dueYm > openDueKey || dueYm === openDueKey,
         chargeSumMode: 'signed_net',
       });
-      if (totalAmount > 0 && dueYm <= openDueKey) isPaid = false;
+      if (totalAmount > 0 && dueYm >= openDueKey) isPaid = false;
     }
 
     let type = 'PAST';

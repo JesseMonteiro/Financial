@@ -288,6 +288,12 @@ export function Agenda() {
                               {item.title}
                             </h3>
                             {statusBadge(item.status)}
+                            {item.type === 'bill' && item.bankName && (
+                              <Badge variant="neutral">{item.bankName}</Badge>
+                            )}
+                            {item.type === 'bill' && item.last4 && (
+                              <Badge variant="neutral">final {item.last4}</Badge>
+                            )}
                           </div>
                           <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>
                             {item.meta} · {relativeLabel(item.days)}

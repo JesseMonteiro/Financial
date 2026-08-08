@@ -9,6 +9,9 @@ const FREQ_LABEL = {
   yearly: 'Anual',
 };
 
+/** How far back unpaid credit bills may stay listed as overdue (days). */
+const CREDIT_OVERDUE_LOOKBACK_DAYS = 93;
+
 function startOfDay(d) {
   const x = new Date(d);
   x.setHours(0, 0, 0, 0);
@@ -19,6 +22,22 @@ function toIsoDay(value) {
   if (!value) return null;
   const s = String(value).slice(0, 10);
   return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null;
+}
+
+/**
+ * @param {object} card
+ */
+export function describeCreditCard(card = {}) {
+  const name = card.name || card.marketingName || 'Cartão de crédito';
+  const bank =
+    card.connectorName ||
+    card._connector ||
+    card.bankName ||
+    card.institutionName ||
+    '';
+  const digits = String(card.number || card.creditData?.number || '').replace(/\D/g, '');
+  const last4 = digits.length >= 4 ? digits.slice(-4) : '';
+  return { name, bank, last4 };
 }
 
 /**
@@ -110,30 +129,59 @@ export function buildAgendaItems({
       });
     });
 
-  // Credit card bills
+  // Credit card bills — one row per card (name + bank), not a vague consolidated blob
   if (creditCards.length && typeof getMerged === 'function') {
     try {
       const { transactions: cardTxs, bills: officialBills } = getMerged(creditIds);
-      const built = buildCreditCardBills({
-        transactions: cardTxs,
-        officialBills,
-        creditCards,
-        selectedCardId: 'all',
-      });
-      Object.entries(built.bills || {}).forEach(([dueYm, bill]) => {
-        const date = bill.dueDate ? toIsoDay(bill.dueDate) : `${dueYm}-10`;
-        const isPaid = Boolean(bill.isPaid);
-        if (!shouldInclude(date, isPaid)) return;
-        const amount = Math.abs(Number(bill.total || 0));
-        if (amount <= 0 && isPaid) return;
-        items.push({
-          id: `bill_${dueYm}`,
-          date,
-          title: `Fatura cartão (${formatDueMonthShort(dueYm, date)})`,
-          amount,
-          type: 'bill',
-          meta: 'Fatura de cartão',
-          isPaid,
+
+      creditCards.forEach((card) => {
+        const cardId = card.id;
+        const scopedTxs = (cardTxs || []).filter((t) => !t.accountId || t.accountId === cardId);
+        const scopedBills = (officialBills || []).filter((b) => !b.accountId || b.accountId === cardId);
+        const built = buildCreditCardBills({
+          transactions: scopedTxs,
+          officialBills: scopedBills,
+          creditCards: [card],
+          selectedCardId: cardId,
+        });
+        const { name, bank, last4 } = describeCreditCard(card);
+
+        Object.entries(built.bills || {}).forEach(([dueYm, bill]) => {
+          const date = bill.dueDate ? toIsoDay(bill.dueDate) : `${dueYm}-10`;
+          let isPaid = Boolean(bill.isPaid);
+          const amount = Math.abs(Number(bill.total || 0));
+          if (amount <= 0) return;
+
+          // Cap false/ancient overdue: credit statements older than ~3 months
+          // that still look unpaid are almost always missing payment metadata.
+          if (!isPaid && bill.type === 'PAST') {
+            const ageDays = -daysUntil(date, now);
+            if (ageDays > CREDIT_OVERDUE_LOOKBACK_DAYS) isPaid = true;
+          }
+
+          if (!shouldInclude(date, isPaid)) return;
+
+          const dueLabel = formatDueMonthShort(dueYm, date);
+          const bankPart = bank || 'Banco conectado';
+          const finalPart = last4 ? ` · final ${last4}` : '';
+          const metaParts = [bankPart + finalPart, `vence ${dueLabel}`];
+          if (bill.type === 'CURRENT_OPEN') metaParts.push('em aberto');
+          else if (bill.type === 'FUTURE') metaParts.push('projetada');
+
+          items.push({
+            id: `bill_${cardId}_${dueYm}`,
+            date,
+            title: `Fatura · ${name}`,
+            amount,
+            type: 'bill',
+            meta: metaParts.join(' · '),
+            isPaid,
+            cardId,
+            cardName: name,
+            bankName: bank,
+            last4,
+            dueMonthKey: dueYm,
+          });
         });
       });
     } catch {
