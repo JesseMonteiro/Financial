@@ -262,8 +262,8 @@ export function Dashboard() {
               <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>
                 {creditCount} cartão(ões) · fatura aberta {formatCurrency(summary.creditDebt)}
               </div>
-              <Link to="/subscriptions" style={{ fontSize: 'var(--font-size-xs)', color: 'var(--primary)', fontWeight: 600, textDecoration: 'none' }}>
-                Ver assinaturas e agenda →
+              <Link to="/agenda" style={{ fontSize: 'var(--font-size-xs)', color: 'var(--primary)', fontWeight: 600, textDecoration: 'none' }}>
+                Ver agenda de contas →
               </Link>
             </div>
           </Card>

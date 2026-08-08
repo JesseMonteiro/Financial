@@ -18,6 +18,7 @@ import { ManualExpenses } from './pages/ManualExpenses';
 import { FinancialMoment } from './pages/FinancialMoment';
 import { JointFinancialMoment } from './pages/JointFinancialMoment';
 import { Subscriptions } from './pages/Subscriptions';
+import { Agenda } from './pages/Agenda';
 import { Login } from './pages/Login';
 import { AuthGuard } from './components/auth/AuthGuard';
 
@@ -46,7 +47,8 @@ export default function App() {
           <Route path="financial-moment" element={<FinancialMoment />} />
           <Route path="joint-account" element={<JointFinancialMoment />} />
           <Route path="subscriptions" element={<Subscriptions />} />
-          <Route path="calendar" element={<Subscriptions />} />
+          <Route path="agenda" element={<Agenda />} />
+          <Route path="calendar" element={<Navigate to="/agenda" replace />} />
           <Route path="reports" element={<Reports />} />
           <Route path="connect" element={<ConnectBank />} />
           <Route path="settings" element={<Settings />} />

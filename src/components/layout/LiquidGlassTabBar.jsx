@@ -99,7 +99,7 @@ function MobileMoreDrawer({ open, onClose }) {
             </div>
             <div>
               <strong style={{ display: 'block', fontSize: 'var(--font-size-base)' }}>FinanceHub</strong>
-              <span style={{ fontSize: '10px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                 Menu
               </span>
             </div>
@@ -145,7 +145,7 @@ function MobileMoreDrawer({ open, onClose }) {
               <p style={{ fontWeight: 600, fontSize: 'var(--font-size-sm)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {user?.user_metadata?.full_name || 'Usuário'}
               </p>
-              <span style={{ fontSize: '10px', color: 'var(--text-muted)', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <span style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {user?.email}
               </span>
             </div>

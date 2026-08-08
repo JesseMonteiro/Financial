@@ -15,6 +15,7 @@ import {
   Activity,
   MoreHorizontal,
   Repeat,
+  CalendarDays,
   Users,
 } from 'lucide-react';
 
@@ -30,7 +31,8 @@ export const navItems = [
   { label: 'Momento Financeiro', shortLabel: 'Momento', path: '/financial-moment', icon: Activity },
   { label: 'Conta conjunta', shortLabel: 'Conjunta', path: '/joint-account', icon: Users, requiresJoint: true },
   { label: 'Despesas Manuais', shortLabel: 'Despesas', path: '/manual-expenses', icon: PlusCircle },
-  { label: 'Assinaturas & Agenda', shortLabel: 'Agenda', path: '/subscriptions', icon: Repeat },
+  { label: 'Assinaturas', shortLabel: 'Assinaturas', path: '/subscriptions', icon: Repeat },
+  { label: 'Agenda', shortLabel: 'Agenda', path: '/agenda', icon: CalendarDays },
   { label: 'Metas', shortLabel: 'Metas', path: '/goals', icon: Target },
   { label: 'Relatórios', shortLabel: 'Relatórios', path: '/reports', icon: BarChart3 },
   { label: 'Conexões Bancárias', shortLabel: 'Conectar', path: '/connect', icon: Plug },
