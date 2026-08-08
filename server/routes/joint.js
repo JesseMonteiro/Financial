@@ -150,7 +150,8 @@ router.delete('/unlink', checkAuth, async (req, res) => {
 });
 
 // GET /api/joint/moment-data — consolidated Pluggy + ownership tags
-router.get('/moment-data', checkAuth, cacheMiddleware(600), async (req, res) => {
+// Not cached: includes custom account names and salaries that change frequently.
+router.get('/moment-data', checkAuth, async (req, res) => {
   try {
     const { data: link, error: linkError } = await req.supabase.rpc('get_my_joint_link');
     if (linkError) throw linkError;
@@ -170,7 +171,7 @@ router.get('/moment-data', checkAuth, cacheMiddleware(600), async (req, res) => 
     const { data: profiles, error: profileError } = await service
       .from('profiles')
       .select(
-        'id, display_name, pluggy_item_ids, pluggy_client_id, pluggy_client_secret, monthly_salaries'
+        'id, display_name, pluggy_item_ids, pluggy_client_id, pluggy_client_secret, monthly_salaries, custom_account_names'
       )
       .in('id', memberIds);
 
@@ -188,7 +189,7 @@ router.get('/moment-data', checkAuth, cacheMiddleware(600), async (req, res) => 
         const profile = profileById[id];
         const label = members.find((m) => m.id === id)?.displayName || 'Usuário';
         const bundle = await loadMemberPluggyBundle(profile);
-        return { id, label, ...bundle };
+        return { id, label, profile, ...bundle };
       })
     );
 
@@ -198,10 +199,20 @@ router.get('/moment-data', checkAuth, cacheMiddleware(600), async (req, res) => 
     const seenAccountIds = new Set();
 
     for (const b of bundles) {
+      const customNames =
+        b.profile?.custom_account_names && typeof b.profile.custom_account_names === 'object'
+          ? b.profile.custom_account_names
+          : {};
       for (const acc of b.accounts) {
         if (seenAccountIds.has(acc.id)) continue;
         seenAccountIds.add(acc.id);
-        accounts.push({ ...acc, ownerUserId: b.id, ownerLabel: b.label });
+        accounts.push({
+          ...acc,
+          originalName: acc.originalName || acc.name,
+          name: customNames[acc.id] || acc.name,
+          ownerUserId: b.id,
+          ownerLabel: b.label,
+        });
       }
       transactions.push(...tagOwner(b.transactions, b.id, b.label));
       for (const [accId, bills] of Object.entries(b.billsByAccount || {})) {

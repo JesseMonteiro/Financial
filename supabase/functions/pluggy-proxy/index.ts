@@ -1088,7 +1088,7 @@ async function handleJoint(
 
     const { data: profiles, error: profileError } = await service
       .from('profiles')
-      .select('id, display_name, pluggy_item_ids, pluggy_client_id, pluggy_client_secret, monthly_salaries')
+      .select('id, display_name, pluggy_item_ids, pluggy_client_id, pluggy_client_secret, monthly_salaries, custom_account_names')
       .in('id', memberIds);
     if (profileError) return errorResponse(profileError.message, 500);
 
@@ -1106,12 +1106,23 @@ async function handleJoint(
 
     for (const id of memberIds) {
       const label = members.find((m) => m.id === id)?.displayName || 'Usuário';
-      const bundle = await loadMemberPluggyBundleEdge(profileById[id] || {});
+      const profile = profileById[id] || {};
+      const bundle = await loadMemberPluggyBundleEdge(profile);
       for (const acc of bundle.accounts) {
         const accId = String(acc.id || '');
         if (!accId || seenAccountIds.has(accId)) continue;
         seenAccountIds.add(accId);
-        accounts.push({ ...acc, ownerUserId: id, ownerLabel: label });
+        const displayName = accountDisplayName(profile as TelegramProfile, {
+          id: accId,
+          name: typeof acc.name === 'string' ? acc.name : undefined,
+        });
+        accounts.push({
+          ...acc,
+          originalName: acc.originalName || acc.name,
+          name: displayName,
+          ownerUserId: id,
+          ownerLabel: label,
+        });
       }
       for (const tx of bundle.transactions) {
         transactions.push({ ...tx, ownerUserId: id, ownerLabel: label });
