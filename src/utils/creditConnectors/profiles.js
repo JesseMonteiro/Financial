@@ -140,8 +140,10 @@ export const CONNECTOR_PROFILES = [
       const blob = `${connectorName || ''} ${account?.name || ''} ${account?.marketingName || ''}`.toLowerCase();
       return /ita[uú]|itau\b/.test(blob);
     },
-    // billForecastDate is typically due month − 1
-    forecastToDueOffset: 1,
+    // billForecastDate on POSTED rows is often due−1, but future PENDING
+    // installments already use fc = due month. Offset 0 is correct for unbound
+    // rows; posted rows resolve via billId. Series anchoring covers the rest.
+    forecastToDueOffset: 0,
     balanceMeaning: 'total_outstanding',
     openTotalSource: 'cycle_charges',
     chargeSumMode: 'signed_net',

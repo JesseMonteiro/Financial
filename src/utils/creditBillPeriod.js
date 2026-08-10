@@ -181,6 +181,52 @@ export function installmentTotalOf(tx) {
   );
 }
 
+/**
+ * Due month for an installment using a sibling that already has an official billId.
+ *
+ * Needed when Pluggy sends future PENDING parcels without billId and with a
+ * billForecastDate that does not share the same forecast→due offset as posted
+ * rows (Itaú: posted often fc = due−1, future PENDING fc = due month).
+ * Anchoring to the last posted parcel keeps 01/06→02/06 on consecutive bills.
+ *
+ * @returns {string|null} YYYY-MM or null when no official anchor exists
+ */
+export function dueMonthFromInstallmentSeries(tx, transactions = [], billMap = {}) {
+  const n = Number(installmentNumberOf(tx));
+  const total = Number(installmentTotalOf(tx));
+  if (!n || !total || n < 1) return null;
+
+  const ownId = tx?.creditCardMetadata?.billId || tx?.billId;
+  if (ownId && billMap[ownId]?.dueDate) return null;
+
+  const key = installmentSeriesKey(tx);
+  if (!key) return null;
+
+  let best = null;
+  for (const other of transactions) {
+    if (!other || other === tx) continue;
+    if (other.isProjected || isBillPayment(other)) continue;
+    if (installmentSeriesKey(other) !== key) continue;
+    const on = Number(installmentNumberOf(other));
+    if (!on) continue;
+    const oid = other.creditCardMetadata?.billId || other.billId;
+    if (!oid || !billMap[oid]?.dueDate) continue;
+    const otherDue = ymFromIso(billMap[oid].dueDate);
+    if (!otherDue || otherDue === 'Outros') continue;
+    const placed = ymAdd(otherDue, n - on);
+    if (!placed || placed === 'Outros') continue;
+    const distance = Math.abs(n - on);
+    if (
+      !best ||
+      distance < best.distance ||
+      (distance === best.distance && on > best.on)
+    ) {
+      best = { due: placed, distance, on };
+    }
+  }
+  return best?.due || null;
+}
+
 /** True if a real (or projected) tx already represents series installment n. */
 export function hasInstallmentNumber(transactions, seriesKey, n) {
   for (const t of transactions) {
@@ -785,6 +831,9 @@ export function buildCreditCardBills({
   const dueKeyForTx = (t) => {
     const offset = offsetForAccount(t.accountId, transactions, officialBills, offsetCache, creditCards);
     let key = getDueMonthKey(t, billMap, offset);
+    // Prefer series continuity over raw forecast offset for unbound installments
+    const seriesDue = dueMonthFromInstallmentSeries(t, transactions, billMap);
+    if (seriesDue) key = seriesDue;
     const openForCard = openByAccount[t.accountId] || openDueKey;
     const latestOfficial = latestOfficialByAccount[t.accountId];
     const profile = profileByAccount[t.accountId];
