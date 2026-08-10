@@ -212,7 +212,10 @@ export function CreditCards() {
 
   const lastPaidKey = [...sortedBillKeys]
     .reverse()
-    .find(k => billsData[k]?.isPaid && billsData[k]?.type === 'PAST');
+    .find((k) => {
+      const b = billsData[k];
+      return b?.isPaid && b?.type === 'PAST' && (b.hasOfficial || (Number(b.total) || 0) > 0.05);
+    });
   const lastPaidBill = lastPaidKey ? billsData[lastPaidKey] : null;
 
   // Selected bill

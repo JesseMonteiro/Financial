@@ -90,12 +90,15 @@ export function isBillPayment(tx) {
   const d = (tx?.description || '').toUpperCase().replace(/\s+/g, ' ').trim();
   // Nubank: "Pagamento recebido" / "Pagamento de fatura"
   // Inter (OF): "PAGAMENTO ON LINE" / "PAGAMENTO ONLINE"
+  // Itaú: "Pagamento PIX" / "PAGAMENTO COM SALDO"
   // Generic: PAGTO FATURA, PAGAMENTO FATURA
   return (
     d.includes('PAGAMENTO DE FATURA') ||
     d.includes('PAGAMENTO RECEBIDO') ||
     d.includes('PAGAMENTO ON LINE') ||
     d.includes('PAGAMENTO ONLINE') ||
+    d.includes('PAGAMENTO COM SALDO') ||
+    d.includes('PAGAMENTO PIX') ||
     d.includes('PAGTO FATURA') ||
     d.includes('PAGAMENTO FATURA') ||
     /^PAGAMENTO\b/.test(d)
@@ -516,16 +519,22 @@ export function getDueMonthKey(tx, officialBills = [], forecastToDueOffset = 0) 
 }
 
 /**
- * Settled when payments[] cover the total, OR a payment tx on a later cycle
- * matches the bill total (Nubank often posts payment on the *next* statement).
+ * Settled when payments[] match the bill total, OR a payment tx on this/later
+ * cycle matches the bill total (Nubank often posts payment on the *next* statement).
+ *
+ * Important: do NOT use `paid >= total`. Itaú (and similar) put the *previous*
+ * cycle's payment on `bill.payments[]` — e.g. Aug total 142.93 with payments
+ * [252.87] (July's total). That would falsely settle every bill and jump the
+ * open cycle to an empty month.
  */
 export function isBillSettled(bill, opts = {}) {
   if (!bill) return false;
   const total = Number(bill.totalAmount) || 0;
   const payments = bill.payments || [];
-  if (payments.length) {
+  if (payments.length && total > 0) {
     const paid = payments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
-    if (paid >= total - 0.05) return true;
+    // Exact cover only (within rounding). Over/under → fall through to tx match.
+    if (Math.abs(paid - total) <= 0.05) return true;
   }
 
   const { transactions = [], officialBills = [], forecastToDueOffset = 0 } = opts;
@@ -543,7 +552,16 @@ export function isBillSettled(bill, opts = {}) {
     if (Math.abs(amt - total) > 0.05) continue;
     const tDue = getDueMonthKey(t, billMap, forecastToDueOffset);
     const tDate = String(t.date || '').slice(0, 10);
-    if (tDue === nextYm || tDue > dueYm || (tDate && tDate >= billDueDate)) {
+    const tYm = tDate ? tDate.slice(0, 7) : null;
+    // Itaú: "Pagamento PIX" on due date with billForecastDate = due month;
+    // with offset 1 that maps to nextYm — still this bill's payment.
+    if (
+      tDue === dueYm ||
+      tDue === nextYm ||
+      tDue > dueYm ||
+      (tYm && tYm === dueYm) ||
+      (tDate && tDate >= billDueDate)
+    ) {
       return true;
     }
   }
@@ -625,6 +643,11 @@ export function resolveOpenDueMonthKey({
   for (const t of transactions) {
     if (t.status !== 'PENDING') continue;
     if (isBillPayment(t)) continue;
+    // Future installments (2/N, 3/N…) must not advance the open cycle past
+    // latestOfficial+1 — same rule as unboundByForecast above (Itaú/Nubank).
+    const num = installmentNumberOf(t);
+    const total = installmentTotalOf(t);
+    if (Number(total) > 1 && Number(num) !== 1) continue;
     const due = getDueMonthKey(t, billMap, forecastToDueOffset);
     if (!due || due === 'Outros') continue;
     // Never reopen a cycle Pluggy already closed as an official bill
@@ -663,8 +686,18 @@ export function ensureOpenNotSettled(openDueKey, officialBills, settleOpts) {
   return key;
 }
 
-function offsetForAccount(accountId, transactions, officialBills, cache) {
+function offsetForAccount(accountId, transactions, officialBills, cache, creditCards = []) {
   if (cache[accountId] != null) return cache[accountId];
+  const cardAcc = creditCards.find((c) => c.id === accountId);
+  const profile = resolveConnectorProfile({
+    account: cardAcc,
+    connectorName: cardAcc?.connectorName || cardAcc?._connector,
+    connectorId: cardAcc?.connectorId || cardAcc?._connectorId,
+  });
+  if (profile?.forecastToDueOffset === 0 || profile?.forecastToDueOffset === 1) {
+    cache[accountId || '__all__'] = profile.forecastToDueOffset;
+    return profile.forecastToDueOffset;
+  }
   const txs = transactions.filter((t) => !accountId || t.accountId === accountId);
   const bills = officialBills.filter((b) => !accountId || b.accountId === accountId);
   const offset = inferForecastToDueOffset(txs.length ? txs : transactions, bills.length ? bills : officialBills);
@@ -697,7 +730,7 @@ export function buildCreditCardBills({
   /** @type {Record<string, import('./creditConnectors/profiles.js').CreditConnectorProfile>} */
   const profileByAccount = {};
   for (const accountId of accountIds) {
-    const offset = offsetForAccount(accountId, transactions, officialBills, offsetCache);
+    const offset = offsetForAccount(accountId, transactions, officialBills, offsetCache, creditCards);
     const acctBills = officialBills.filter((b) => b.accountId === accountId);
     const acctTxs = transactions.filter((t) => t.accountId === accountId);
     const cardAcc = creditCards.find((c) => c.id === accountId);
@@ -750,7 +783,7 @@ export function buildCreditCardBills({
   });
 
   const dueKeyForTx = (t) => {
-    const offset = offsetForAccount(t.accountId, transactions, officialBills, offsetCache);
+    const offset = offsetForAccount(t.accountId, transactions, officialBills, offsetCache, creditCards);
     let key = getDueMonthKey(t, billMap, offset);
     const openForCard = openByAccount[t.accountId] || openDueKey;
     const latestOfficial = latestOfficialByAccount[t.accountId];
@@ -991,7 +1024,7 @@ export function buildCreditCardBills({
           openDueKey: dueYm,
           officialBills: officialBills.filter((b) => !card.id || b.accountId === card.id),
           forecastToDueOffset: card.id
-            ? offsetForAccount(card.id, transactions, officialBills, offsetCache)
+            ? offsetForAccount(card.id, transactions, officialBills, offsetCache, creditCards)
             : globalOffset,
         });
         totalAmount += openTotal;
@@ -1071,7 +1104,11 @@ export function summarizeCardOpenBill(card, transactions = [], officialBills = [
   const open = built.bills[built.openDueKey];
   const lastPaidKey = [...built.sortedDueKeys]
     .reverse()
-    .find((k) => built.bills[k]?.isPaid && built.bills[k]?.type === 'PAST');
+    .find((k) => {
+      const b = built.bills[k];
+      // Ignore empty placeholder months (e.g. payment-only bucket)
+      return b?.isPaid && b?.type === 'PAST' && (b.hasOfficial || (Number(b.total) || 0) > 0.05);
+    });
   const lastPaid = lastPaidKey ? built.bills[lastPaidKey] : null;
   const profile = resolveConnectorProfile({ account: card });
   // Prefer the bill-builder total (already cycle-scoped); never raw card.balance

@@ -134,6 +134,23 @@ export const CONNECTOR_PROFILES = [
     guidePath: 'docs/connectors/inter.md',
   },
   {
+    id: 'itau',
+    label: 'Itaú',
+    match: ({ account, connectorName }) => {
+      const blob = `${connectorName || ''} ${account?.name || ''} ${account?.marketingName || ''}`.toLowerCase();
+      return /ita[uú]|itau\b/.test(blob);
+    },
+    // billForecastDate is typically due month − 1
+    forecastToDueOffset: 1,
+    balanceMeaning: 'total_outstanding',
+    openTotalSource: 'cycle_charges',
+    chargeSumMode: 'signed_net',
+    remapStalePending: 'after_cycle_end',
+    // payments[] on bill N is the payment of bill N−1 — never treat paid>=total as settled
+    paymentOftenOnNextCycle: false,
+    guidePath: 'docs/connectors/itau.md',
+  },
+  {
     id: 'meupluggy',
     label: 'MeuPluggy (sandbox)',
     match: ({ connectorName, connectorId }) =>
