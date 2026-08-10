@@ -222,6 +222,144 @@ export async function syncItemIds(itemIds) {
   }
 }
 
+/** Fetch a single Pluggy Item (connection) by id. */
+export async function fetchItem(itemId) {
+  try {
+    const res = await api.get(`/items/${itemId}`);
+    return res.data;
+  } catch (err) {
+    const message =
+      err.response?.data?.message ||
+      err.response?.data?.error ||
+      err.message ||
+      'Falha ao consultar conexão Pluggy';
+    throw new Error(message);
+  }
+}
+
+/**
+ * Trigger a bank-side sync for an Item (Pluggy PATCH /items/{id}).
+ * This asks Pluggy to fetch fresh data from the institution — not just re-read cached results.
+ */
+export async function updateItem(itemId, body = {}) {
+  try {
+    const res = await api.patch(`/items/${itemId}`, body);
+    clearApiCache();
+    return res.data;
+  } catch (err) {
+    const data = err.response?.data;
+    const message =
+      data?.message ||
+      data?.error ||
+      err.message ||
+      'Falha ao sincronizar conexão com o banco';
+    const error = new Error(message);
+    error.code = data?.codeDescription || data?.code || err.response?.status;
+    error.data = data?.data;
+    error.status = err.response?.status;
+    throw error;
+  }
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+const ITEM_STATUSES_NEEDING_USER = new Set([
+  'WAITING_USER_INPUT',
+  'LOGIN_ERROR',
+]);
+
+/**
+ * Poll item until Pluggy finishes the connector execution (status !== UPDATING).
+ * @see https://docs.pluggy.ai/docs/data-sync-update-an-item
+ */
+export async function waitForItemUpdate(itemId, { intervalMs = 2500, timeoutMs = 180000 } = {}) {
+  const started = Date.now();
+  let item = await fetchItem(itemId);
+
+  while (item?.status === 'UPDATING') {
+    if (Date.now() - started > timeoutMs) {
+      throw new Error(
+        'A sincronização está demorando mais que o esperado. Os dados podem atualizar em breve — tente novamente.'
+      );
+    }
+    await sleep(intervalMs);
+    item = await fetchItem(itemId);
+  }
+
+  return item;
+}
+
+function pluggyErrorNeedsUserAction(err) {
+  const code = String(err?.code || '');
+  return (
+    code.includes('CONNECTOR_REQUIRED_PARAMETER') ||
+    code.includes('MFA') ||
+    code.includes('INVALID_CREDENTIALS')
+  );
+}
+
+/**
+ * Sync all (or selected) Pluggy Items against the banks, then wait for completion.
+ * Returns per-item results; some may need Pluggy Connect (MFA / credentials).
+ */
+export async function syncPluggyConnections(itemIds) {
+  let ids = Array.isArray(itemIds) ? itemIds.filter(Boolean) : [];
+  if (ids.length === 0) {
+    const items = await fetchItems({ force: true });
+    ids = (items || []).map((item) => item.id).filter(Boolean);
+  }
+
+  if (ids.length === 0) {
+    return { results: [], message: 'Nenhuma conexão Pluggy vinculada ao perfil.' };
+  }
+
+  const results = [];
+
+  for (const itemId of ids) {
+    try {
+      let item = await updateItem(itemId);
+      if (item?.status === 'UPDATING') {
+        item = await waitForItemUpdate(itemId);
+      }
+
+      const needsUserAction = ITEM_STATUSES_NEEDING_USER.has(item?.status);
+      results.push({
+        itemId,
+        ok: !needsUserAction && item?.status === 'UPDATED',
+        needsUserAction,
+        item,
+        connectorName: item?.connector?.name,
+        status: item?.status,
+        executionStatus: item?.executionStatus,
+      });
+    } catch (err) {
+      results.push({
+        itemId,
+        ok: false,
+        needsUserAction: pluggyErrorNeedsUserAction(err),
+        error: err.message,
+        code: err.code,
+        status: err.status,
+      });
+    }
+  }
+
+  clearApiCache();
+  const okCount = results.filter((r) => r.ok).length;
+  const needsAction = results.filter((r) => r.needsUserAction).length;
+  return {
+    results,
+    okCount,
+    needsAction,
+    message:
+      needsAction > 0
+        ? `${okCount} sincronizada(s); ${needsAction} precisa(m) de autenticação no banco.`
+        : `${okCount} de ${results.length} conexão(ões) sincronizada(s) com o banco.`,
+  };
+}
+
 export async function createConnectToken(itemId) {
   try {
     const res = await api.post('/items/connect-token', { itemId });

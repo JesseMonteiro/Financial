@@ -3,7 +3,14 @@ import { Plug, ShieldCheck, RefreshCw, AlertTriangle, CheckCircle2, Globe, Radio
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
-import api, { checkServerHealth, createConnectToken, fetchItems } from '../services/api';
+import api, {
+  checkServerHealth,
+  clearApiCache,
+  createConnectToken,
+  fetchItems,
+  syncPluggyConnections,
+  waitForItemUpdate,
+} from '../services/api';
 
 export function ConnectBank() {
   const [health, setHealth] = useState(null);
@@ -17,6 +24,7 @@ export function ConnectBank() {
   const [history, setHistory] = useState([]);
   const [submitting, setSubmitting] = useState(false);
   const [statusMsg, setStatusMsg] = useState(null);
+  const [syncingItemId, setSyncingItemId] = useState(null);
 
   useEffect(() => {
     async function init() {
@@ -139,6 +147,53 @@ export function ConnectBank() {
     }
   };
 
+  const handleSyncItem = async (itemId) => {
+    setSyncingItemId(itemId);
+    setStatusMsg(null);
+    try {
+      const outcome = await syncPluggyConnections([itemId]);
+      const row = outcome.results?.[0];
+
+      if (row?.needsUserAction) {
+        const data = await createConnectToken(itemId);
+        if (!window.PluggyConnect || !data?.accessToken) {
+          throw new Error('Não foi possível abrir o Pluggy Connect para autenticação.');
+        }
+        await new Promise((resolve, reject) => {
+          const pluggyConnect = new window.PluggyConnect({
+            connectToken: data.accessToken,
+            updateItem: itemId,
+            onSuccess: async () => {
+              try {
+                await waitForItemUpdate(itemId);
+              } catch {
+                /* ignore poll timeout — data may still arrive */
+              }
+              resolve();
+            },
+            onError: (error) => reject(error instanceof Error ? error : new Error(String(error))),
+            onClose: () => resolve(),
+          });
+          pluggyConnect.init();
+        });
+      }
+
+      clearApiCache();
+      await loadRealItems();
+      setStatusMsg({
+        type: row?.ok || row?.needsUserAction ? 'success' : 'danger',
+        text: row?.error || outcome.message || 'Sincronização concluída.',
+      });
+    } catch (err) {
+      setStatusMsg({
+        type: 'danger',
+        text: err.message || 'Falha ao sincronizar com o banco.',
+      });
+    } finally {
+      setSyncingItemId(null);
+    }
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
       <div>
@@ -203,9 +258,20 @@ export function ConnectBank() {
                   </span>
                 </div>
               </div>
-              <Badge variant={item.status === 'UPDATED' ? 'success' : 'neutral'}>
-                {item.status === 'UPDATED' ? 'Sincronizado' : item.status}
-              </Badge>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <Badge variant={item.status === 'UPDATED' ? 'success' : 'neutral'}>
+                  {item.status === 'UPDATED' ? 'Sincronizado' : item.status}
+                </Badge>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  icon={RefreshCw}
+                  disabled={!!syncingItemId}
+                  onClick={() => handleSyncItem(item.id)}
+                >
+                  {syncingItemId === item.id ? 'Sincronizando…' : 'Sincronizar'}
+                </Button>
+              </div>
             </div>
           ))}
         </div>

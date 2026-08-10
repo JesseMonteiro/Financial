@@ -91,8 +91,26 @@ async function pluggyJson(
 ): Promise<unknown> {
   const res = await pluggyFetch(client, path, options);
   if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Pluggy API ${path} failed (${res.status}): ${err}`);
+    const errText = await res.text();
+    let parsed: { message?: string; codeDescription?: string; code?: number; data?: unknown } | null = null;
+    try {
+      parsed = JSON.parse(errText);
+    } catch {
+      parsed = null;
+    }
+    const err = new Error(
+      parsed?.message || `Pluggy API ${path} failed (${res.status}): ${errText}`
+    ) as Error & {
+      status?: number;
+      codeDescription?: string;
+      pluggyCode?: number;
+      pluggyData?: unknown;
+    };
+    err.status = res.status;
+    err.codeDescription = parsed?.codeDescription;
+    err.pluggyCode = parsed?.code;
+    err.pluggyData = parsed?.data;
+    throw err;
   }
   return res.json();
 }
@@ -1346,6 +1364,20 @@ Deno.serve(async (req: Request) => {
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    return errorResponse(message, 500);
+    const status =
+      typeof (err as { status?: number })?.status === 'number'
+        ? (err as { status: number }).status
+        : 500;
+    const codeDescription = (err as { codeDescription?: string })?.codeDescription;
+    const pluggyData = (err as { pluggyData?: unknown })?.pluggyData;
+    return jsonResponse(
+      {
+        error: message,
+        message,
+        ...(codeDescription ? { codeDescription, code: codeDescription } : {}),
+        ...(pluggyData !== undefined ? { data: pluggyData } : {}),
+      },
+      status
+    );
   }
 });

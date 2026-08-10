@@ -1,11 +1,17 @@
 import React, { useEffect, useState } from 'react';
-import { Wallet, CreditCard, Building2, Plus, Edit2, Check, X, Clock } from 'lucide-react';
+import { Wallet, CreditCard, Building2, Plus, Edit2, Check, X, Clock, RefreshCw } from 'lucide-react';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { useAccountStore } from '../stores/accountStore';
 import { formatCurrency, getDataSyncMeta } from '../utils/formatters';
 import { Link } from 'react-router-dom';
+import {
+  clearApiCache,
+  createConnectToken,
+  syncPluggyConnections,
+  waitForItemUpdate,
+} from '../services/api';
 
 function SyncUpdatedBadge({ updatedAt }) {
   const sync = getDataSyncMeta(updatedAt);
@@ -18,10 +24,51 @@ function SyncUpdatedBadge({ updatedAt }) {
   );
 }
 
+/** Open Pluggy Connect in update mode (MFA / invalid credentials). */
+function openPluggyItemUpdate(itemId) {
+  return new Promise(async (resolve, reject) => {
+    try {
+      const data = await createConnectToken(itemId);
+      if (!data?.accessToken) {
+        reject(new Error('Token de conexão Pluggy inválido.'));
+        return;
+      }
+      if (!window.PluggyConnect) {
+        reject(new Error('O SDK do Pluggy Connect não foi carregado. Recarregue a página.'));
+        return;
+      }
+
+      const pluggyConnect = new window.PluggyConnect({
+        connectToken: data.accessToken,
+        updateItem: itemId,
+        onSuccess: async () => {
+          try {
+            const item = await waitForItemUpdate(itemId);
+            resolve(item);
+          } catch (err) {
+            resolve(null);
+          }
+        },
+        onError: (error) => {
+          reject(error instanceof Error ? error : new Error(error?.message || 'Falha no Pluggy Connect'));
+        },
+        onClose: () => {
+          resolve(null);
+        },
+      });
+      pluggyConnect.init();
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
 export function Accounts() {
-  const { accounts, loadAccounts, renameAccount } = useAccountStore();
+  const { accounts, loadAccounts, renameAccount, loading } = useAccountStore();
   const [editingId, setEditingId] = useState(null);
   const [tempName, setTempName] = useState('');
+  const [syncing, setSyncing] = useState(false);
+  const [syncMsg, setSyncMsg] = useState(null);
 
   useEffect(() => {
     loadAccounts();
@@ -54,6 +101,63 @@ export function Accounts() {
     }
   };
 
+  const handleSync = async () => {
+    setSyncing(true);
+    setSyncMsg({ type: 'info', text: 'Solicitando sincronização nos bancos via Pluggy…' });
+
+    try {
+      const outcome = await syncPluggyConnections();
+
+      if (!outcome.results?.length) {
+        setSyncMsg({ type: 'error', text: outcome.message || 'Nenhuma conexão para sincronizar.' });
+        return;
+      }
+
+      const needingAction = outcome.results.filter((r) => r.needsUserAction);
+      for (const row of needingAction) {
+        setSyncMsg({
+          type: 'info',
+          text: `Autenticação necessária${row.connectorName ? ` (${row.connectorName})` : ''}. Abrindo Pluggy Connect…`,
+        });
+        try {
+          await openPluggyItemUpdate(row.itemId);
+        } catch (err) {
+          console.warn('[Accounts] Pluggy Connect update failed:', err);
+        }
+      }
+
+      clearApiCache();
+      await loadAccounts({ force: true });
+
+      const failed = outcome.results.filter((r) => !r.ok && !r.needsUserAction);
+      const rateLimited = failed.find((r) => String(r.code || '').includes('BEFORE_ALLOWED_FREQUENCY'));
+
+      if (rateLimited) {
+        setSyncMsg({
+          type: 'error',
+          text: rateLimited.error || 'Pluggy limita atualizações manuais por API. Tente novamente mais tarde ou use o widget.',
+        });
+      } else if (failed.length > 0 && outcome.okCount === 0 && needingAction.length === 0) {
+        setSyncMsg({
+          type: 'error',
+          text: failed[0]?.error || outcome.message || 'Falha ao sincronizar.',
+        });
+      } else {
+        setSyncMsg({
+          type: 'success',
+          text: outcome.message || 'Sincronização concluída. Saldos atualizados.',
+        });
+      }
+    } catch (err) {
+      setSyncMsg({
+        type: 'error',
+        text: err.message || 'Falha ao sincronizar com os bancos.',
+      });
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
       <div className="page-header">
@@ -64,11 +168,45 @@ export function Accounts() {
           </p>
         </div>
         <div className="page-header__actions">
+          <Button
+            variant="outline"
+            icon={RefreshCw}
+            disabled={syncing || loading}
+            onClick={handleSync}
+          >
+            {syncing ? 'Sincronizando…' : 'Sincronizar'}
+          </Button>
           <Link to="/connect" style={{ textDecoration: 'none' }}>
             <Button icon={Plus}>Adicionar Conta</Button>
           </Link>
         </div>
       </div>
+
+      {syncMsg && (
+        <div
+          role="status"
+          style={{
+            padding: '0.75rem 1rem',
+            borderRadius: 'var(--radius-md)',
+            backgroundColor:
+              syncMsg.type === 'success'
+                ? 'var(--success-bg)'
+                : syncMsg.type === 'error'
+                  ? 'var(--danger-bg)'
+                  : 'var(--bg-tertiary)',
+            color:
+              syncMsg.type === 'success'
+                ? 'var(--success)'
+                : syncMsg.type === 'error'
+                  ? 'var(--danger)'
+                  : 'var(--text-primary)',
+            fontSize: 'var(--font-size-sm)',
+            fontWeight: 500,
+          }}
+        >
+          {syncMsg.text}
+        </div>
+      )}
 
       {/* Contas Bancárias */}
       <div>

@@ -81,8 +81,8 @@ router.post('/sync', checkAuth, loadPluggyClient, async (req, res) => {
   }
 });
 
-// GET /api/items/:id
-router.get('/:id', checkAuth, loadPluggyClient, cacheMiddleware(3600), async (req, res) => {
+// GET /api/items/:id — no long-lived cache: status is polled during bank sync
+router.get('/:id', checkAuth, loadPluggyClient, async (req, res) => {
   try {
     const { id } = req.params;
     if (!req.pluggyItemIds.includes(id)) {
