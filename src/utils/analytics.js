@@ -203,16 +203,26 @@ export function isAutomaticDebitTx(tx, { bankAccountIds } = {}) {
   // (can appear on unrelated outflows) — require description for financing.
   if (tx.operationType === 'CONVENIO_ARRECADACAO') return true;
 
+  // Financing boletos (e.g. Midway via Santander) — category is Loans and financing
+  const op = String(tx.operationType || '').toUpperCase();
+  const cat = String(tx.category || '').toLowerCase();
+  const isLoanCat = cat.includes('loan') || cat.includes('financ');
+  if (op === 'BOLETO' && isLoanCat) return true;
+
   return matchesAutomaticDebitDescription(tx);
 }
 
 /** Whether the debit is still outstanding (scheduled / not settled yet). */
 export function isAutomaticDebitPending(tx, now = new Date()) {
   if (!tx) return false;
+  // Pluggy POSTED = already cleared in the ledger (same-day boleto/PIX included).
+  // Never label those as "Agendado" just because date === today.
+  if (tx.status === 'POSTED') return false;
   if (tx.status === 'PENDING') return true;
   const day = txDay(tx);
   const today = now.toISOString().slice(0, 10);
-  return Boolean(day && day >= today);
+  // Unknown status: only strictly future dates count as still scheduled
+  return Boolean(day && day > today);
 }
 
 /**
