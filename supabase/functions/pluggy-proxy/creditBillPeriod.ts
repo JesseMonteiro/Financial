@@ -976,7 +976,10 @@ export function buildCreditCardBills({
   for (const [seriesKey, entry] of series) {
     const { total, maxNum, maxDue, sample, accountId } = entry;
     const openFor = openByAccount[accountId] || openDueKey;
-    for (let n = maxNum + 1; n <= total; n++) {
+    // Project missing N/M: future parcels after maxNum AND gaps below maxNum
+    // (Pluggy often skips mid-series rows; e.g. 4/12 then 7/12 without 5–6).
+    // Place relative to the highest known installment's due month.
+    for (let n = 1; n <= total; n++) {
       if (hasInstallmentNumber(transactions, seriesKey, n)) continue;
       if (hasSimilarInstallment(transactions, sample, n)) continue;
       const futureDue = ymAdd(maxDue, n - maxNum);
