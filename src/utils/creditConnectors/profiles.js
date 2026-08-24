@@ -121,8 +121,20 @@ export const CONNECTOR_PROFILES = [
     id: 'inter',
     label: 'Banco Inter',
     match: ({ account, connectorName }) => {
-      const blob = `${connectorName || ''} ${account?.name || ''} ${account?.marketingName || ''}`.toLowerCase();
-      return /\binter\b|banco\s*inter/.test(blob);
+      // Card product names are often just "PLATINUM"; prefer custom/original name,
+      // COMPE 077 in transferNumber, or "Inter" in connector/marketing labels.
+      const transfer = account?.bankData?.transferNumber || '';
+      const blob = [
+        connectorName,
+        account?.name,
+        account?.originalName,
+        account?.marketingName,
+        transfer,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      return /\binter\b|banco\s*inter|(^|\/)077\//.test(blob);
     },
     forecastToDueOffset: 0,
     balanceMeaning: 'total_outstanding',

@@ -89,7 +89,8 @@ export function formatDueMonthShort(dueYm, dueDateIso) {
 export function isBillPayment(tx) {
   const d = (tx?.description || '').toUpperCase().replace(/\s+/g, ' ').trim();
   // Nubank: "Pagamento recebido" / "Pagamento de fatura"
-  // Inter (OF): "PAGAMENTO ON LINE" / "PAGAMENTO ONLINE"
+  // Inter (OF): "PAGAMENTO ON LINE" / "PAGAMENTO ONLINE" / "PAGTO DEBITO AUTOMATICO"
+  //   (auto-debit often stays PENDING next to a POSTED "Pagamento recebido" twin)
   // Itaú: "Pagamento PIX" / "PAGAMENTO COM SALDO"
   // Generic: PAGTO FATURA, PAGAMENTO FATURA
   return (
@@ -101,6 +102,10 @@ export function isBillPayment(tx) {
     d.includes('PAGAMENTO PIX') ||
     d.includes('PAGTO FATURA') ||
     d.includes('PAGAMENTO FATURA') ||
+    d.includes('PAGTO DEBITO AUTOMATICO') ||
+    d.includes('PAGTO DÉBITO AUTOMATICO') ||
+    d.includes('DEBITO AUTOMATICO FATURA') ||
+    d.includes('DÉBITO AUTOMÁTICO FATURA') ||
     /^PAGAMENTO\b/.test(d)
   );
 }

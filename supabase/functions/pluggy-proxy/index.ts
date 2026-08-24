@@ -115,6 +115,42 @@ async function pluggyJson(
   return res.json();
 }
 
+/** Resolve a pasted UUID to a Pluggy Item id (rejects bare Account UUIDs unless remapped). */
+async function resolvePluggyItemId(
+  client: { clientId: string; clientSecret: string },
+  id: string,
+): Promise<{ itemId: string; remappedFromAccount?: string; accountName?: string }> {
+  try {
+    const item = await pluggyJson(client, `/items/${id}`) as { id?: string };
+    if (item?.id) return { itemId: item.id };
+  } catch (e) {
+    const err = e as { status?: number };
+    if (err.status && err.status !== 404) throw e;
+  }
+
+  try {
+    const account = await pluggyJson(client, `/accounts/${id}`) as {
+      id?: string;
+      itemId?: string;
+      name?: string;
+    };
+    if (account?.itemId) {
+      return {
+        itemId: account.itemId,
+        remappedFromAccount: account.id,
+        accountName: account.name,
+      };
+    }
+  } catch (e) {
+    const err = e as { status?: number };
+    if (err.status && err.status !== 404) throw e;
+  }
+
+  const err = new Error('Conexão Pluggy não encontrada para este ID.') as Error & { status?: number };
+  err.status = 404;
+  throw err;
+}
+
 function ownedItemIds(client: PluggyClient, requested?: string | null): string[] {
   if (requested) {
     return client.itemIds.includes(requested) ? [requested] : [];
@@ -1291,7 +1327,32 @@ Deno.serve(async (req: Request) => {
       return errorResponse('itemId é obrigatório', 400);
     }
 
-    const newItemIds = Array.from(new Set([...itemIds, itemIdToRegister]));
+    const credsEarly = resolvePluggyCredentials({
+      pluggy_client_id: profile?.pluggy_client_id,
+      pluggy_client_secret: profile?.pluggy_client_secret,
+    } as TelegramProfile);
+    if (!credsEarly) {
+      return errorResponse('Credenciais Pluggy não configuradas', 400);
+    }
+
+    let resolved;
+    try {
+      resolved = await resolvePluggyItemId(credsEarly, itemIdToRegister);
+    } catch (e) {
+      const err = e as Error & { status?: number };
+      return errorResponse(err.message || 'ID inválido', err.status || 400);
+    }
+
+    if (resolved.remappedFromAccount) {
+      return errorResponse(
+        `O ID informado é de uma conta Pluggy, não de uma conexão. Use o itemId ${resolved.itemId}` +
+          (resolved.accountName ? ` (conta: ${resolved.accountName})` : '') +
+          '.',
+        400,
+      );
+    }
+
+    const newItemIds = Array.from(new Set([...itemIds, resolved.itemId]));
     const { error: updateErr } = await supabaseClient
       .from('profiles')
       .upsert({ id: user.id, pluggy_item_ids: newItemIds }, { onConflict: 'id' });
@@ -1318,7 +1379,33 @@ Deno.serve(async (req: Request) => {
           )
         : [];
 
-    const uniqueIds = Array.from(new Set(incoming));
+    const credsEarly = resolvePluggyCredentials({
+      pluggy_client_id: profile?.pluggy_client_id,
+      pluggy_client_secret: profile?.pluggy_client_secret,
+    } as TelegramProfile);
+    if (!credsEarly && incoming.length) {
+      return errorResponse('Credenciais Pluggy não configuradas', 400);
+    }
+
+    const resolvedIds: string[] = [];
+    const rejected: Array<{ id: string; reason: string; resolvedItemId?: string }> = [];
+    for (const id of Array.from(new Set(incoming))) {
+      try {
+        const resolved = await resolvePluggyItemId(credsEarly!, id);
+        resolvedIds.push(resolved.itemId);
+        if (resolved.remappedFromAccount) {
+          rejected.push({
+            id,
+            reason: `ID de conta remapeado para conexão ${resolved.itemId}`,
+            resolvedItemId: resolved.itemId,
+          });
+        }
+      } catch (e) {
+        rejected.push({ id, reason: (e as Error).message || 'ID inválido' });
+      }
+    }
+
+    const uniqueIds = Array.from(new Set(resolvedIds));
     const { error: updateErr } = await supabaseClient
       .from('profiles')
       .upsert({ id: user.id, pluggy_item_ids: uniqueIds }, { onConflict: 'id' });
@@ -1329,6 +1416,7 @@ Deno.serve(async (req: Request) => {
       success: true,
       message: `${uniqueIds.length} conexão(ões) vinculada(s) ao perfil.`,
       itemIds: uniqueIds,
+      rejected: rejected.length ? rejected : undefined,
     });
   }
 

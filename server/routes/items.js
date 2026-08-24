@@ -4,6 +4,37 @@ import { cacheMiddleware, clearUserCache } from '../middleware/cache.js';
 
 const router = Router();
 
+/** Ensure id is a Pluggy Item (connection), not an Account UUID pasted by mistake. */
+async function assertPluggyItemId(client, itemId) {
+  try {
+    const response = await client.get(`/items/${itemId}`);
+    if (response?.data?.id) return response.data;
+  } catch (err) {
+    if (err.response?.status !== 404) throw err;
+  }
+
+  try {
+    const accountRes = await client.get(`/accounts/${itemId}`);
+    const account = accountRes?.data;
+    if (account?.itemId) {
+      const err = new Error(
+        `O ID informado é de uma conta Pluggy, não de uma conexão. Use o itemId ${account.itemId} (conta: ${account.name || account.id}).`
+      );
+      err.status = 400;
+      err.itemId = account.itemId;
+      err.accountId = account.id;
+      throw err;
+    }
+  } catch (err) {
+    if (err.status === 400) throw err;
+    if (err.response?.status && err.response.status !== 404) throw err;
+  }
+
+  const err = new Error('Conexão Pluggy não encontrada para este ID.');
+  err.status = 404;
+  throw err;
+}
+
 // GET /api/items
 router.get('/', checkAuth, loadPluggyClient, cacheMiddleware(3600), async (req, res) => {
   try {
@@ -30,6 +61,16 @@ router.post('/register', checkAuth, loadPluggyClient, async (req, res) => {
     const { itemId } = req.body;
     if (!itemId || typeof itemId !== 'string') {
       return res.status(400).json({ error: 'itemId é obrigatório' });
+    }
+
+    try {
+      await assertPluggyItemId(req.pluggyClient, itemId);
+    } catch (err) {
+      return res.status(err.status || 500).json({
+        error: err.message,
+        itemId: err.itemId,
+        accountId: err.accountId,
+      });
     }
 
     const currentItemIds = req.pluggyItemIds || [];
@@ -65,16 +106,36 @@ router.post('/sync', checkAuth, loadPluggyClient, async (req, res) => {
     }
 
     const uniqueIds = [...new Set(incoming)];
+    const resolvedIds = [];
+    const rejected = [];
+
+    for (const id of uniqueIds) {
+      try {
+        const item = await assertPluggyItemId(req.pluggyClient, id);
+        resolvedIds.push(item.id);
+      } catch (err) {
+        if (err.itemId) {
+          // Account UUID pasted → use parent connection automatically
+          resolvedIds.push(err.itemId);
+          rejected.push({ id, reason: err.message, resolvedItemId: err.itemId });
+        } else {
+          rejected.push({ id, reason: err.message });
+        }
+      }
+    }
+
+    const finalIds = [...new Set(resolvedIds)];
     const { error } = await req.supabase
       .from('profiles')
-      .upsert({ id: req.user.id, pluggy_item_ids: uniqueIds }, { onConflict: 'id' });
+      .upsert({ id: req.user.id, pluggy_item_ids: finalIds }, { onConflict: 'id' });
 
     if (error) throw error;
     clearUserCache(req.user.id);
     res.json({
       success: true,
-      message: `${uniqueIds.length} conexão(ões) vinculada(s) ao perfil.`,
-      itemIds: uniqueIds,
+      message: `${finalIds.length} conexão(ões) vinculada(s) ao perfil.`,
+      itemIds: finalIds,
+      rejected: rejected.length ? rejected : undefined,
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
