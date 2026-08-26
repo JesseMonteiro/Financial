@@ -605,6 +605,14 @@ async function fetchPluggyAccountsForProfile(profile: TelegramProfile): Promise<
   id: string;
   type?: string;
   number?: string;
+  owner?: string;
+  bankData?: {
+    reservedBalances?: Array<{
+      name?: string;
+      identification?: string;
+      availableAmounts?: Array<{ amount?: number }>;
+    }>;
+  };
   creditData?: { availableCreditLimit?: number; creditLimit?: number; balanceDueDate?: string };
 }>> {
   const itemIds = asItemIdList(profile.pluggy_item_ids);
@@ -618,6 +626,14 @@ async function fetchPluggyAccountsForProfile(profile: TelegramProfile): Promise<
     id: string;
     type?: string;
     number?: string;
+    owner?: string;
+    bankData?: {
+      reservedBalances?: Array<{
+        name?: string;
+        identification?: string;
+        availableAmounts?: Array<{ amount?: number }>;
+      }>;
+    };
     creditData?: { availableCreditLimit?: number; creditLimit?: number; balanceDueDate?: string };
   }> = [];
   for (const itemId of itemIds) {
@@ -629,6 +645,14 @@ async function fetchPluggyAccountsForProfile(profile: TelegramProfile): Promise<
           id: string;
           type?: string;
           number?: string;
+          owner?: string;
+          bankData?: {
+            reservedBalances?: Array<{
+              name?: string;
+              identification?: string;
+              availableAmounts?: Array<{ amount?: number }>;
+            }>;
+          };
           creditData?: { availableCreditLimit?: number; creditLimit?: number; balanceDueDate?: string };
         }>;
       };
@@ -642,6 +666,27 @@ async function fetchPluggyAccountsForProfile(profile: TelegramProfile): Promise<
 
 function formatMoney(value: number): string {
   return `R$ ${Number(value).toFixed(2)}`;
+}
+
+type ReservedBox = { name: string; amount: number };
+
+function reservedBalancesFromAccount(acc: {
+  bankData?: { reservedBalances?: Array<{
+    name?: string;
+    identification?: string;
+    availableAmounts?: Array<{ amount?: number }>;
+  }> };
+}): ReservedBox[] {
+  const raw = acc?.bankData?.reservedBalances;
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((item, index) => {
+      const amounts = Array.isArray(item?.availableAmounts) ? item.availableAmounts : [];
+      const amount = amounts.reduce((sum, a) => sum + (Number(a?.amount) || 0), 0);
+      const name = (item?.name && String(item.name).trim()) || `Caixinha ${index + 1}`;
+      return { name, amount };
+    })
+    .filter((b) => b.amount > 0);
 }
 
 async function buildBankBalanceText(profile: TelegramProfile, supabase: ReturnType<typeof createClient>): Promise<string> {
@@ -665,8 +710,19 @@ async function buildBankBalanceText(profile: TelegramProfile, supabase: ReturnTy
   if (bankAccounts.length) {
     for (const acc of bankAccounts) {
       const bal = Number(acc.balance || 0);
-      bankTotal += bal;
-      text += `• *${accountDisplayName(profile, acc)}*: ${formatMoney(bal)}\n`;
+      const boxes = reservedBalancesFromAccount(acc);
+      const reserved = boxes.reduce((s, b) => s + b.amount, 0);
+      const total = bal + reserved;
+      bankTotal += total;
+      text += `• *${accountDisplayName(profile, acc)}*: ${formatMoney(bal)}`;
+      if (acc.owner) text += `\n  _Titular: ${acc.owner}_`;
+      if (boxes.length) {
+        for (const box of boxes) {
+          text += `\n  🐷 ${box.name}: ${formatMoney(box.amount)}`;
+        }
+        text += `\n  *Total na conta:* ${formatMoney(total)}`;
+      }
+      text += `\n`;
     }
     text += `\n💵 *Total em contas:* ${formatMoney(bankTotal)}`;
   } else {

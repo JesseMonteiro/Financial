@@ -1,10 +1,16 @@
 import React, { useEffect, useState } from 'react';
-import { Wallet, CreditCard, Building2, Plus, Edit2, Check, X, Clock, RefreshCw } from 'lucide-react';
+import { Wallet, CreditCard, Building2, Plus, Edit2, Check, X, Clock, RefreshCw, PiggyBank } from 'lucide-react';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { useAccountStore } from '../stores/accountStore';
 import { formatCurrency, getDataSyncMeta } from '../utils/formatters';
+import {
+  accountAvailableBalance,
+  accountTotalBalance,
+  getReservedBalances,
+  sumReservedBalances,
+} from '../utils/reservedBalances';
 import { Link } from 'react-router-dom';
 import {
   clearApiCache,
@@ -216,6 +222,11 @@ export function Accounts() {
         <div className="dashboard-grid">
           {bankAccounts.map(acc => {
             const isEditing = editingId === acc.id;
+            const caixinhas = getReservedBalances(acc);
+            const reservedTotal = sumReservedBalances(acc);
+            const available = accountAvailableBalance(acc);
+            const total = accountTotalBalance(acc);
+            const ownerHint = acc.ownerLabel || acc.owner || null;
             return (
               <Card key={acc.id} className="col-4">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem', gap: '0.5rem' }}>
@@ -262,8 +273,14 @@ export function Accounts() {
                         </div>
                       )}
                       <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>
-                        {acc.bankData?.institutionName || 'Banco'} • Ag. {acc.number || '0001'}
+                        {acc.bankData?.institutionName || acc.marketingName || 'Banco'}
+                        {acc.number ? ` • ${acc.number}` : ''}
                       </span>
+                      {ownerHint && (
+                        <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)', marginTop: '0.15rem' }}>
+                          Titular: {ownerHint}
+                        </div>
+                      )}
                     </div>
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.35rem', flexShrink: 0 }}>
@@ -272,11 +289,81 @@ export function Accounts() {
                   </div>
                 </div>
                 <div style={{ marginTop: '1rem' }}>
-                  <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>Saldo Atual</span>
-                  <h4 style={{ fontSize: 'var(--font-size-xl)', fontWeight: 700, color: 'var(--text-primary)' }}>
-                    {formatCurrency(acc.balance)}
+                  <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>
+                    {caixinhas.length > 0 ? 'Saldo disponível' : 'Saldo atual'}
+                  </span>
+                  <h4 style={{ fontSize: 'var(--font-size-xl)', fontWeight: 700, color: 'var(--text-primary)', margin: '0.15rem 0 0' }}>
+                    {formatCurrency(available)}
                   </h4>
                 </div>
+                {caixinhas.length > 0 && (
+                  <div
+                    style={{
+                      marginTop: '0.85rem',
+                      paddingTop: '0.75rem',
+                      borderTop: '1px solid var(--border-color)',
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.35rem',
+                        marginBottom: '0.5rem',
+                        fontSize: 'var(--font-size-xs)',
+                        fontWeight: 600,
+                        color: 'var(--text-muted)',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.02em',
+                      }}
+                    >
+                      <PiggyBank size={12} aria-hidden />
+                      Caixinhas
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                      {caixinhas.map((box) => (
+                        <div
+                          key={box.identification}
+                          style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'baseline',
+                            gap: '0.75rem',
+                            fontSize: 'var(--font-size-sm)',
+                          }}
+                        >
+                          <span style={{ color: 'var(--text-secondary)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {box.name}
+                          </span>
+                          <span style={{ fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
+                            {formatCurrency(box.amount)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                    <div
+                      style={{
+                        marginTop: '0.65rem',
+                        paddingTop: '0.55rem',
+                        borderTop: '1px dashed var(--border-color)',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'baseline',
+                        fontSize: 'var(--font-size-sm)',
+                      }}
+                    >
+                      <span style={{ color: 'var(--text-muted)' }}>
+                        Total na conta
+                        <span style={{ display: 'block', fontSize: 'var(--font-size-xs)' }}>
+                          disponível + caixinhas ({formatCurrency(reservedTotal)})
+                        </span>
+                      </span>
+                      <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>
+                        {formatCurrency(total)}
+                      </span>
+                    </div>
+                  </div>
+                )}
               </Card>
             );
           })}

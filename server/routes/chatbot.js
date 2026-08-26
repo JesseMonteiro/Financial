@@ -396,8 +396,26 @@ async function fetchUserBalancesText(profile, supabase) {
     if (bankAccounts.length > 0) {
       bankAccounts.forEach(acc => {
         const bal = Number(acc.balance || 0);
-        bankTotal += bal;
-        text += `• *${accountDisplayName(profile, acc)}*: ${money(bal)}\n`;
+        const boxes = (acc.bankData?.reservedBalances || [])
+          .map((item, index) => {
+            const amounts = Array.isArray(item?.availableAmounts) ? item.availableAmounts : [];
+            const amount = amounts.reduce((sum, a) => sum + (Number(a?.amount) || 0), 0);
+            const name = (item?.name && String(item.name).trim()) || `Caixinha ${index + 1}`;
+            return { name, amount };
+          })
+          .filter((b) => b.amount > 0);
+        const reserved = boxes.reduce((s, b) => s + b.amount, 0);
+        const total = bal + reserved;
+        bankTotal += total;
+        text += `• *${accountDisplayName(profile, acc)}*: ${money(bal)}`;
+        if (acc.owner) text += `\n  _Titular: ${acc.owner}_`;
+        if (boxes.length) {
+          for (const box of boxes) {
+            text += `\n  🐷 ${box.name}: ${money(box.amount)}`;
+          }
+          text += `\n  *Total na conta:* ${money(total)}`;
+        }
+        text += `\n`;
       });
       text += `\n💵 *Total em contas:* ${money(bankTotal)}`;
     } else {

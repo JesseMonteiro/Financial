@@ -1,8 +1,17 @@
+import { sumReservedBalances } from './reservedBalances.js';
+
 export function calculateNetWorth(accounts = [], investments = [], loans = []) {
-  const bankBalance = accounts.reduce((acc, a) => {
-    if (a.type === 'BANK') return acc + (a.balance || 0);
-    return acc;
-  }, 0);
+  let availableBankBalance = 0;
+  let reservedBalance = 0;
+
+  for (const a of accounts) {
+    if (a.type !== 'BANK') continue;
+    availableBankBalance += a.balance || 0;
+    reservedBalance += sumReservedBalances(a);
+  }
+
+  // Total held in bank products (available + caixinhas / reserved balances)
+  const bankBalance = availableBankBalance + reservedBalance;
 
   const creditDebt = accounts.reduce((acc, a) => {
     if (a.type === 'CREDIT') return acc + Math.abs(a.balance || 0);
@@ -21,6 +30,8 @@ export function calculateNetWorth(accounts = [], investments = [], loans = []) {
     totalAssets,
     totalLiabilities,
     bankBalance,
+    availableBankBalance,
+    reservedBalance,
     investmentTotal,
     creditDebt,
     loansTotal

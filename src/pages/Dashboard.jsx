@@ -152,6 +152,9 @@ export function Dashboard() {
           </h2>
           <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>
             {bankCount} {bankCount === 1 ? 'conta bancária' : 'contas bancárias'}
+            {summary.reservedBalance > 0
+              ? ` · disponível ${formatCurrency(summary.availableBankBalance)} · caixinhas ${formatCurrency(summary.reservedBalance)}`
+              : ''}
           </span>
         </Card>
 
