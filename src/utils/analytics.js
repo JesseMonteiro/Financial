@@ -631,7 +631,8 @@ export function buildInsights(transactions = [], ym = currentYm()) {
 export function investmentAllocation(investments = []) {
   const map = {};
   investments.forEach((inv) => {
-    const key = inv.subtype || inv.type || 'Outros';
+    const raw = inv.subtype || inv.type || 'Outros';
+    const key = raw === 'CAIXINHA' ? 'Caixinha' : raw;
     const val = Number(inv.balance || inv.amount || 0);
     map[key] = (map[key] || 0) + val;
   });

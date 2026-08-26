@@ -153,7 +153,7 @@ export function Dashboard() {
           <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>
             {bankCount} {bankCount === 1 ? 'conta bancária' : 'contas bancárias'}
             {summary.reservedBalance > 0
-              ? ` · disponível ${formatCurrency(summary.availableBankBalance)} · caixinhas ${formatCurrency(summary.reservedBalance)}`
+              ? ` · caixinhas ${formatCurrency(summary.reservedBalance)} em investimentos`
               : ''}
           </span>
         </Card>

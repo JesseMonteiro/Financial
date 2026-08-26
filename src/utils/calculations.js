@@ -1,24 +1,32 @@
-import { sumReservedBalances } from './reservedBalances.js';
+import { totalReservedBalances } from './reservedBalances.js';
 
 export function calculateNetWorth(accounts = [], investments = [], loans = []) {
   let availableBankBalance = 0;
-  let reservedBalance = 0;
 
   for (const a of accounts) {
     if (a.type !== 'BANK') continue;
     availableBankBalance += a.balance || 0;
-    reservedBalance += sumReservedBalances(a);
   }
 
-  // Total held in bank products (available + caixinhas / reserved balances)
-  const bankBalance = availableBankBalance + reservedBalance;
+  // Caixinhas count as investments (merged in investmentStore), not bank cash.
+  const bankBalance = availableBankBalance;
+  const reservedFromAccounts = totalReservedBalances(accounts);
+  const reservedFromInvestments = (investments || []).reduce((sum, inv) => {
+    if (!inv?.isReservedBalance) return sum;
+    return sum + (Number(inv.balance || inv.amount) || 0);
+  }, 0);
+  const hasReservedInvestments = (investments || []).some((inv) => inv?.isReservedBalance);
+  const reservedBalance = hasReservedInvestments ? reservedFromInvestments : reservedFromAccounts;
+  // If caller passed raw Pluggy investments without merge, still include caixinhas once.
+  const reservedNotInInvestments = hasReservedInvestments ? 0 : reservedFromAccounts;
 
   const creditDebt = accounts.reduce((acc, a) => {
     if (a.type === 'CREDIT') return acc + Math.abs(a.balance || 0);
     return acc;
   }, 0);
 
-  const investmentTotal = investments.reduce((acc, i) => acc + (i.balance || i.amount || 0), 0);
+  const investmentTotal =
+    investments.reduce((acc, i) => acc + (i.balance || i.amount || 0), 0) + reservedNotInInvestments;
 
   const loansTotal = loans.reduce((acc, l) => acc + (l.balance || 0), 0);
 

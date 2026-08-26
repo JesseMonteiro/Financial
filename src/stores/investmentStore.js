@@ -1,6 +1,7 @@
 import { create } from 'zustand';
-import { fetchInvestments } from '../services/api';
+import { fetchAccounts, fetchInvestments } from '../services/api';
 import { CACHE_TTL_MS, isFreshTimestamp } from '../services/clientCache';
+import { mergeInvestmentsWithReserved } from '../utils/reservedBalances';
 
 export const useInvestmentStore = create((set, get) => ({
   investments: [],
@@ -26,9 +27,13 @@ export const useInvestmentStore = create((set, get) => ({
     else set({ error: null });
 
     try {
-      const data = await fetchInvestments(undefined, { force });
+      const [pluggyInvestments, accounts] = await Promise.all([
+        fetchInvestments(undefined, { force }),
+        fetchAccounts(undefined, { force }),
+      ]);
+
       set({
-        investments: data || [],
+        investments: mergeInvestmentsWithReserved(pluggyInvestments || [], accounts || []),
         loading: false,
         lastUpdated: new Date(),
       });
@@ -40,5 +45,5 @@ export const useInvestmentStore = create((set, get) => ({
   getTotalInvested: () => {
     const { investments } = get();
     return investments.reduce((acc, i) => acc + (i.balance || i.amount || 0), 0);
-  }
+  },
 }));

@@ -131,6 +131,7 @@ export function Investments() {
             {investments.map((inv) => {
               const value = inv.balance || inv.amount || 0;
               const share = totalInvested > 0 ? Math.round((value / totalInvested) * 100) : 0;
+              const subtypeLabel = inv.subtype === 'CAIXINHA' ? 'Caixinha' : (inv.subtype || inv.type);
               return (
                 <div
                   key={inv.id}
@@ -152,10 +153,12 @@ export function Investments() {
                       <Badge variant={inv.status === 'ACTIVE' ? 'success' : 'neutral'}>
                         {inv.status === 'ACTIVE' ? 'Ativo' : inv.status || 'Posição'}
                       </Badge>
-                      <Badge variant="info">{inv.subtype || inv.type}</Badge>
+                      <Badge variant="info">{subtypeLabel}</Badge>
                     </div>
                     <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
                       Emissor: {inv.issuer || inv.institution || 'Banco'} · {share}% da carteira
+                      {inv.sourceAccountName ? ` · Conta: ${inv.sourceAccountName}` : ''}
+                      {inv.owner ? ` · Titular: ${inv.owner}` : ''}
                       {inv.dueDate ? ` · Venc. ${new Date(inv.dueDate).toLocaleDateString('pt-BR')}` : ''}
                     </p>
                   </div>
