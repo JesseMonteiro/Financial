@@ -343,6 +343,29 @@ export function sumProjectedCharges(items = [], { chargeSumMode = 'signed_net' }
 }
 
 /**
+ * Total for a due month that already has an official Pluggy bill.
+ * Starts from official `totalAmount` + app-projected parcels in this bucket
+ * (Amazon/Bradesco drafts omit installments). When the connector opts in,
+ * lift to cycle charges if those are higher — closed Amazon statements can
+ * still publish a short `totalAmount` while POSTED/PENDING txs already match
+ * the bank PDF.
+ */
+export function resolveOfficialBillTotal(official, cycleItems = [], {
+  chargeSumMode = 'signed_net',
+  liftOfficialToCycleCharges = false,
+} = {}) {
+  const officialAmt = Number(official?.totalAmount) || 0;
+  const projectedAmt = sumProjectedCharges(cycleItems, { chargeSumMode });
+  const combined = Math.round((officialAmt + projectedAmt) * 100) / 100;
+  if (!liftOfficialToCycleCharges) return combined;
+  const cycleSum = sumCycleCharges(cycleItems, {
+    includeProjected: true,
+    chargeSumMode,
+  });
+  return cycleSum > combined + 0.05 ? cycleSum : combined;
+}
+
+/**
  * Open-bill total for ONE due cycle.
  * Never use account.balance alone when it equals total outstanding (limit − available).
  * `cycleItems` are already scoped to this due month — include projected parcels
@@ -1055,11 +1078,10 @@ export function buildCreditCardBills({
       const chargeSumMode = profile?.chargeSumMode || 'signed_net';
 
       if (official) {
-        // Official total is authoritative for real charges, but Amazon/Bradesco
-        // open drafts often omit installment parcels we project into this bucket.
-        const officialAmt = Number(official.totalAmount) || 0;
-        const projectedAmt = sumProjectedCharges(scopedItems, { chargeSumMode });
-        totalAmount += officialAmt + projectedAmt;
+        totalAmount += resolveOfficialBillTotal(official, scopedItems, {
+          chargeSumMode,
+          liftOfficialToCycleCharges: Boolean(profile?.liftOfficialToCycleCharges),
+        });
         hasOfficial = true;
         dueDate = String(official.dueDate).slice(0, 10);
         if (

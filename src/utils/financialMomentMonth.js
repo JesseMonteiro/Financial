@@ -3,9 +3,10 @@ import {
   isBillPayment,
   isBillSettled,
   sumCycleCharges,
-  sumProjectedCharges,
+  resolveOfficialBillTotal,
   MONTHS_PT,
 } from './creditBillPeriod';
+import { resolveConnectorProfile } from './creditConnectors/profiles';
 import { resolveMonthSalary } from './monthSalary';
 import { automaticDebitsForMonth, isAutomaticDebitPending } from './analytics';
 
@@ -44,9 +45,13 @@ export function cardBillAmountForMonth({
   );
 
   if (matchingBill) {
-    const projectedAmt = sumProjectedCharges(scoped);
+    const profile = resolveConnectorProfile({ account: card });
+    const amount = resolveOfficialBillTotal(matchingBill, scoped, {
+      chargeSumMode: profile.chargeSumMode || 'signed_net',
+      liftOfficialToCycleCharges: Boolean(profile.liftOfficialToCycleCharges),
+    });
     return {
-      amount: (Number(matchingBill.totalAmount) || 0) + projectedAmt,
+      amount,
       dueDate: matchingBill.dueDate,
       isPaid: isBillSettled(matchingBill, {
         transactions: cardTransactions,

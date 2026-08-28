@@ -29,6 +29,9 @@
  *   When true (or balance looks like total outstanding), open total may be
  *   raised to outstanding − future PENDING − past unpaid PENDING if Pluggy
  *   omitted charges that still affect balance (Mercado Pago additional cards).
+ * @property {boolean} [liftOfficialToCycleCharges]
+ *   When true, an official Pluggy `totalAmount` that is short of the due-month
+ *   cycle charges is lifted to the cycle sum (Amazon/Bradescard closed bills).
  * @property {RemapStalePendingMode} remapStalePending
  *   after_cycle_end = only remap PENDING without billId when purchase date is
  *   after last official close (Carrefour-safe). always = old Nubank-only remap.
@@ -163,6 +166,33 @@ export const CONNECTOR_PROFILES = [
     // payments[] on bill N is the payment of bill N−1 — never treat paid>=total as settled
     paymentOftenOnNextCycle: false,
     guidePath: 'docs/connectors/itau.md',
+  },
+  {
+    id: 'bradesco',
+    label: 'Bradesco / Amazon (Bradescard)',
+    match: ({ account, connectorName }) => {
+      const blob = [
+        connectorName,
+        account?.name,
+        account?.originalName,
+        account?.marketingName,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      return /amazon|bradescard|\bbradesco\b/.test(blob);
+    },
+    // Close ~day 21 of month M, due day 5 of M+1. Infer from billId pairs / close vs due.
+    forecastToDueOffset: null,
+    balanceMeaning: 'total_outstanding',
+    openTotalSource: 'cycle_charges',
+    chargeSumMode: 'signed_net',
+    // Closed official `totalAmount` can stay short of the PDF (Lucas Amazon Sep/2026:
+    // Pluggy 1532.54 vs fatura 1602.24) while the cycle txs already have the rest.
+    liftOfficialToCycleCharges: true,
+    remapStalePending: 'after_cycle_end',
+    paymentOftenOnNextCycle: true,
+    guidePath: 'docs/connectors/bradesco.md',
   },
   {
     id: 'meupluggy',
