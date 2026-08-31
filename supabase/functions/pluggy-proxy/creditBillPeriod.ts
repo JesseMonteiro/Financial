@@ -27,6 +27,26 @@ export function ymAdd(ym, n) {
   return `${y}-${String(m).padStart(2, '0')}`;
 }
 
+/**
+ * Due month to treat as the latest known installment when projecting N+1, N+2…
+ *
+ * Series anchoring (Itaú) can park the highest PENDING parcel two+ months
+ * before the open bill. Projecting from that date lands N+1 on a closed cycle
+ * (`futureDue < openFor` → dropped). Last parcels of a series then vanish from
+ * the open Amazon/Bradesco bill (PDF 1602.24 vs projected 1532.54).
+ *
+ * When the next parcel would fall before the open month, slide the schedule so
+ * N+1 lands on `openFor`.
+ */
+export function projectionAnchorDue(maxDue, openFor) {
+  if (!maxDue || !openFor || maxDue === 'Outros' || openFor === 'Outros') return maxDue;
+  const nextDue = ymAdd(maxDue, 1);
+  if (nextDue && nextDue !== 'Outros' && nextDue < openFor) {
+    return ymAdd(openFor, -1);
+  }
+  return maxDue;
+}
+
 export function ymFromIso(iso) {
   if (!iso) return null;
   return String(iso).slice(0, 7);
@@ -245,7 +265,9 @@ export function hasInstallmentNumber(transactions, seriesKey, n) {
 /**
  * Mercado Pago (and similar) truncates later-parcel descriptions
  * (`MERCADOLIVRE*MERCADOLIVRE` → `MERCADOLIVRE*MERC`), splitting series keys.
- * Treat same account + totalInstallments + N + amount±R$0,50 as already present.
+ * Same account + N/M + similar merchant prefix + amount within R$ 0,10
+ * (matches installmentSeriesKey rounding). Amount-only ±R$ 0,50 was matching
+ * unrelated ~R$ 10 parcels (Carrefour 9,99 vs Ferreira Costa 10,48 as 5/10).
  */
 export function hasSimilarInstallment(transactions, sample, n) {
   const total = Number(installmentTotalOf(sample));
@@ -253,18 +275,19 @@ export function hasSimilarInstallment(transactions, sample, n) {
   const sampleAmt = Math.abs(txBillingAmount(sample));
   const acct = sample?.accountId || '';
   const sampleDesc = normalizeInstallmentDesc(sample?.description);
+  const prefix = sampleDesc.slice(0, 14);
   for (const t of transactions) {
     if (isBillPayment(t)) continue;
     if (acct && t.accountId && t.accountId !== acct) continue;
     if (Number(installmentNumberOf(t)) !== Number(n)) continue;
     if (Number(installmentTotalOf(t)) !== total) continue;
-    const amt = Math.abs(txBillingAmount(t));
-    if (Math.abs(amt - sampleAmt) <= 0.5) return true;
     const desc = normalizeInstallmentDesc(t.description);
-    const prefix = sampleDesc.slice(0, 14);
-    if (prefix.length >= 8 && (desc.startsWith(prefix) || sampleDesc.startsWith(desc.slice(0, 14)))) {
-      if (Math.abs(amt - sampleAmt) <= 1) return true;
-    }
+    const prefixOk =
+      prefix.length >= 8 &&
+      (desc.startsWith(prefix) || sampleDesc.startsWith(desc.slice(0, 14)));
+    if (!prefixOk) continue;
+    const amt = Math.abs(txBillingAmount(t));
+    if (Math.abs(amt - sampleAmt) <= 0.1) return true;
   }
   return false;
 }
@@ -859,10 +882,13 @@ export function buildCreditCardBills({
   const dueKeyForTx = (t) => {
     const offset = offsetForAccount(t.accountId, transactions, officialBills, offsetCache, creditCards);
     let key = getDueMonthKey(t, billMap, offset);
-    // Prefer series continuity over raw forecast offset for unbound installments
-    const seriesDue = dueMonthFromInstallmentSeries(t, transactions, billMap);
-    if (seriesDue) key = seriesDue;
     const openForCard = openByAccount[t.accountId] || openDueKey;
+    // Prefer series continuity over raw forecast offset for unbound installments
+    // — but only toward the open/future cycle. Anchoring PENDING to a posted
+    // sibling on an old official bill pulls Bradesco parcels into a reconstructed
+    // past month; the current N+1 is then projected into a paid cycle and dropped.
+    const seriesDue = dueMonthFromInstallmentSeries(t, transactions, billMap);
+    if (seriesDue && (!openForCard || seriesDue >= openForCard)) key = seriesDue;
     const latestOfficial = latestOfficialByAccount[t.accountId];
     const profile = profileByAccount[t.accountId];
     const remapMode = profile?.remapStalePending || 'after_cycle_end';
@@ -999,13 +1025,21 @@ export function buildCreditCardBills({
   for (const [seriesKey, entry] of series) {
     const { total, maxNum, maxDue, sample, accountId } = entry;
     const openFor = openByAccount[accountId] || openDueKey;
+    const openHasOfficial = officialBills.some(
+      (b) =>
+        ymFromIso(b.dueDate) === openFor &&
+        (!accountId || !b.accountId || b.accountId === accountId)
+    );
+    // When the open cycle has no official bill, slide a stale series so the
+    // next parcel hits the open month instead of disappearing into a paid one.
+    const anchorDue = openHasOfficial ? maxDue : projectionAnchorDue(maxDue, openFor);
     // Project missing N/M: future parcels after maxNum AND gaps below maxNum
     // (Pluggy often skips mid-series rows; e.g. 4/12 then 7/12 without 5–6).
     // Place relative to the highest known installment's due month.
     for (let n = 1; n <= total; n++) {
       if (hasInstallmentNumber(transactions, seriesKey, n)) continue;
       if (hasSimilarInstallment(transactions, sample, n)) continue;
-      const futureDue = ymAdd(maxDue, n - maxNum);
+      const futureDue = ymAdd(anchorDue, n - maxNum);
       // Do not project into already-closed cycles
       if (futureDue < openFor) continue;
       if (!map[futureDue]) {
