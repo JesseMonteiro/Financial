@@ -1030,9 +1030,13 @@ export function buildCreditCardBills({
         ymFromIso(b.dueDate) === openFor &&
         (!accountId || !b.accountId || b.accountId === accountId)
     );
-    // When the open cycle has no official bill, slide a stale series so the
-    // next parcel hits the open month instead of disappearing into a paid one.
-    const anchorDue = openHasOfficial ? maxDue : projectionAnchorDue(maxDue, openFor);
+    const profile = profileByAccount[accountId];
+    // Bradesco/Amazon only: open cycle often has no official bill and stale
+    // series would otherwise project N+1 into a paid month (dropped). Nubank
+    // is missing the official every cycle until close — sliding dumps last
+    // parcels already billed (Rede Pharma 4/4) onto the open bill.
+    const slide = Boolean(profile?.slideProjectionToOpen) && !openHasOfficial;
+    const anchorDue = slide ? projectionAnchorDue(maxDue, openFor) : maxDue;
     // Project missing N/M: future parcels after maxNum AND gaps below maxNum
     // (Pluggy often skips mid-series rows; e.g. 4/12 then 7/12 without 5–6).
     // Place relative to the highest known installment's due month.

@@ -20,7 +20,7 @@ O sandbox replica fixtures de vários bancos sob o mesmo connector:
 1. Perfil `meupluggy`: `forecastToDueOffset: null` (inferir), `openTotalSource: 'cycle_charges'`.
 2. Se `balance ≈ creditLimit − availableCreditLimit`, **nunca** usar balance como total da fatura aberta.
 3. API de transações: usar **`GET /v2/transactions`** com cursor (`next`); `/transactions` v1 retorna **410**.
-4. Cartão Amazon no sandbox: o perfil **bradesco** ganha pelo nome da conta. Sem fatura oficial do ciclo aberto, aplicar `projectionAnchorDue` (ver [bradesco.md](./bradesco.md)).
+4. Cartão Amazon no sandbox: o perfil **bradesco** ganha pelo nome da conta. Sem fatura oficial do ciclo aberto, aplicar `slideProjectionToOpen` (ver [bradesco.md](./bradesco.md)). Não aplicar no platinum Nubank-like.
 
 ## Validação
 

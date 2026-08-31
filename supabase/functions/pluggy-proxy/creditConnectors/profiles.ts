@@ -32,6 +32,11 @@
  * @property {boolean} [liftOfficialToCycleCharges]
  *   When true, an official Pluggy `totalAmount` that is short of the due-month
  *   cycle charges is lifted to the cycle sum (Amazon/Bradescard closed bills).
+ * @property {boolean} [slideProjectionToOpen]
+ *   When true and the open cycle has no official bill, slide stale installment
+ *   series so N+1 lands on the open month (`projectionAnchorDue`). Bradesco
+ *   only — Nubank is missing the official every cycle until close, and sliding
+ *   dumps already-billed last parcels onto the open bill.
  * @property {RemapStalePendingMode} remapStalePending
  *   after_cycle_end = only remap PENDING without billId when purchase date is
  *   after last official close (Carrefour-safe). always = old Nubank-only remap.
@@ -191,6 +196,7 @@ export const CONNECTOR_PROFILES = [
     // Closed official `totalAmount` can stay short of the PDF (Lucas Amazon Sep/2026:
     // Pluggy 1532.54 vs fatura 1602.24) while the cycle txs already have the rest.
     liftOfficialToCycleCharges: true,
+    slideProjectionToOpen: true,
     remapStalePending: 'after_cycle_end',
     paymentOftenOnNextCycle: true,
     guidePath: 'docs/connectors/bradesco.md',
