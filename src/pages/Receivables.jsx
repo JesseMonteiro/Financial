@@ -18,6 +18,7 @@ import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { ProgressBar } from '../components/ui/ProgressBar';
+import { IconBusyButton, SavingOverlay } from '../components/ui/Spinner';
 import { useReceivableStore } from '../stores/receivableStore';
 import { useAccountStore } from '../stores/accountStore';
 import { fetchTransactions } from '../services/api';
@@ -83,6 +84,7 @@ function ReceivableModal({ onClose, onSave, creditTransactions, editingReceivabl
   const [firstDueDate, setFirstDueDate] = useState(new Date().toISOString().slice(0, 10));
   const [notes, setNotes] = useState('');
   const [txDropdownOpen, setTxDropdownOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   // Load editing data if editing
   useEffect(() => {
@@ -142,20 +144,27 @@ function ReceivableModal({ onClose, onSave, creditTransactions, editingReceivabl
     setTxSearch(tx.description || '');
   };
 
-  const handleSave = () => {
-    if (!personName.trim() || !totalAmount || isNaN(parseFloat(totalAmount))) return;
-    onSave({
-      personName: personName.trim(),
-      description: description.trim(),
-      totalAmount: parseFloat(totalAmount),
-      isContinuous: recurrenceType === 'continuous',
-      installments: recurrenceType === 'parcelado' ? parseInt(numParcelas, 10) || 1 : 1,
-      firstDueDate,
-      linkedTransactionId: selectedTx?.id || null,
-      linkedBillForecastDate: selectedTx?.creditCardMetadata?.billForecastDate || null,
-      notes: notes.trim(),
-    });
-    onClose();
+  const handleSave = async () => {
+    if (!personName.trim() || !totalAmount || isNaN(parseFloat(totalAmount)) || saving) return;
+    setSaving(true);
+    try {
+      await onSave({
+        personName: personName.trim(),
+        description: description.trim(),
+        totalAmount: parseFloat(totalAmount),
+        isContinuous: recurrenceType === 'continuous',
+        installments: recurrenceType === 'parcelado' ? parseInt(numParcelas, 10) || 1 : 1,
+        firstDueDate,
+        linkedTransactionId: selectedTx?.id || null,
+        linkedBillForecastDate: selectedTx?.creditCardMetadata?.billForecastDate || null,
+        notes: notes.trim(),
+      });
+      onClose();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const inputStyle = {
@@ -204,7 +213,8 @@ function ReceivableModal({ onClose, onSave, creditTransactions, editingReceivabl
           </h3>
           <button
             onClick={onClose}
-            style={{ border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '18px' }}
+            disabled={saving}
+            style={{ border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: saving ? 'wait' : 'pointer', fontSize: '18px' }}
           >
             &times;
           </button>
@@ -431,15 +441,17 @@ function ReceivableModal({ onClose, onSave, creditTransactions, editingReceivabl
           display: 'flex', gap: '0.75rem', justifyContent: 'flex-end',
           borderTop: '1px solid var(--border-color)',
         }}>
-          <Button variant="outline" onClick={onClose}>Cancelar</Button>
+          <Button variant="outline" onClick={onClose} disabled={saving}>Cancelar</Button>
           <Button
             variant="primary"
             onClick={handleSave}
+            loading={saving}
             disabled={!personName.trim() || !totalAmount || isNaN(parseFloat(totalAmount))}
           >
             Salvar
           </Button>
         </div>
+        <SavingOverlay active={saving} />
       </div>
     </div>
   );
@@ -449,7 +461,7 @@ function ReceivableModal({ onClose, onSave, creditTransactions, editingReceivabl
 // PERSON CARD
 // ─────────────────────────────────────────────────────────────────────────────
 
-function PersonCard({ personName, personColor, receivables, onMarkPaid, onDelete, onEdit, onAddForPerson }) {
+function PersonCard({ personName, personColor, receivables, onMarkPaid, onDelete, onEdit, onAddForPerson, pending = {} }) {
   const [expanded, setExpanded] = useState(true);
   const [expandedReceivableId, setExpandedReceivableId] = useState(null);
 
@@ -621,19 +633,14 @@ function PersonCard({ personName, personColor, receivables, onMarkPaid, onDelete
                     >
                       <Edit2 size={14} />
                     </button>
-                    <button
+                    <IconBusyButton
                       onClick={() => onDelete(rec.id)}
+                      busy={Boolean(pending[rec.id])}
                       title="Remover lançamento"
-                      className="tap-target"
-                      style={{
-                        border: 'none', background: 'transparent', cursor: 'pointer',
-                        color: 'var(--text-muted)', display: 'flex', alignItems: 'center',
-                      }}
-                      onMouseEnter={e => e.currentTarget.style.color = 'var(--danger)'}
-                      onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}
+                      style={{ color: 'var(--text-muted)' }}
                     >
                       <Trash2 size={14} />
-                    </button>
+                    </IconBusyButton>
                     <span style={{ color: 'var(--text-muted)', marginLeft: '0.25rem', cursor: 'pointer' }} onClick={() => setExpandedReceivableId(isExpanded ? null : rec.id)}>
                       {isExpanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
                     </span>
@@ -690,6 +697,7 @@ function PersonCard({ personName, personColor, receivables, onMarkPaid, onDelete
                               <Button
                                 size="xs"
                                 variant="secondary"
+                                loading={Boolean(pending[`${rec.id}:${inst.installmentNumber}`])}
                                 onClick={() => onMarkPaid(rec.id, inst.installmentNumber)}
                               >
                                 Marcar Recebido
@@ -715,7 +723,7 @@ function PersonCard({ personName, personColor, receivables, onMarkPaid, onDelete
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function Receivables() {
-  const { receivables, loadReceivables, addReceivable, updateReceivable, deleteReceivable, markInstallmentPaid } = useReceivableStore();
+  const { receivables, loadReceivables, addReceivable, updateReceivable, deleteReceivable, markInstallmentPaid, pending } = useReceivableStore();
   const { accounts, loadAccounts } = useAccountStore();
 
   const [showModal, setShowModal] = useState(false);
@@ -831,7 +839,6 @@ export function Receivables() {
     } else {
       await addReceivable(data);
     }
-    setShowModal(false);
     setPrefilledPersonName('');
   }, [addReceivable, updateReceivable, editingReceivable]);
 
@@ -987,6 +994,7 @@ export function Receivables() {
               onDelete={handleDelete}
               onEdit={handleEditClick}
               onAddForPerson={handleAddForPersonClick}
+              pending={pending}
             />
           ))}
         </div>

@@ -10,6 +10,8 @@ export const useAccountStore = create((set, get) => ({
   loading: false,
   error: null,
   lastUpdated: null,
+  customAccountNames: {},
+  pending: {},
 
   /**
    * @param {{ force?: boolean }} [opts]
@@ -44,6 +46,7 @@ export const useAccountStore = create((set, get) => ({
       set({
         accounts: parsedAccounts,
         loans: loansData || [],
+        customAccountNames: customNames || {},
         loading: false,
         lastUpdated: new Date(),
       });
@@ -53,31 +56,41 @@ export const useAccountStore = create((set, get) => ({
   },
 
   renameAccount: async (accountId, newName) => {
-    const { accounts } = get();
+    const { accounts, customAccountNames, pending } = get();
+    if (pending[accountId]) return;
 
-    const customNames = await getCustomAccountNames();
-
-    if (newName && newName.trim()) {
-      customNames[accountId] = newName.trim();
-    } else {
-      delete customNames[accountId];
-    }
-    await saveCustomAccountNames(customNames);
+    const trimmed = newName && newName.trim() ? newName.trim() : '';
+    const snapshot = { accounts, customAccountNames };
+    const nextNames = { ...customAccountNames };
+    if (trimmed) nextNames[accountId] = trimmed;
+    else delete nextNames[accountId];
 
     const updatedAccounts = accounts.map((acc) => {
-      if (acc.id === accountId) {
-        return {
-          ...acc,
-          name:
-            newName && newName.trim()
-              ? newName.trim()
-              : acc.originalName || acc.name,
-        };
-      }
-      return acc;
+      if (acc.id !== accountId) return acc;
+      return {
+        ...acc,
+        name: trimmed || acc.originalName || acc.name,
+      };
     });
 
-    set({ accounts: updatedAccounts });
+    set((state) => ({
+      accounts: updatedAccounts,
+      customAccountNames: nextNames,
+      pending: { ...state.pending, [accountId]: true },
+    }));
+
+    try {
+      await saveCustomAccountNames(nextNames);
+    } catch (err) {
+      set(snapshot);
+      throw err;
+    } finally {
+      set((state) => {
+        const next = { ...state.pending };
+        delete next[accountId];
+        return { pending: next };
+      });
+    }
   },
 
   getSummary: () => {

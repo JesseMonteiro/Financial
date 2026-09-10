@@ -1,13 +1,65 @@
 import { create } from 'zustand';
 import { fetchTransactions } from '../services/api';
-import { getStoredManualTransactions, saveStoredManualTransaction, deleteStoredManualTransaction } from '../services/storage';
+import {
+  getCurrentUserId,
+  getStoredManualTransactions,
+  saveStoredManualTransaction,
+  saveStoredManualTransactions,
+  deleteStoredManualTransactions,
+} from '../services/storage';
 import { CACHE_TTL_MS, isFreshTimestamp } from '../services/clientCache';
+
+function addPending(pending, ids) {
+  const next = { ...pending };
+  for (const id of ids) {
+    if (id != null) next[id] = true;
+  }
+  return next;
+}
+
+function removePending(pending, ids) {
+  const next = { ...pending };
+  for (const id of ids) {
+    delete next[id];
+  }
+  return next;
+}
+
+function buildManualTx(txData, { id, txDate, parentId, index, occurrences, userId }) {
+  const isRecurring = txData.isRecurring;
+  const isContinuous = isRecurring && txData.isContinuous;
+  const amount = -Math.abs(parseFloat(txData.amount));
+  let suffix = '';
+  if (isRecurring) {
+    suffix = isContinuous ? ' (Recorrente)' : ` (${index + 1}/${occurrences})`;
+  }
+  return {
+    id,
+    description: `${txData.description}${suffix}`,
+    originalDescription: txData.description,
+    amount,
+    category: txData.category || 'Other',
+    date: txDate.toISOString(),
+    type: 'DEBIT',
+    status: 'POSTED',
+    accountId: 'manual',
+    isManual: true,
+    isRecurring,
+    isContinuous,
+    parentId: isRecurring ? parentId : null,
+    isPaid: false,
+    paidAt: null,
+    merchant: { name: 'Manual' },
+    userId,
+  };
+}
 
 export const useTransactionStore = create((set, get) => ({
   transactions: [],
   loading: false,
   error: null,
   lastUpdated: null,
+  pending: {},
   filters: {
     search: '',
     category: 'all',
@@ -15,6 +67,8 @@ export const useTransactionStore = create((set, get) => ({
     type: 'all',
     dateRange: '30d'
   },
+
+  isPending: (id) => Boolean(get().pending[id]),
 
   setFilters: (newFilters) => {
     set(state => ({
@@ -46,7 +100,7 @@ export const useTransactionStore = create((set, get) => ({
         getStoredManualTransactions()
       ]);
       const apiList = apiRes.results || apiRes || [];
-      
+
       set({
         transactions: [...apiList, ...manualTxs],
         loading: false,
@@ -58,15 +112,14 @@ export const useTransactionStore = create((set, get) => ({
   },
 
   addManualTransaction: async (txData) => {
-    const newTxs = [];
     const isRecurring = txData.isRecurring;
     const isContinuous = isRecurring && txData.isContinuous;
-    
-    // For continuous recurrence, we generate 24 months in advance
     const occurrences = isContinuous ? 24 : (isRecurring ? parseInt(txData.occurrences, 10) || 12 : 1);
     const baseDate = new Date(txData.date || new Date());
     const parentId = crypto.randomUUID();
+    const userId = await getCurrentUserId();
 
+    const newTxs = [];
     for (let i = 0; i < occurrences; i++) {
       const txDate = new Date(baseDate);
       if (isRecurring) {
@@ -75,72 +128,67 @@ export const useTransactionStore = create((set, get) => ({
         } else if (txData.frequency === 'yearly') {
           txDate.setFullYear(baseDate.getFullYear() + i);
         } else {
-          // default: monthly
           txDate.setMonth(baseDate.getMonth() + i);
         }
       }
-
-      const id = crypto.randomUUID();
-      const amount = -Math.abs(parseFloat(txData.amount)); // Manual expenses are always negative (debits)
-      
-      let suffix = '';
-      if (isRecurring) {
-        suffix = isContinuous ? ' (Recorrente)' : ` (${i + 1}/${occurrences})`;
-      }
-
-      const newTx = {
-        id,
-        description: `${txData.description}${suffix}`,
-        originalDescription: txData.description,
-        amount,
-        category: txData.category || 'Other',
-        date: txDate.toISOString(),
-        type: 'DEBIT',
-        status: 'POSTED',
-        accountId: 'manual', // Special account ID for manual entries
-        isManual: true,
-        isRecurring,
-        isContinuous,
-        parentId: isRecurring ? parentId : null,
-        isPaid: false,
-        paidAt: null,
-        merchant: { name: 'Manual' }
-      };
-
-      await saveStoredManualTransaction(newTx);
-      newTxs.push(newTx);
+      newTxs.push(buildManualTx(txData, {
+        id: crypto.randomUUID(),
+        txDate,
+        parentId,
+        index: i,
+        occurrences,
+        userId,
+      }));
     }
 
-    set(state => ({
-      transactions: [...state.transactions, ...newTxs]
+    const ids = newTxs.map((t) => t.id);
+    const snapshot = get().transactions;
+    set((state) => ({
+      transactions: [...state.transactions, ...newTxs],
+      pending: addPending(state.pending, ids),
     }));
+
+    try {
+      await saveStoredManualTransactions(newTxs);
+    } catch (err) {
+      set({ transactions: snapshot });
+      throw err;
+    } finally {
+      set((state) => ({ pending: removePending(state.pending, ids) }));
+    }
   },
 
   deleteManualTransaction: async (id) => {
     const { transactions } = get();
     const tx = transactions.find(t => t.id === id);
-    if (tx) {
-      if (tx.parentId) {
-        // Delete all transactions sharing this parentId
-        const siblingIds = transactions.filter(t => t.parentId === tx.parentId).map(t => t.id);
-        for (const sid of siblingIds) {
-          await deleteStoredManualTransaction(sid);
-        }
-        set(state => ({
-          transactions: state.transactions.filter(t => t.parentId !== tx.parentId)
-        }));
-      } else {
-        await deleteStoredManualTransaction(id);
-        set(state => ({
-          transactions: state.transactions.filter(t => t.id !== id)
-        }));
-      }
+    if (!tx) return;
+
+    const siblingIds = tx.parentId
+      ? transactions.filter(t => t.parentId === tx.parentId).map(t => t.id)
+      : [id];
+    const snapshot = transactions;
+
+    set((state) => ({
+      transactions: tx.parentId
+        ? state.transactions.filter(t => t.parentId !== tx.parentId)
+        : state.transactions.filter(t => t.id !== id),
+      pending: addPending(state.pending, siblingIds),
+    }));
+
+    try {
+      await deleteStoredManualTransactions(siblingIds);
+    } catch (err) {
+      set({ transactions: snapshot });
+      console.error(err);
+    } finally {
+      set((state) => ({ pending: removePending(state.pending, siblingIds) }));
     }
   },
 
   /** Mark a single manual installment/occurrence as paid (tracking only). */
   setManualPaid: async (id, isPaid) => {
-    const { transactions } = get();
+    const { transactions, pending } = get();
+    if (pending[id]) return;
     const tx = transactions.find((t) => t.id === id && t.isManual);
     if (!tx) return;
 
@@ -149,10 +197,20 @@ export const useTransactionStore = create((set, get) => ({
       isPaid: Boolean(isPaid),
       paidAt: isPaid ? new Date().toISOString() : null,
     };
-    await saveStoredManualTransaction(updated);
+    const snapshot = transactions;
     set((state) => ({
       transactions: state.transactions.map((t) => (t.id === id ? updated : t)),
+      pending: addPending(state.pending, [id]),
     }));
+
+    try {
+      await saveStoredManualTransaction(updated);
+    } catch (err) {
+      set({ transactions: snapshot });
+      console.error(err);
+    } finally {
+      set((state) => ({ pending: removePending(state.pending, [id]) }));
+    }
   },
 
   /**
@@ -172,17 +230,24 @@ export const useTransactionStore = create((set, get) => ({
         ? transactions.filter((t) => t.isManual && t.parentId === tx.parentId)
         : [tx];
 
-    const updatedList = [];
-    for (const t of targets) {
-      const updated = { ...t, amount: nextAmount };
-      await saveStoredManualTransaction(updated);
-      updatedList.push(updated);
-    }
-
+    const updatedList = targets.map((t) => ({ ...t, amount: nextAmount }));
+    const ids = updatedList.map((t) => t.id);
     const byId = new Map(updatedList.map((t) => [t.id, t]));
+    const snapshot = transactions;
+
     set((state) => ({
       transactions: state.transactions.map((t) => byId.get(t.id) || t),
+      pending: addPending(state.pending, ids),
     }));
+
+    try {
+      await saveStoredManualTransactions(updatedList);
+    } catch (err) {
+      set({ transactions: snapshot });
+      throw err;
+    } finally {
+      set((state) => ({ pending: removePending(state.pending, ids) }));
+    }
   },
 
   /**
@@ -208,6 +273,9 @@ export const useTransactionStore = create((set, get) => ({
     const siblings = tx.parentId
       ? transactions.filter((t) => t.isManual && t.parentId === tx.parentId)
       : [tx];
+    const oldIds = siblings.map((s) => s.id);
+    const snapshot = transactions;
+    const userId = tx.userId || await getCurrentUserId();
 
     const paidByDay = {};
     for (const s of siblings) {
@@ -216,13 +284,6 @@ export const useTransactionStore = create((set, get) => ({
         paidByDay[day] = { isPaid: true, paidAt: s.paidAt || null };
       }
     }
-
-    for (const s of siblings) {
-      await deleteStoredManualTransaction(s.id);
-    }
-
-    const removeIds = new Set(siblings.map((s) => s.id));
-    const removeParentId = tx.parentId || null;
 
     const isRecurring = Boolean(txData.isRecurring);
     const isContinuous = isRecurring && Boolean(txData.isContinuous);
@@ -258,7 +319,7 @@ export const useTransactionStore = create((set, get) => ({
         suffix = isContinuous ? ' (Recorrente)' : ` (${i + 1}/${occurrences})`;
       }
 
-      const newTx = {
+      newTxs.push({
         id: crypto.randomUUID(),
         description: `${description}${suffix}`,
         originalDescription: description,
@@ -275,11 +336,13 @@ export const useTransactionStore = create((set, get) => ({
         isPaid: Boolean(paid?.isPaid),
         paidAt: paid?.isPaid ? paid.paidAt : null,
         merchant: { name: 'Manual' },
-      };
-
-      await saveStoredManualTransaction(newTx);
-      newTxs.push(newTx);
+        userId,
+      });
     }
+
+    const removeIds = new Set(oldIds);
+    const removeParentId = tx.parentId || null;
+    const pendingIds = [...oldIds, ...newTxs.map((t) => t.id)];
 
     set((state) => ({
       transactions: [
@@ -289,7 +352,21 @@ export const useTransactionStore = create((set, get) => ({
         }),
         ...newTxs,
       ],
+      pending: addPending(state.pending, pendingIds),
     }));
+
+    try {
+      await deleteStoredManualTransactions(oldIds);
+      await saveStoredManualTransactions(newTxs);
+    } catch (err) {
+      set({ transactions: snapshot });
+      try {
+        await saveStoredManualTransactions(siblings);
+      } catch (_) { /* restore best-effort */ }
+      throw err;
+    } finally {
+      set((state) => ({ pending: removePending(state.pending, pendingIds) }));
+    }
   },
 
   getFilteredTransactions: () => {

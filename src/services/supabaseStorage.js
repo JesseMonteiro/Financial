@@ -1,8 +1,11 @@
 import { supabase } from './supabaseClient.js';
+import { useAuthStore } from '../stores/authStore.js';
 
 export async function getCurrentUserId() {
-  const { data: { user } } = await supabase.auth.getUser();
-  return user?.id;
+  const cached = useAuthStore.getState().user?.id;
+  if (cached) return cached;
+  const { data: { session } } = await supabase.auth.getSession();
+  return session?.user?.id || null;
 }
 
 function toSnakeCase(obj) {
@@ -47,7 +50,10 @@ export async function saveStoredBudget(budget) {
     .from('budgets')
     .upsert(snakeBudget, { onConflict: 'user_id,category' });
     
-  if (error) console.error('Error saving budget:', error);
+  if (error) {
+    console.error('Error saving budget:', error);
+    throw error;
+  }
 }
 
 export async function deleteStoredBudget(category) {
@@ -59,7 +65,10 @@ export async function deleteStoredBudget(category) {
     .eq('user_id', userId)
     .eq('category', category);
     
-  if (error) console.error('Error deleting budget:', error);
+  if (error) {
+    console.error('Error deleting budget:', error);
+    throw error;
+  }
 }
 
 // --- Goals ---
@@ -84,7 +93,10 @@ export async function saveStoredGoal(goal) {
     .from('goals')
     .upsert(snakeGoal, { onConflict: 'id' });
     
-  if (error) console.error('Error saving goal:', error);
+  if (error) {
+    console.error('Error saving goal:', error);
+    throw error;
+  }
 }
 
 export async function deleteStoredGoal(goalId) {
@@ -96,7 +108,10 @@ export async function deleteStoredGoal(goalId) {
     .eq('user_id', userId)
     .eq('id', goalId);
     
-  if (error) console.error('Error deleting goal:', error);
+  if (error) {
+    console.error('Error deleting goal:', error);
+    throw error;
+  }
 }
 
 // --- Receivables ---
@@ -156,7 +171,10 @@ export async function deleteStoredReceivable(id) {
     .eq('user_id', userId)
     .eq('id', id);
     
-  if (error) console.error('Error deleting receivable:', error);
+  if (error) {
+    console.error('Error deleting receivable:', error);
+    throw error;
+  }
 }
 
 // --- Manual Transactions ---
@@ -175,23 +193,11 @@ export async function getStoredManualTransactions() {
   }));
 }
 
-export async function saveStoredManualTransaction(tx) {
-  const userId = await getCurrentUserId();
-  if (!userId) return;
+function ownerIdFromTx(tx) {
+  return tx?.userId || tx?.user_id || tx?.ownerUserId || tx?.owner_user_id || null;
+}
 
-  // Never reassign ownership: existing rows keep DB user_id; new rows belong to caller
-  let ownerId = userId;
-  if (tx.id) {
-    const { data: existing } = await supabase
-      .from('manual_transactions')
-      .select('user_id')
-      .eq('id', tx.id)
-      .maybeSingle();
-    if (existing?.user_id) {
-      ownerId = existing.user_id;
-    }
-  }
-
+function toSnakeManualTx(tx, ownerId) {
   const snakeTx = toSnakeCase(tx);
   snakeTx.user_id = ownerId;
   delete snakeTx.is_manual;
@@ -199,24 +205,81 @@ export async function saveStoredManualTransaction(tx) {
   delete snakeTx.owner_user_id;
   delete snakeTx.owner_label;
   if (snakeTx.is_paid == null) snakeTx.is_paid = false;
+  return snakeTx;
+}
+
+async function resolveManualOwners(txs, fallbackUserId) {
+  const owners = new Map();
+  const missingIds = [];
+  for (const tx of txs) {
+    const known = ownerIdFromTx(tx);
+    if (known) owners.set(tx.id, known);
+    else if (tx.id) missingIds.push(tx.id);
+  }
+
+  if (missingIds.length) {
+    const { data } = await supabase
+      .from('manual_transactions')
+      .select('id, user_id')
+      .in('id', missingIds);
+    for (const row of data || []) {
+      if (row.user_id) owners.set(row.id, row.user_id);
+    }
+  }
+
+  return txs.map((tx) => ({
+    tx,
+    ownerId: owners.get(tx.id) || fallbackUserId,
+  }));
+}
+
+export async function saveStoredManualTransactions(txs) {
+  const list = (Array.isArray(txs) ? txs : []).filter(Boolean);
+  if (!list.length) return;
+
+  const userId = await getCurrentUserId();
+  if (!userId) return;
+
+  const resolved = await resolveManualOwners(list, userId);
+  const rows = resolved.map(({ tx, ownerId }) => toSnakeManualTx(tx, ownerId));
 
   const { error } = await supabase
     .from('manual_transactions')
-    .upsert(snakeTx, { onConflict: 'id' });
+    .upsert(rows, { onConflict: 'id' });
 
-  if (error) console.error('Error saving manual transaction:', error);
+  if (error) {
+    console.error('Error saving manual transactions:', error);
+    throw error;
+  }
 }
 
-export async function deleteStoredManualTransaction(id) {
+export async function saveStoredManualTransaction(tx) {
+  if (!tx) return;
+  await saveStoredManualTransactions([tx]);
+}
+
+export async function deleteStoredManualTransactions(ids) {
+  const list = [...new Set((Array.isArray(ids) ? ids : []).filter(Boolean))];
+  if (!list.length) return;
+
   const userId = await getCurrentUserId();
   if (!userId) return;
+
   const { error } = await supabase
     .from('manual_transactions')
     .delete()
     .eq('user_id', userId)
-    .eq('id', id);
-    
-  if (error) console.error('Error deleting manual transaction:', error);
+    .in('id', list);
+
+  if (error) {
+    console.error('Error deleting manual transactions:', error);
+    throw error;
+  }
+}
+
+export async function deleteStoredManualTransaction(id) {
+  if (!id) return;
+  await deleteStoredManualTransactions([id]);
 }
 
 // --- Settings ---
@@ -246,7 +309,10 @@ export async function updateProfileSettings(updates) {
     .update(snakeUpdates)
     .eq('id', userId);
     
-  if (error) console.error('Error updating profile settings:', error);
+  if (error) {
+    console.error('Error updating profile settings:', error);
+    throw error;
+  }
 }
 
 // --- Custom Account Names ---
@@ -303,7 +369,10 @@ export async function saveCustomAccountNames(names) {
     .update({ custom_account_names: safe })
     .eq('id', userId);
 
-  if (error) console.error('Error saving custom account names:', error);
+  if (error) {
+    console.error('Error saving custom account names:', error);
+    throw error;
+  }
 }
 
 // --- Monthly salaries (Momento Financeiro) ---
@@ -372,7 +441,10 @@ export async function saveMonthlySalaries(salaries, opts = {}) {
       .from('profiles')
       .update({ monthly_salaries: safe })
       .eq('id', currentUserId);
-    if (error) console.error('Error saving monthly salaries:', error);
+    if (error) {
+      console.error('Error saving monthly salaries:', error);
+      throw error;
+    }
     return;
   }
 
@@ -417,7 +489,10 @@ export async function savePluggyCredentials(clientId, clientSecret) {
     })
     .eq('id', userId);
     
-  if (error) console.error('Error saving pluggy credentials:', error);
+  if (error) {
+    console.error('Error saving pluggy credentials:', error);
+    throw error;
+  }
 }
 
 export async function getPluggyItemIds() {

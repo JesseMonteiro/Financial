@@ -3,6 +3,8 @@ import { useTransactionStore } from '../stores/transactionStore';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
+import { PaidCheckbox } from '../components/ui/PaidCheckbox';
+import { IconBusyButton, SavingScope } from '../components/ui/Spinner';
 import { formatCurrency, formatDate } from '../utils/formatters';
 import { translateCategory } from '../utils/categories';
 import { getCategoryColor } from '../utils/colors';
@@ -15,7 +17,6 @@ import {
   HelpCircle,
   ChevronDown,
   ChevronRight,
-  CheckCircle2,
   Pencil,
   Check,
   X,
@@ -33,40 +34,7 @@ const CATEGORY_OPTIONS = [
   { value: 'Other', label: 'Outros' },
 ];
 
-function PaidCheckbox({ checked, onChange, label = 'Pago' }) {
-  return (
-    <label
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: '0.35rem',
-        cursor: 'pointer',
-        fontSize: '11px',
-        fontWeight: 600,
-        color: checked ? 'var(--success)' : 'var(--text-muted)',
-        userSelect: 'none',
-        whiteSpace: 'nowrap',
-      }}
-      title="Marcar como pago (apenas controle; não altera saldo)"
-    >
-      <input
-        type="checkbox"
-        checked={Boolean(checked)}
-        onChange={(e) => onChange(e.target.checked)}
-        style={{ width: 14, height: 14, cursor: 'pointer', accentColor: 'var(--success)' }}
-      />
-      {checked ? (
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
-          <CheckCircle2 size={12} /> {label}
-        </span>
-      ) : (
-        label
-      )}
-    </label>
-  );
-}
-
-function AmountEditRow({ value, onChange, onSave, onCancel, hint }) {
+function AmountEditRow({ value, onChange, onSave, onCancel, hint, busy = false }) {
   return (
     <div
       style={{
@@ -85,9 +53,10 @@ function AmountEditRow({ value, onChange, onSave, onCancel, hint }) {
           min="0"
           autoFocus
           value={value}
+          disabled={busy}
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter') onSave();
+            if (e.key === 'Enter' && !busy) onSave();
             if (e.key === 'Escape') onCancel();
           }}
           className="input"
@@ -105,18 +74,18 @@ function AmountEditRow({ value, onChange, onSave, onCancel, hint }) {
           </span>
         )}
       </div>
-      <button
-        type="button"
+      <IconBusyButton
+        busy={busy}
         onClick={onSave}
-        className="tap-target"
         title="Salvar"
-        style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--success)', padding: 2 }}
+        style={{ color: 'var(--success)' }}
       >
         <Check size={16} />
-      </button>
+      </IconBusyButton>
       <button
         type="button"
         onClick={onCancel}
+        disabled={busy}
         className="tap-target"
         title="Cancelar"
         style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--text-muted)', padding: 2 }}
@@ -305,6 +274,7 @@ export function ManualExpenses() {
     setManualPaid,
     updateManualAmount,
     loading,
+    pending,
   } = useTransactionStore();
 
   const [form, setForm] = useState(blankFormState);
@@ -312,6 +282,8 @@ export function ManualExpenses() {
   /** @type {[null|string, Function]} sample installment id when editing a group */
   const [editingId, setEditingId] = useState(null);
   const [expandedGroups, setExpandedGroups] = useState({});
+  const [savingForm, setSavingForm] = useState(false);
+  const [savingAmount, setSavingAmount] = useState(false);
 
   /** Inline amount edit for a single installment only */
   /** @type {[null|{ id: string, groupKey: string, draft: string }, Function]} */
@@ -417,16 +389,23 @@ export function ManualExpenses() {
   const cancelAmountEdit = () => setEditingAmount(null);
 
   const saveAmountEdit = async () => {
-    if (!editingAmount) return;
+    if (!editingAmount || savingAmount) return;
     const num = parseFloat(editingAmount.draft);
     if (Number.isNaN(num) || num < 0) return;
-    await updateManualAmount(editingAmount.id, num, { scope: 'one' });
-    setEditingAmount(null);
+    setSavingAmount(true);
+    try {
+      await updateManualAmount(editingAmount.id, num, { scope: 'one' });
+      setEditingAmount(null);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSavingAmount(false);
+    }
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!form.description || !form.amount) return;
+    if (!form.description || !form.amount || savingForm) return;
 
     const payload = {
       description: form.description,
@@ -439,13 +418,19 @@ export function ManualExpenses() {
       occurrences: parseInt(form.occurrences, 10) || 12,
     };
 
-    if (editingId) {
-      await updateManualExpense(editingId, payload);
-    } else {
-      await addManualTransaction(payload);
+    setSavingForm(true);
+    try {
+      if (editingId) {
+        await updateManualExpense(editingId, payload);
+      } else {
+        await addManualTransaction(payload);
+      }
+      closeForm();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSavingForm(false);
     }
-
-    closeForm();
   };
 
   const isEditing = Boolean(editingId);
@@ -462,6 +447,7 @@ export function ManualExpenses() {
         <div className="page-header__actions">
           <Button
             icon={Plus}
+            disabled={savingForm}
             onClick={() => {
               if (showForm && !isEditing) closeForm();
               else openAddForm();
@@ -473,6 +459,7 @@ export function ManualExpenses() {
       </div>
 
       {showForm && (
+        <SavingScope active={savingForm}>
         <Card
           title={isEditing ? 'Editar Despesa Manual' : 'Nova Despesa Manual'}
           subtitle={
@@ -502,15 +489,16 @@ export function ManualExpenses() {
             />
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '0.5rem' }}>
-              <Button type="button" variant="secondary" onClick={closeForm}>
+              <Button type="button" variant="secondary" onClick={closeForm} disabled={savingForm}>
                 Cancelar
               </Button>
-              <Button type="submit">
+              <Button type="submit" loading={savingForm}>
                 {isEditing ? 'Salvar Alterações' : 'Salvar Despesa'}
               </Button>
             </div>
           </form>
         </Card>
+        </SavingScope>
       )}
 
       <Card
@@ -618,6 +606,7 @@ export function ManualExpenses() {
                         {!isSeries && single && (
                           <PaidCheckbox
                             checked={single.isPaid}
+                            busy={Boolean(pending[single.id])}
                             onChange={(v) => setManualPaid(single.id, v)}
                           />
                         )}
@@ -641,14 +630,14 @@ export function ManualExpenses() {
                         >
                           <Pencil size={16} />
                         </button>
-                        <button
+                        <IconBusyButton
                           onClick={() => deleteManualTransaction(group.id)}
-                          className="tap-target"
-                          style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--text-muted)' }}
+                          busy={Boolean(pending[group.id] || (group.parentId && group.allInstallments.some((t) => pending[t.id])))}
                           title={group.isRecurring ? 'Excluir toda a série recorrente' : 'Excluir despesa'}
+                          style={{ color: 'var(--text-muted)' }}
                         >
                           <Trash2 size={16} />
-                        </button>
+                        </IconBusyButton>
                       </div>
                     </div>
 
@@ -716,6 +705,7 @@ export function ManualExpenses() {
                                     onSave={saveAmountEdit}
                                     onCancel={cancelAmountEdit}
                                     hint="Só este mês"
+                                    busy={savingAmount}
                                   />
                                 ) : (
                                   <>
@@ -739,6 +729,7 @@ export function ManualExpenses() {
                                     </button>
                                     <PaidCheckbox
                                       checked={inst.isPaid}
+                                      busy={Boolean(pending[inst.id])}
                                       onChange={(v) => setManualPaid(inst.id, v)}
                                     />
                                   </>

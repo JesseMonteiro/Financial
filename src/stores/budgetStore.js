@@ -3,9 +3,12 @@ import { getStoredBudgets, saveStoredBudget, deleteStoredBudget } from '../servi
 import { CACHE_TTL_MS, isFreshTimestamp } from '../services/clientCache';
 
 export const useBudgetStore = create((set, get) => ({
-  budgets: [],      // { category, limit } — user-defined limits from IndexedDB
+  budgets: [],
   loading: false,
   lastUpdated: null,
+  pending: {},
+
+  isPending: (category) => Boolean(get().pending[category]),
 
   loadBudgets: async ({ force = false } = {}) => {
     const { budgets, lastUpdated } = get();
@@ -29,19 +32,56 @@ export const useBudgetStore = create((set, get) => ({
   },
 
   updateBudget: async (category, limit) => {
-    const { budgets } = get();
+    const { budgets, pending } = get();
+    if (pending[category]) return;
+
     const existing = budgets.find(b => b.category === category);
     const updated = { category, limit: parseFloat(limit) };
-    await saveStoredBudget(updated);
+    const snapshot = budgets;
     const newBudgets = existing
       ? budgets.map(b => b.category === category ? updated : b)
       : [...budgets, updated];
-    set({ budgets: newBudgets });
+
+    set((state) => ({
+      budgets: newBudgets,
+      pending: { ...state.pending, [category]: true },
+    }));
+
+    try {
+      await saveStoredBudget(updated);
+    } catch (err) {
+      set({ budgets: snapshot });
+      throw err;
+    } finally {
+      set((state) => {
+        const next = { ...state.pending };
+        delete next[category];
+        return { pending: next };
+      });
+    }
   },
 
   deleteBudget: async (category) => {
-    const { budgets } = get();
-    await deleteStoredBudget(category);
-    set({ budgets: budgets.filter(b => b.category !== category) });
+    const { budgets, pending } = get();
+    if (pending[category]) return;
+    const snapshot = budgets;
+
+    set((state) => ({
+      budgets: state.budgets.filter(b => b.category !== category),
+      pending: { ...state.pending, [category]: true },
+    }));
+
+    try {
+      await deleteStoredBudget(category);
+    } catch (err) {
+      set({ budgets: snapshot });
+      console.error(err);
+    } finally {
+      set((state) => {
+        const next = { ...state.pending };
+        delete next[category];
+        return { pending: next };
+      });
+    }
   }
 }));

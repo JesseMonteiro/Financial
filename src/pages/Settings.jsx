@@ -467,8 +467,8 @@ export function Settings() {
             />
           </div>
           <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-            <Button onClick={handleSaveCredentials} disabled={savingCreds}>
-              {savingCreds ? 'Salvando...' : 'Salvar Credenciais'}
+            <Button onClick={handleSaveCredentials} loading={savingCreds}>
+              Salvar Credenciais
             </Button>
           </div>
           {credsMsg && (
@@ -508,8 +508,8 @@ export function Settings() {
             </p>
           </div>
           <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-            <Button icon={Link2} onClick={handleSaveItemIds} disabled={savingItems}>
-              {savingItems ? 'Vinculando...' : 'Vincular conexões'}
+            <Button icon={Link2} onClick={handleSaveItemIds} loading={savingItems}>
+              Vincular conexões
             </Button>
           </div>
           {itemsMsg && (

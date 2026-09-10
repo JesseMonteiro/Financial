@@ -17,6 +17,7 @@ import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { ProgressBar } from '../components/ui/ProgressBar';
+import { IconBusyButton } from '../components/ui/Spinner';
 import { useBudgetStore } from '../stores/budgetStore';
 import { useAccountStore } from '../stores/accountStore';
 import { useReceivableStore } from '../stores/receivableStore';
@@ -53,7 +54,7 @@ function dueMonthLabel(ym) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function Budget() {
-  const { budgets, loadBudgets, updateBudget, deleteBudget } = useBudgetStore();
+  const { budgets, loadBudgets, updateBudget, deleteBudget, pending } = useBudgetStore();
   const { accounts, loadAccounts, loading: accountsLoading } = useAccountStore();
   const { receivables, loadReceivables } = useReceivableStore();
   const {
@@ -75,6 +76,7 @@ export function Budget() {
   const [addingNew, setAddingNew] = useState(false);
   const [newCat, setNewCat] = useState('');
   const [newLimit, setNewLimit] = useState('');
+  const [savingBudget, setSavingBudget] = useState(false);
 
   // ── Load data ─────────────────────────────────────────────────────────────
   useEffect(() => { loadBudgets(); loadAccounts(); loadReceivables(); }, []);
@@ -219,19 +221,33 @@ export function Budget() {
   }, [availableMonths, allTransactions, officialBills]);
 
   // ── Actions ────────────────────────────────────────────────────────────────
-  const handleSaveEdit = (cat) => {
+  const handleSaveEdit = async (cat) => {
     const val = parseFloat(editValue);
-    if (!isNaN(val) && val > 0) updateBudget(cat, val);
-    setEditingCat(null);
+    if (isNaN(val) || val <= 0 || savingBudget) return;
+    setSavingBudget(true);
+    try {
+      await updateBudget(cat, val);
+      setEditingCat(null);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSavingBudget(false);
+    }
   };
 
-  const handleAddNew = () => {
+  const handleAddNew = async () => {
     const val = parseFloat(newLimit);
-    if (newCat && !isNaN(val) && val > 0) {
-      updateBudget(newCat, val);
+    if (!newCat || isNaN(val) || val <= 0 || savingBudget) return;
+    setSavingBudget(true);
+    try {
+      await updateBudget(newCat, val);
       setNewCat('');
       setNewLimit('');
       setAddingNew(false);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSavingBudget(false);
     }
   };
 
@@ -401,7 +417,7 @@ export function Budget() {
                 style={{ width: 140, padding: '0.4rem 0.6rem', fontSize: 'var(--font-size-xs)' }}
               />
             </div>
-            <Button size="sm" variant="primary" onClick={handleAddNew} icon={Check}>Salvar</Button>
+            <Button size="sm" variant="primary" onClick={handleAddNew} icon={Check} loading={savingBudget}>Salvar</Button>
             <button onClick={() => { setAddingNew(false); setNewCat(''); setNewLimit(''); }}
               style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--text-muted)' }}>
               <X size={16} />
@@ -470,11 +486,16 @@ export function Budget() {
                             className="input"
                             style={{ width: 100, padding: '0.2rem 0.5rem', fontSize: 'var(--font-size-xs)' }}
                           />
-                          <button onClick={() => handleSaveEdit(row.category)}
-                            style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--success)' }}>
+                          <IconBusyButton
+                            busy={savingBudget || Boolean(pending[row.category])}
+                            onClick={() => handleSaveEdit(row.category)}
+                            title="Salvar limite"
+                            style={{ color: 'var(--success)' }}
+                          >
                             <Check size={15} />
-                          </button>
+                          </IconBusyButton>
                           <button onClick={() => setEditingCat(null)}
+                            disabled={savingBudget}
                             style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--text-muted)' }}>
                             <X size={15} />
                           </button>
@@ -498,14 +519,14 @@ export function Budget() {
                             <Edit2 size={13} />
                           </button>
                           {row.hasLimit && (
-                            <button
+                            <IconBusyButton
                               onClick={() => deleteBudget(row.category)}
+                              busy={Boolean(pending[row.category])}
                               title="Remover limite"
-                              className="tap-target"
-                              style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--danger)' }}
+                              style={{ color: 'var(--danger)' }}
                             >
                               <Trash2 size={13} />
-                            </button>
+                            </IconBusyButton>
                           )}
                         </>
                       )}

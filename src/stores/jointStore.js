@@ -56,6 +56,7 @@ export const useJointStore = create((set, get) => ({
   momentLoading: false,
   error: null,
   lastLoadedAt: null,
+  pending: {},
 
   isActive: () => get().link?.status === 'active',
 
@@ -120,6 +121,8 @@ export const useJointStore = create((set, get) => ({
     }
   },
 
+  isPending: (id) => Boolean(get().pending[id]),
+
   /** Patch a manual paid flag locally after a successful save. */
   patchManualPaid: (id, isPaid) => {
     set((state) => ({
@@ -129,6 +132,22 @@ export const useJointStore = create((set, get) => ({
           : m
       ),
     }));
+  },
+
+  restoreManual: (manual) => {
+    if (!manual?.id) return;
+    set((state) => ({
+      manuals: state.manuals.map((m) => (m.id === manual.id ? manual : m)),
+    }));
+  },
+
+  setPending: (id, on) => {
+    set((state) => {
+      const pending = { ...state.pending };
+      if (on) pending[id] = true;
+      else delete pending[id];
+      return { pending };
+    });
   },
 
   patchMemberSalaries: (userId, salaries) => {

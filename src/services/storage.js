@@ -1,10 +1,12 @@
 import { openDB } from 'idb';
 
 export {
+  getCurrentUserId,
   getStoredBudgets, saveStoredBudget, deleteStoredBudget,
   getStoredGoals, saveStoredGoal, deleteStoredGoal,
   getStoredReceivables, saveStoredReceivable, deleteStoredReceivable,
-  getStoredManualTransactions, saveStoredManualTransaction, deleteStoredManualTransaction,
+  getStoredManualTransactions, saveStoredManualTransaction, saveStoredManualTransactions,
+  deleteStoredManualTransaction, deleteStoredManualTransactions,
   getProfileSettings, updateProfileSettings,
   getCustomAccountNames, saveCustomAccountNames,
   getMonthlySalaries, saveMonthlySalaries,

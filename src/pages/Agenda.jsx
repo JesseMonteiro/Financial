@@ -6,11 +6,11 @@ import {
   Repeat,
   Landmark,
   AlertTriangle,
-  CheckCircle2,
   Clock,
 } from 'lucide-react';
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
+import { PaidCheckbox } from '../components/ui/PaidCheckbox';
 import { useTransactionStore } from '../stores/transactionStore';
 import { useAccountStore } from '../stores/accountStore';
 import { useCreditDataStore } from '../stores/creditDataStore';
@@ -71,7 +71,7 @@ function shortCommitmentTitle(title, max = 16) {
 const CELL_EVENTS_MAX = 2;
 
 export function Agenda() {
-  const { loadTransactions, transactions, setManualPaid } = useTransactionStore();
+  const { loadTransactions, transactions, setManualPaid, pending } = useTransactionStore();
   const { loadAccounts, accounts, loans } = useAccountStore();
   const { loadForAccounts, getMerged, transactionsByAccount } = useCreditDataStore();
   const [filter, setFilter] = useState('all');
@@ -182,6 +182,7 @@ export function Agenda() {
 
   const handleToggleManualPaid = async (item, next) => {
     if (item.type !== 'manual' || item.sourceId == null) return;
+    if (pending[item.sourceId]) return;
     await setManualPaid(item.sourceId, next);
   };
 
@@ -545,35 +546,12 @@ export function Agenda() {
                           {formatCurrency(item.amount)}
                         </span>
                         {item.type === 'manual' && (
-                          <label
-                            className="tap-target"
-                            style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '0.3rem',
-                              cursor: 'pointer',
-                              fontSize: 10,
-                              fontWeight: 600,
-                              color: paid ? 'var(--success)' : 'var(--text-muted)',
-                              userSelect: 'none',
-                              whiteSpace: 'nowrap',
-                            }}
-                            title="Marcar como pago (apenas controle; não altera saldo)"
-                          >
-                            <input
-                              type="checkbox"
-                              checked={Boolean(item.isPaid)}
-                              onChange={(e) => handleToggleManualPaid(item, e.target.checked)}
-                              style={{ width: 18, height: 18, cursor: 'pointer', accentColor: 'var(--success)' }}
-                            />
-                            {paid ? (
-                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
-                                <CheckCircle2 size={11} /> Pago
-                              </span>
-                            ) : (
-                              'Pago'
-                            )}
-                          </label>
+                          <PaidCheckbox
+                            checked={Boolean(item.isPaid)}
+                            busy={Boolean(pending[item.sourceId])}
+                            size={18}
+                            onChange={(v) => handleToggleManualPaid(item, v)}
+                          />
                         )}
                       </div>
                     </div>

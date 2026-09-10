@@ -3,6 +3,7 @@ import { Wallet, CreditCard, Building2, Plus, Edit2, Check, X, Clock, RefreshCw 
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
+import { IconBusyButton } from '../components/ui/Spinner';
 import { useAccountStore } from '../stores/accountStore';
 import { formatCurrency, getDataSyncMeta } from '../utils/formatters';
 import { accountAvailableBalance, sumReservedBalances } from '../utils/reservedBalances';
@@ -65,11 +66,12 @@ function openPluggyItemUpdate(itemId) {
 }
 
 export function Accounts() {
-  const { accounts, loadAccounts, renameAccount, loading } = useAccountStore();
+  const { accounts, loadAccounts, renameAccount, loading, pending } = useAccountStore();
   const [editingId, setEditingId] = useState(null);
   const [tempName, setTempName] = useState('');
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState(null);
+  const [savingName, setSavingName] = useState(false);
 
   useEffect(() => {
     loadAccounts();
@@ -89,9 +91,17 @@ export function Accounts() {
   };
 
   const saveName = async (id) => {
-    await renameAccount(id, tempName);
-    setEditingId(null);
-    setTempName('');
+    if (savingName || pending[id]) return;
+    setSavingName(true);
+    try {
+      await renameAccount(id, tempName);
+      setEditingId(null);
+      setTempName('');
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSavingName(false);
+    }
   };
 
   const handleKeyDown = (e, id) => {
@@ -173,6 +183,7 @@ export function Accounts() {
             variant="outline"
             icon={RefreshCw}
             disabled={syncing || loading}
+            loading={syncing}
             onClick={handleSync}
           >
             {syncing ? 'Sincronizando…' : 'Sincronizar'}
@@ -250,9 +261,14 @@ export function Accounts() {
                             autoFocus
                             style={{ padding: '0.25rem 0.5rem', fontSize: 'var(--font-size-sm)', width: '100%', minWidth: '100px' }}
                           />
-                          <button onClick={() => saveName(acc.id)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--success)', padding: '0.15rem' }}>
+                          <IconBusyButton
+                            busy={savingName || Boolean(pending[acc.id])}
+                            onClick={() => saveName(acc.id)}
+                            title="Salvar nome"
+                            style={{ color: 'var(--success)', padding: '0.15rem' }}
+                          >
                             <Check size={16} />
-                          </button>
+                          </IconBusyButton>
                           <button onClick={cancelEditing} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--text-muted)', padding: '0.15rem' }}>
                             <X size={16} />
                           </button>
@@ -324,9 +340,14 @@ export function Accounts() {
                           autoFocus
                           style={{ padding: '0.25rem 0.5rem', fontSize: 'var(--font-size-sm)', width: '100%', minWidth: '100px' }}
                         />
-                        <button onClick={() => saveName(acc.id)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--success)', padding: '0.15rem' }}>
+                        <IconBusyButton
+                          busy={savingName || Boolean(pending[acc.id])}
+                          onClick={() => saveName(acc.id)}
+                          title="Salvar nome"
+                          style={{ color: 'var(--success)', padding: '0.15rem' }}
+                        >
                           <Check size={16} />
-                        </button>
+                        </IconBusyButton>
                         <button onClick={cancelEditing} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--text-muted)', padding: '0.15rem' }}>
                           <X size={16} />
                         </button>

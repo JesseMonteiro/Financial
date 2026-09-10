@@ -6,10 +6,29 @@ import {
 } from '../services/storage';
 import { CACHE_TTL_MS, isFreshTimestamp } from '../services/clientCache';
 
+function addPending(pending, ids) {
+  const next = { ...pending };
+  for (const id of ids) {
+    if (id != null) next[id] = true;
+  }
+  return next;
+}
+
+function removePending(pending, ids) {
+  const next = { ...pending };
+  for (const id of ids) {
+    delete next[id];
+  }
+  return next;
+}
+
 export const useReceivableStore = create((set, get) => ({
   receivables: [],
   loading: false,
   lastUpdated: null,
+  pending: {},
+
+  isPending: (id) => Boolean(get().pending[id]),
 
   /** Carrega todos os recebíveis do IndexedDB / Supabase */
   loadReceivables: async ({ force = false } = {}) => {
@@ -38,7 +57,6 @@ export const useReceivableStore = create((set, get) => ({
   addReceivable: async (data) => {
     const now = new Date().toISOString();
 
-    // Gera cor aleatória em hex
     const randomColor = () => {
       const palette = [
         '#6366f1', '#8b5cf6', '#ec4899', '#f43f5e',
@@ -53,7 +71,6 @@ export const useReceivableStore = create((set, get) => ({
     const firstDueDate = data.firstDueDate || now.slice(0, 10);
     const installmentAmount = isContinuous ? data.totalAmount : (data.totalAmount / installments);
 
-    // Gera histórico de parcelas
     const installmentHistory = Array.from({ length: installments }, (_, i) => {
       const dueDate = new Date(firstDueDate);
       dueDate.setMonth(dueDate.getMonth() + i);
@@ -65,7 +82,6 @@ export const useReceivableStore = create((set, get) => ({
       };
     });
 
-    // Reuse existing color for the same person if they already have receivables
     const existing = get().receivables.find(r => r.personName.toLowerCase() === (data.personName || '').toLowerCase());
     const personColor = existing ? existing.personColor : (data.personColor || randomColor());
 
@@ -75,7 +91,7 @@ export const useReceivableStore = create((set, get) => ({
       personColor,
       description: data.description || '',
       totalAmount: isContinuous ? (installmentAmount * 24) : (data.totalAmount || 0),
-      originalTotalAmount: data.totalAmount, // Keep trace of user entered amount
+      originalTotalAmount: data.totalAmount,
       installments,
       paidInstallments: 0,
       linkedTransactionId: data.linkedTransactionId || null,
@@ -86,8 +102,20 @@ export const useReceivableStore = create((set, get) => ({
       installmentHistory,
     };
 
-    await saveStoredReceivable(receivable);
-    set(state => ({ receivables: [...state.receivables, receivable] }));
+    const snapshot = get().receivables;
+    set((state) => ({
+      receivables: [...state.receivables, receivable],
+      pending: addPending(state.pending, [receivable.id]),
+    }));
+
+    try {
+      await saveStoredReceivable(receivable);
+    } catch (err) {
+      set({ receivables: snapshot });
+      throw err;
+    } finally {
+      set((state) => ({ pending: removePending(state.pending, [receivable.id]) }));
+    }
     return receivable;
   },
 
@@ -101,7 +129,6 @@ export const useReceivableStore = create((set, get) => ({
     let installments = existing.installments;
     let paidInstallments = existing.paidInstallments;
 
-    // If amount, installments, start due date, or continuous flag changed, regenerate the history
     if (data.totalAmount !== undefined || data.installments !== undefined || data.firstDueDate !== undefined || data.isContinuous !== undefined) {
       const isContinuous = data.isContinuous !== undefined ? data.isContinuous : (existing.isContinuous || false);
       installments = isContinuous ? 24 : (data.installments !== undefined ? data.installments : existing.installments);
@@ -112,7 +139,6 @@ export const useReceivableStore = create((set, get) => ({
       installmentHistory = Array.from({ length: installments }, (_, i) => {
         const dueDate = new Date(firstDueDate);
         dueDate.setMonth(dueDate.getMonth() + i);
-        // Preserve paid status of corresponding installments if possible
         const existingInst = existing.installmentHistory?.find(inst => inst.installmentNumber === i + 1);
         return {
           installmentNumber: i + 1,
@@ -139,21 +165,46 @@ export const useReceivableStore = create((set, get) => ({
       installmentHistory
     };
 
-    await saveStoredReceivable(updatedReceivable);
-    set(state => ({
-      receivables: state.receivables.map(r => r.id === id ? updatedReceivable : r)
+    const snapshot = receivables;
+    set((state) => ({
+      receivables: state.receivables.map(r => r.id === id ? updatedReceivable : r),
+      pending: addPending(state.pending, [id]),
     }));
+
+    try {
+      await saveStoredReceivable(updatedReceivable);
+    } catch (err) {
+      set({ receivables: snapshot });
+      throw err;
+    } finally {
+      set((state) => ({ pending: removePending(state.pending, [id]) }));
+    }
   },
 
   /** Remove um recebível do IndexedDB e da lista local */
   deleteReceivable: async (id) => {
-    await deleteStoredReceivable(id);
-    set(state => ({ receivables: state.receivables.filter(r => r.id !== id) }));
+    const snapshot = get().receivables;
+    set((state) => ({
+      receivables: state.receivables.filter(r => r.id !== id),
+      pending: addPending(state.pending, [id]),
+    }));
+    try {
+      await deleteStoredReceivable(id);
+    } catch (err) {
+      set({ receivables: snapshot });
+      console.error(err);
+    } finally {
+      set((state) => ({ pending: removePending(state.pending, [id]) }));
+    }
   },
 
   /** Marca uma parcela específica como paga */
   markInstallmentPaid: async (receivableId, installmentNumber, paidAt) => {
-    const receivables = get().receivables.map(r => {
+    const pendingKey = `${receivableId}:${installmentNumber}`;
+    if (get().pending[pendingKey] || get().pending[receivableId]) return;
+
+    const snapshot = get().receivables;
+    const receivables = snapshot.map(r => {
       if (r.id !== receivableId) return r;
       const installmentHistory = r.installmentHistory.map(inst =>
         inst.installmentNumber === installmentNumber
@@ -164,9 +215,20 @@ export const useReceivableStore = create((set, get) => ({
       return { ...r, installmentHistory, paidInstallments };
     });
     const target = receivables.find(r => r.id === receivableId);
-    if (target) {
+    if (!target) return;
+
+    set((state) => ({
+      receivables,
+      pending: addPending(state.pending, [pendingKey, receivableId]),
+    }));
+
+    try {
       await saveStoredReceivable(target);
-      set({ receivables });
+    } catch (err) {
+      set({ receivables: snapshot });
+      console.error(err);
+    } finally {
+      set((state) => ({ pending: removePending(state.pending, [pendingKey, receivableId]) }));
     }
   },
 }));

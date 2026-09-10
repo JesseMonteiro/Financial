@@ -3,6 +3,7 @@ import { Plug, ShieldCheck, RefreshCw, AlertTriangle, CheckCircle2, Globe, Radio
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
+import { IconBusyButton } from '../components/ui/Spinner';
 import api, {
   checkServerHealth,
   clearApiCache,
@@ -25,6 +26,7 @@ export function ConnectBank() {
   const [submitting, setSubmitting] = useState(false);
   const [statusMsg, setStatusMsg] = useState(null);
   const [syncingItemId, setSyncingItemId] = useState(null);
+  const [deletingWebhookId, setDeletingWebhookId] = useState(null);
 
   useEffect(() => {
     async function init() {
@@ -139,11 +141,15 @@ export function ConnectBank() {
   };
 
   const handleDeleteWebhook = async (id) => {
+    if (deletingWebhookId) return;
+    setDeletingWebhookId(id);
     try {
       await api.delete(`/webhooks/${id}`);
       loadWebhooks();
     } catch (err) {
       alert('Erro ao remover webhook');
+    } finally {
+      setDeletingWebhookId(null);
     }
   };
 
@@ -266,10 +272,11 @@ export function ConnectBank() {
                   variant="outline"
                   size="sm"
                   icon={RefreshCw}
+                  loading={syncingItemId === item.id}
                   disabled={!!syncingItemId}
                   onClick={() => handleSyncItem(item.id)}
                 >
-                  {syncingItemId === item.id ? 'Sincronizando…' : 'Sincronizar'}
+                  Sincronizar
                 </Button>
               </div>
             </div>
@@ -320,8 +327,8 @@ export function ConnectBank() {
             </div>
 
             <div style={{ display: 'flex', alignItems: 'flex-end' }}>
-              <Button type="submit" icon={Send} disabled={submitting}>
-                {submitting ? 'Registrando...' : 'Registrar Webhook'}
+              <Button type="submit" icon={Send} loading={submitting}>
+                Registrar Webhook
               </Button>
             </div>
           </div>
@@ -370,13 +377,14 @@ export function ConnectBank() {
                     </div>
                   </div>
 
-                  <button
+                  <IconBusyButton
                     onClick={() => handleDeleteWebhook(wh.id)}
-                    style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--danger)' }}
+                    busy={deletingWebhookId === wh.id}
                     title="Remover Webhook"
+                    style={{ color: 'var(--danger)' }}
                   >
                     <Trash2 size={16} />
-                  </button>
+                  </IconBusyButton>
                 </div>
               ))}
             </div>

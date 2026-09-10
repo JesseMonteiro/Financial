@@ -6,6 +6,9 @@ export const useGoalStore = create((set, get) => ({
   goals: [],
   loading: false,
   lastUpdated: null,
+  pending: {},
+
+  isPending: (id) => Boolean(get().pending[id]),
 
   loadGoals: async ({ force = false } = {}) => {
     const { goals, lastUpdated } = get();
@@ -30,12 +33,43 @@ export const useGoalStore = create((set, get) => ({
 
   addGoal: async (newGoal) => {
     const goal = { id: `g_${Date.now()}`, ...newGoal, currentAmount: newGoal.currentAmount || 0 };
-    await saveStoredGoal(goal);
-    set(state => ({ goals: [...state.goals, goal] }));
+    const snapshot = get().goals;
+    set((state) => ({
+      goals: [...state.goals, goal],
+      pending: { ...state.pending, [goal.id]: true },
+    }));
+    try {
+      await saveStoredGoal(goal);
+    } catch (err) {
+      set({ goals: snapshot });
+      throw err;
+    } finally {
+      set((state) => {
+        const next = { ...state.pending };
+        delete next[goal.id];
+        return { pending: next };
+      });
+    }
   },
 
   removeGoal: async (id) => {
-    await deleteStoredGoal(id);
-    set(state => ({ goals: state.goals.filter(g => g.id !== id) }));
+    if (get().pending[id]) return;
+    const snapshot = get().goals;
+    set((state) => ({
+      goals: state.goals.filter(g => g.id !== id),
+      pending: { ...state.pending, [id]: true },
+    }));
+    try {
+      await deleteStoredGoal(id);
+    } catch (err) {
+      set({ goals: snapshot });
+      console.error(err);
+    } finally {
+      set((state) => {
+        const next = { ...state.pending };
+        delete next[id];
+        return { pending: next };
+      });
+    }
   }
 }));

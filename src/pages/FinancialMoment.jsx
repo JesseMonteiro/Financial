@@ -7,6 +7,7 @@ import { getLocalSetting, setLocalSetting, getMonthlySalaries, saveMonthlySalari
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
+import { PaidCheckbox } from '../components/ui/PaidCheckbox';
 import { ProgressBar } from '../components/ui/ProgressBar';
 import { PageLoadingSkeleton } from '../components/ui/Skeleton';
 import { formatCurrency, formatDate } from '../utils/formatters';
@@ -27,13 +28,12 @@ import {
   TrendingDown, 
   DollarSign, 
   Save,
-  CheckCircle2,
   Repeat
 } from 'lucide-react';
 
 export function FinancialMoment() {
   const { accounts, loadAccounts, loading: accountsLoading, lastUpdated: accountsUpdatedAt } = useAccountStore();
-  const { transactions, loadTransactions, setManualPaid } = useTransactionStore();
+  const { transactions, loadTransactions, setManualPaid, pending } = useTransactionStore();
   const { receivables, loadReceivables } = useReceivableStore();
   const {
     loadForAccounts,
@@ -48,6 +48,7 @@ export function FinancialMoment() {
   // Salary state
   const [salaries, setSalaries] = useState({});
   const [salaryInput, setSalaryInput] = useState('');
+  const [savingSalary, setSavingSalary] = useState(false);
 
   const timelineRef = useRef(null);
 
@@ -160,11 +161,22 @@ export function FinancialMoment() {
   }, [selectedMonth]);
 
   const handleSaveSalary = async () => {
+    if (savingSalary) return;
     const num = parseFloat(salaryInput) || 0;
+    const previous = salaries;
     const updated = withSavedMonthSalary(salaries, selectedMonth, num);
     setSalaries(updated);
     setLocalSetting('monthly_salaries', updated);
-    await saveMonthlySalaries(updated);
+    setSavingSalary(true);
+    try {
+      await saveMonthlySalaries(updated);
+    } catch (err) {
+      setSalaries(previous);
+      setLocalSetting('monthly_salaries', previous);
+      console.error(err);
+    } finally {
+      setSavingSalary(false);
+    }
   };
 
   // ── Calculation details for selected month ──
@@ -444,11 +456,12 @@ export function FinancialMoment() {
                       type="number"
                       placeholder="0,00"
                       value={salaryInput}
+                      disabled={savingSalary}
                       onChange={e => setSalaryInput(e.target.value)}
                       style={{ border: 'none', background: 'transparent', outline: 'none', color: 'var(--text-primary)', width: '100%', fontSize: 'var(--font-size-sm)' }}
                     />
                   </div>
-                  <Button size="sm" onClick={handleSaveSalary} icon={Save}>
+                  <Button size="sm" onClick={handleSaveSalary} icon={Save} loading={savingSalary}>
                     Definir
                   </Button>
                 </div>
@@ -634,37 +647,12 @@ export function FinancialMoment() {
                           <span style={{ fontWeight: 700, fontSize: 'var(--font-size-xs)', color: 'var(--danger)' }}>
                             - {formatCurrency(Math.abs(m.amount))}
                           </span>
-                          <label
-                            className="tap-target"
-                            style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '0.3rem',
-                              cursor: 'pointer',
-                              fontSize: '10px',
-                              fontWeight: 600,
-                              color: m.isPaid ? 'var(--success)' : 'var(--text-muted)',
-                              userSelect: 'none',
-                              whiteSpace: 'nowrap',
-                              minWidth: 'auto',
-                              padding: '0 0.25rem',
-                            }}
-                            title="Marcar como pago (apenas controle; não altera saldo)"
-                          >
-                            <input
-                              type="checkbox"
-                              checked={Boolean(m.isPaid)}
-                              onChange={(e) => setManualPaid(m.id, e.target.checked)}
-                              style={{ width: 18, height: 18, cursor: 'pointer', accentColor: 'var(--success)' }}
-                            />
-                            {m.isPaid ? (
-                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
-                                <CheckCircle2 size={11} /> Pago
-                              </span>
-                            ) : (
-                              'Pago'
-                            )}
-                          </label>
+                          <PaidCheckbox
+                            checked={Boolean(m.isPaid)}
+                            busy={Boolean(pending[m.id])}
+                            size={18}
+                            onChange={(v) => setManualPaid(m.id, v)}
+                          />
                         </div>
                       </div>
                     ))}

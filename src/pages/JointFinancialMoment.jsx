@@ -5,6 +5,7 @@ import { saveMonthlySalaries, saveStoredManualTransaction } from '../services/st
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
+import { PaidCheckbox } from '../components/ui/PaidCheckbox';
 import { ProgressBar } from '../components/ui/ProgressBar';
 import { PageLoadingSkeleton } from '../components/ui/Skeleton';
 import { formatCurrency, formatDate } from '../utils/formatters';
@@ -23,7 +24,6 @@ import {
   TrendingDown,
   DollarSign,
   Save,
-  CheckCircle2,
   Repeat,
   Users,
   Settings,
@@ -49,11 +49,15 @@ export function JointFinancialMoment() {
     loadMomentData,
     patchManualPaid,
     patchMemberSalaries,
+    restoreManual,
+    setPending,
+    pending,
     error,
   } = useJointStore();
 
   const [selectedMonth, setSelectedMonth] = useState('');
   const [salaryInputs, setSalaryInputs] = useState({});
+  const [savingSalaryIds, setSavingSalaryIds] = useState({});
   const timelineRef = useRef(null);
 
   useEffect(() => {
@@ -208,14 +212,29 @@ export function JointFinancialMoment() {
 
   const handleSaveSalary = async (memberId) => {
     const member = members.find((m) => m.id === memberId);
-    if (!member) return;
+    if (!member || savingSalaryIds[memberId]) return;
+    const previous = member.monthlySalaries || {};
     const num = parseFloat(salaryInputs[memberId]) || 0;
-    const updated = withSavedMonthSalary(member.monthlySalaries || {}, selectedMonth, num);
+    const updated = withSavedMonthSalary(previous, selectedMonth, num);
     patchMemberSalaries(memberId, updated);
-    await saveMonthlySalaries(updated, { userId: memberId });
+    setSavingSalaryIds((prev) => ({ ...prev, [memberId]: true }));
+    try {
+      await saveMonthlySalaries(updated, { userId: memberId });
+    } catch (err) {
+      patchMemberSalaries(memberId, previous);
+      console.error(err);
+    } finally {
+      setSavingSalaryIds((prev) => {
+        const next = { ...prev };
+        delete next[memberId];
+        return next;
+      });
+    }
   };
 
   const handleManualPaid = async (manual, isPaid) => {
+    if (pending[manual.id]) return;
+    const snapshot = { ...manual };
     const updated = {
       ...manual,
       isPaid: Boolean(isPaid),
@@ -224,7 +243,15 @@ export function JointFinancialMoment() {
       ownerUserId: manual.ownerUserId || manual.userId,
     };
     patchManualPaid(manual.id, isPaid);
-    await saveStoredManualTransaction(updated);
+    setPending(manual.id, true);
+    try {
+      await saveStoredManualTransaction(updated);
+    } catch (err) {
+      restoreManual(snapshot);
+      console.error(err);
+    } finally {
+      setPending(manual.id, false);
+    }
   };
 
   const monthIndex = monthList.findIndex((m) => m.ym === selectedMonth);
@@ -462,13 +489,14 @@ export function JointFinancialMoment() {
                             type="number"
                             placeholder="0,00"
                             value={salaryInputs[member.id] ?? ''}
+                            disabled={Boolean(savingSalaryIds[member.id])}
                             onChange={(e) =>
                               setSalaryInputs((prev) => ({ ...prev, [member.id]: e.target.value }))
                             }
                             style={{ border: 'none', background: 'transparent', outline: 'none', color: 'var(--text-primary)', width: '100%', fontSize: 'var(--font-size-sm)' }}
                           />
                         </div>
-                        <Button size="sm" onClick={() => handleSaveSalary(member.id)} icon={Save}>
+                        <Button size="sm" onClick={() => handleSaveSalary(member.id)} icon={Save} loading={Boolean(savingSalaryIds[member.id])}>
                           Definir
                         </Button>
                       </div>
@@ -638,34 +666,12 @@ export function JointFinancialMoment() {
                               <span style={{ fontWeight: 700, fontSize: 'var(--font-size-xs)', color: 'var(--danger)' }}>
                                 - {formatCurrency(Math.abs(m.amount))}
                               </span>
-                              <label
-                                className="tap-target"
-                                style={{
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  gap: '0.3rem',
-                                  cursor: 'pointer',
-                                  fontSize: '10px',
-                                  fontWeight: 600,
-                                  color: m.isPaid ? 'var(--success)' : 'var(--text-muted)',
-                                  userSelect: 'none',
-                                  whiteSpace: 'nowrap',
-                                }}
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={Boolean(m.isPaid)}
-                                  onChange={(e) => handleManualPaid(m, e.target.checked)}
-                                  style={{ width: 18, height: 18, cursor: 'pointer', accentColor: 'var(--success)' }}
-                                />
-                                {m.isPaid ? (
-                                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
-                                    <CheckCircle2 size={11} /> Pago
-                                  </span>
-                                ) : (
-                                  'Pago'
-                                )}
-                              </label>
+                              <PaidCheckbox
+                                checked={Boolean(m.isPaid)}
+                                busy={Boolean(pending[m.id])}
+                                size={18}
+                                onChange={(v) => handleManualPaid(m, v)}
+                              />
                             </div>
                           </div>
                         ))}

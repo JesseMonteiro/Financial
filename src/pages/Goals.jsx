@@ -3,13 +3,15 @@ import { Target, Plus, Info, Trash2 } from 'lucide-react';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { ProgressBar } from '../components/ui/ProgressBar';
+import { IconBusyButton, SavingScope } from '../components/ui/Spinner';
 import { useGoalStore } from '../stores/goalStore';
 import { formatCurrency, formatDate } from '../utils/formatters';
 import { goalProjection } from '../utils/analytics';
 
 export function Goals() {
-  const { goals, loadGoals, addGoal, removeGoal } = useGoalStore();
+  const { goals, loadGoals, addGoal, removeGoal, pending } = useGoalStore();
   const [showModal, setShowModal] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [title, setTitle] = useState('');
   const [targetAmount, setTargetAmount] = useState('');
   const [currentAmount, setCurrentAmount] = useState('');
@@ -19,10 +21,12 @@ export function Goals() {
     loadGoals();
   }, []);
 
-  const handleCreate = (e) => {
+  const handleCreate = async (e) => {
     e.preventDefault();
-    if (title && targetAmount) {
-      addGoal({
+    if (!title || !targetAmount || saving) return;
+    setSaving(true);
+    try {
+      await addGoal({
         title,
         targetAmount: parseFloat(targetAmount),
         currentAmount: parseFloat(currentAmount) || 0,
@@ -35,6 +39,10 @@ export function Goals() {
       setTargetAmount('');
       setCurrentAmount('');
       setDeadline('');
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -96,13 +104,14 @@ export function Goals() {
                         </span>
                       </div>
                     </div>
-                    <button
-                      type="button"
+                    <IconBusyButton
                       onClick={() => removeGoal(g.id)}
-                      style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--danger)' }}
+                      busy={Boolean(pending[g.id])}
+                      title="Excluir meta"
+                      style={{ color: 'var(--danger)' }}
                     >
                       <Trash2 size={16} />
-                    </button>
+                    </IconBusyButton>
                   </div>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
@@ -165,7 +174,8 @@ export function Goals() {
       </Card>
 
       {showModal && (
-        <div className="modal-overlay" onClick={() => setShowModal(false)}>
+        <div className="modal-overlay" onClick={() => { if (!saving) setShowModal(false); }}>
+          <SavingScope active={saving}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <h2 style={{ fontSize: 'var(--font-size-xl)', fontWeight: 700, marginBottom: '1rem' }}>Criar Nova Meta</h2>
             <form onSubmit={handleCreate} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -211,11 +221,12 @@ export function Goals() {
                 />
               </div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '1rem' }}>
-                <Button variant="outline" type="button" onClick={() => setShowModal(false)}>Cancelar</Button>
-                <Button type="submit">Salvar Meta</Button>
+                <Button variant="outline" type="button" onClick={() => setShowModal(false)} disabled={saving}>Cancelar</Button>
+                <Button type="submit" loading={saving}>Salvar Meta</Button>
               </div>
             </form>
           </div>
+          </SavingScope>
         </div>
       )}
     </div>
