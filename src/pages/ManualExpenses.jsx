@@ -5,9 +5,11 @@ import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { PaidCheckbox } from '../components/ui/PaidCheckbox';
 import { IconBusyButton, SavingScope } from '../components/ui/Spinner';
+import { SkeletonList } from '../components/ui/Skeleton';
 import { formatCurrency, formatDate } from '../utils/formatters';
 import { translateCategory } from '../utils/categories';
 import { getCategoryColor } from '../utils/colors';
+import { isInitialEmpty } from '../utils/loading';
 import {
   Plus,
   Trash2,
@@ -275,6 +277,7 @@ export function ManualExpenses() {
     updateManualAmount,
     loading,
     pending,
+    lastUpdated,
   } = useTransactionStore();
 
   const [form, setForm] = useState(blankFormState);
@@ -505,8 +508,8 @@ export function ManualExpenses() {
         title="Despesas Cadastradas"
         subtitle="Edite a despesa completa pelo lápis do grupo. Expanda as parcelas para alterar o valor de um mês ou marcar como pago."
       >
-        {loading ? (
-          <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '2rem' }}>Carregando despesas...</p>
+        {isInitialEmpty(manualTxs, loading, lastUpdated) ? (
+          <SkeletonList rows={5} />
         ) : groupedManualTxs.length === 0 ? (
           <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '2rem' }}>
             Nenhuma despesa manual cadastrada.

@@ -3,6 +3,7 @@ import { Sankey, Tooltip, ResponsiveContainer, Layer, Rectangle } from 'recharts
 import { formatCurrency } from '../../utils/formatters';
 import { getCategoryColor } from '../../utils/colors';
 import { useIsMobile } from '../../hooks/useMediaQuery';
+import { ChartEmpty } from './ChartEmpty';
 
 function SankeyNode({ x, y, width, height, index, payload }) {
   const color =
@@ -13,7 +14,7 @@ function SankeyNode({ x, y, width, height, index, payload }) {
         : getCategoryColor(payload.name);
   return (
     <Layer key={`node-${index}`}>
-      <Rectangle x={x} y={y} width={width} height={height} fill={color} fillOpacity={0.85} radius={2} />
+      <Rectangle x={x} y={y} width={width} height={height} fill={color} fillOpacity={0.85} radius={4} />
       <text
         x={x + width + 6}
         y={y + height / 2}
@@ -28,7 +29,24 @@ function SankeyNode({ x, y, width, height, index, payload }) {
   );
 }
 
-function SankeyLink({ sourceX, targetX, sourceY, targetY, sourceControlX, targetControlX, linkWidth, index }) {
+function SankeyLink({
+  sourceX,
+  targetX,
+  sourceY,
+  targetY,
+  sourceControlX,
+  targetControlX,
+  linkWidth,
+  index,
+  payload,
+}) {
+  const targetName = payload?.target?.name || payload?.payload?.target?.name || '';
+  const color =
+    targetName === 'Saldo positivo'
+      ? 'var(--success)'
+      : targetName === 'Despesas' || targetName === 'Receitas'
+        ? 'var(--primary)'
+        : getCategoryColor(targetName) || 'var(--primary)';
   return (
     <path
       d={`
@@ -36,8 +54,8 @@ function SankeyLink({ sourceX, targetX, sourceY, targetY, sourceControlX, target
         C${sourceControlX},${sourceY} ${targetControlX},${targetY} ${targetX},${targetY}
       `}
       fill="none"
-      stroke="var(--primary)"
-      strokeOpacity={0.25}
+      stroke={color}
+      strokeOpacity={0.35}
       strokeWidth={linkWidth}
       key={`link-${index}`}
     />
@@ -51,7 +69,7 @@ const CustomTooltip = ({ active, payload }) => {
   const value = p.value ?? p.payload?.value;
   const name = p.name || `${p.source?.name || ''} → ${p.target?.name || ''}`;
   return (
-    <div className="custom-chart-tooltip">
+    <div className="chart-tooltip">
       <p className="tooltip-title">{name}</p>
       {value != null && <p style={{ fontWeight: 600 }}>{formatCurrency(value)}</p>}
     </div>
@@ -68,11 +86,7 @@ export function CashflowSankeyChart({ data, height }) {
   }, [data]);
 
   if (!sankeyData) {
-    return (
-      <div style={{ width: '100%', height: chartHeight, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: 'var(--font-size-sm)' }}>
-        Sem fluxo suficiente para o diagrama Sankey
-      </div>
-    );
+    return <ChartEmpty message="Sem fluxo suficiente para o diagrama Sankey" height={chartHeight} />;
   }
 
   return (

@@ -9,6 +9,7 @@ import {
 import { useAuthStore } from '../../stores/authStore';
 import { useJointStore } from '../../stores/jointStore';
 import { getVisibleNavItems } from './navItems';
+import { GlassSurface } from '../ui/GlassSurface';
 
 export function Sidebar({ collapsed, onToggle }) {
   const { user, signOut } = useAuthStore();
@@ -17,14 +18,11 @@ export function Sidebar({ collapsed, onToggle }) {
   const items = getVisibleNavItems(hasJoint);
 
   return (
-    <aside className={`sidebar ${collapsed ? 'collapsed' : ''}`}>
-      <div style={{
-        padding: '1.25rem 1.5rem',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: collapsed ? 'center' : 'space-between',
-        borderBottom: '1px solid var(--border-color)'
-      }}>
+    <GlassSurface as="aside" className={`sidebar ${collapsed ? 'collapsed' : ''}`}>
+      <div
+        className="sidebar-brand"
+        style={{ justifyContent: collapsed ? 'center' : 'space-between' }}
+      >
         {!collapsed && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
             <div style={{
@@ -37,7 +35,7 @@ export function Sidebar({ collapsed, onToggle }) {
               justifyContent: 'center',
               color: '#fff',
               fontWeight: 700,
-              boxShadow: 'var(--shadow-glow)'
+              boxShadow: 'var(--shadow-glow)',
             }}>
               <ShieldCheck size={22} />
             </div>
@@ -48,48 +46,28 @@ export function Sidebar({ collapsed, onToggle }) {
           </div>
         )}
         <button
+          type="button"
           onClick={onToggle}
-          style={{
-            background: 'var(--bg-tertiary)',
-            border: '1px solid var(--border-color)',
-            color: 'var(--text-primary)',
-            borderRadius: 'var(--radius-sm)',
-            width: 28,
-            height: 28,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            cursor: 'pointer'
-          }}
+          className="header-cluster__btn"
           title={collapsed ? 'Expandir Menu' : 'Recolher Menu'}
+          style={{ width: 28, height: 28, borderRadius: 10, background: 'color-mix(in srgb, var(--bg-tertiary) 80%, transparent)' }}
         >
           {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
         </button>
       </div>
 
-      <nav style={{ flex: 1, padding: '1rem 0.75rem', overflowY: 'auto' }}>
-        <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-          {items.map(item => {
+      <nav className="sidebar-nav">
+        <ul>
+          {items.map((item) => {
             const Icon = item.icon;
             return (
               <li key={item.path}>
                 <NavLink
                   to={item.path}
                   end={item.path === '/'}
-                  style={({ isActive }) => ({
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.85rem',
-                    padding: collapsed ? '0.75rem' : '0.65rem 1rem',
-                    justifyContent: collapsed ? 'center' : 'flex-start',
-                    borderRadius: 'var(--radius-md)',
-                    color: isActive ? 'var(--primary)' : 'var(--text-secondary)',
-                    backgroundColor: isActive ? 'var(--primary-light)' : 'transparent',
-                    fontWeight: isActive ? 600 : 500,
-                    textDecoration: 'none',
-                    fontSize: 'var(--font-size-sm)',
-                    transition: 'all var(--transition-fast)'
-                  })}
+                  className={({ isActive }) =>
+                    `sidebar-link ${collapsed ? 'sidebar-link--collapsed' : ''} ${isActive ? 'sidebar-link--active' : ''}`
+                  }
                   title={collapsed ? item.label : undefined}
                 >
                   <Icon size={20} />
@@ -101,15 +79,14 @@ export function Sidebar({ collapsed, onToggle }) {
         </ul>
       </nav>
 
-      <div style={{
-        padding: collapsed ? '1.25rem 0.5rem' : '1rem 1.25rem',
-        borderTop: '1px solid var(--border-color)',
-        display: 'flex',
-        flexDirection: collapsed ? 'column' : 'row',
-        alignItems: 'center',
-        gap: '0.75rem',
-        justifyContent: 'center'
-      }}>
+      <div
+        className="sidebar-footer"
+        style={{
+          padding: collapsed ? '1.25rem 0.5rem' : undefined,
+          flexDirection: collapsed ? 'column' : 'row',
+          justifyContent: 'center',
+        }}
+      >
         <div style={{
           width: 36,
           height: 36,
@@ -121,7 +98,7 @@ export function Sidebar({ collapsed, onToggle }) {
           justifyContent: 'center',
           fontWeight: 600,
           fontSize: 'var(--font-size-sm)',
-          flexShrink: 0
+          flexShrink: 0,
         }} title={user?.email}>
           {user?.user_metadata?.full_name?.charAt(0).toUpperCase() || user?.email?.charAt(0).toUpperCase() || 'U'}
         </div>
@@ -138,24 +115,15 @@ export function Sidebar({ collapsed, onToggle }) {
         )}
 
         <button
+          type="button"
           onClick={signOut}
-          style={{
-            border: 'none',
-            background: 'transparent',
-            cursor: 'pointer',
-            color: 'var(--danger)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '0.4rem',
-            borderRadius: 'var(--radius-md)',
-            transition: 'background var(--transition-fast)',
-          }}
+          className="header-cluster__btn"
           title="Sair da Conta"
+          style={{ color: 'var(--danger)' }}
         >
           <LogOut size={18} />
         </button>
       </div>
-    </aside>
+    </GlassSurface>
   );
 }

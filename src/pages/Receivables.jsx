@@ -19,10 +19,12 @@ import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { ProgressBar } from '../components/ui/ProgressBar';
 import { IconBusyButton, SavingOverlay } from '../components/ui/Spinner';
+import { PageLoadingSkeleton } from '../components/ui/Skeleton';
 import { useReceivableStore } from '../stores/receivableStore';
 import { useAccountStore } from '../stores/accountStore';
 import { fetchTransactions } from '../services/api';
 import { formatCurrency, formatDate } from '../utils/formatters';
+import { isInitialEmpty } from '../utils/loading';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HELPERS
@@ -723,7 +725,7 @@ function PersonCard({ personName, personColor, receivables, onMarkPaid, onDelete
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function Receivables() {
-  const { receivables, loadReceivables, addReceivable, updateReceivable, deleteReceivable, markInstallmentPaid, pending } = useReceivableStore();
+  const { receivables, loadReceivables, addReceivable, updateReceivable, deleteReceivable, markInstallmentPaid, pending, loading, lastUpdated } = useReceivableStore();
   const { accounts, loadAccounts } = useAccountStore();
 
   const [showModal, setShowModal] = useState(false);
@@ -875,6 +877,18 @@ export function Receivables() {
     setEditingReceivable(null);
     setPrefilledPersonName('');
   };
+
+  if (isInitialEmpty(receivables, loading, lastUpdated)) {
+    return (
+      <PageLoadingSkeleton
+        kpiCount={3}
+        showTimeline={false}
+        showChart={false}
+        showList
+        label="Carregando valores a receber…"
+      />
+    );
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>

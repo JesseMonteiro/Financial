@@ -3,13 +3,15 @@ import { Search, ArrowDownRight, ArrowUpRight, Download, RefreshCw } from 'lucid
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
+import { SkeletonList } from '../components/ui/Skeleton';
 import { useTransactionStore } from '../stores/transactionStore';
 import { useAccountStore } from '../stores/accountStore';
 import { formatCurrency, formatDateRelative, formatDate } from '../utils/formatters';
 import { translateCategory } from '../utils/categories';
+import { isInitialEmpty } from '../utils/loading';
 
 export function Transactions() {
-  const { loadTransactions, getFilteredTransactions, transactions: rawTransactions, filters, setFilters, loading } = useTransactionStore();
+  const { loadTransactions, getFilteredTransactions, transactions: rawTransactions, filters, setFilters, loading, lastUpdated } = useTransactionStore();
   const { accounts, loadAccounts } = useAccountStore();
 
   useEffect(() => {
@@ -129,10 +131,8 @@ export function Transactions() {
       </Card>
 
       <Card title={`Transações Encontradas (${filteredTransactions.length} de ${rawTransactions.length})`}>
-        {loading ? (
-          <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
-            Carregando histórico de transações...
-          </div>
+        {isInitialEmpty(rawTransactions, loading, lastUpdated) ? (
+          <SkeletonList rows={7} />
         ) : filteredTransactions.length === 0 ? (
           <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
             Nenhuma transação encontrada para os filtros selecionados.

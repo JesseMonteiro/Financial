@@ -4,8 +4,10 @@ import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { IconBusyButton } from '../components/ui/Spinner';
+import { PageLoadingSkeleton } from '../components/ui/Skeleton';
 import { useAccountStore } from '../stores/accountStore';
 import { formatCurrency, getDataSyncMeta } from '../utils/formatters';
+import { isInitialEmpty } from '../utils/loading';
 import { accountAvailableBalance, sumReservedBalances } from '../utils/reservedBalances';
 import { Link } from 'react-router-dom';
 import {
@@ -66,7 +68,7 @@ function openPluggyItemUpdate(itemId) {
 }
 
 export function Accounts() {
-  const { accounts, loadAccounts, renameAccount, loading, pending } = useAccountStore();
+  const { accounts, loadAccounts, renameAccount, loading, pending, lastUpdated } = useAccountStore();
   const [editingId, setEditingId] = useState(null);
   const [tempName, setTempName] = useState('');
   const [syncing, setSyncing] = useState(false);
@@ -168,6 +170,18 @@ export function Accounts() {
       setSyncing(false);
     }
   };
+
+  if (isInitialEmpty(accounts, loading, lastUpdated)) {
+    return (
+      <PageLoadingSkeleton
+        kpiCount={2}
+        showTimeline={false}
+        showChart={false}
+        showList
+        label="Carregando contas…"
+      />
+    );
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>

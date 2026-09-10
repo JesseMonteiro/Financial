@@ -2,6 +2,7 @@ import React, { useEffect, useMemo } from 'react';
 import { Info } from 'lucide-react';
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
+import { PageLoadingSkeleton } from '../components/ui/Skeleton';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
 import { useInvestmentStore } from '../stores/investmentStore';
 import { useAccountStore } from '../stores/accountStore';
@@ -9,12 +10,13 @@ import { formatCurrency } from '../utils/formatters';
 import { getCategoryColor } from '../utils/colors';
 import { investmentAllocation, investmentByIssuer } from '../utils/analytics';
 import { calculateNetWorth } from '../utils/calculations';
+import { isInitialEmpty } from '../utils/loading';
 import { useIsMobile } from '../hooks/useMediaQuery';
 
 const CustomTooltip = ({ active, payload }) => {
   if (!active || !payload?.length) return null;
   return (
-    <div className="custom-chart-tooltip">
+    <div className="chart-tooltip">
       <p className="tooltip-title">{payload[0].name || payload[0].payload?.name}</p>
       <p style={{ fontWeight: 600 }}>{formatCurrency(payload[0].value)}</p>
     </div>
@@ -22,8 +24,8 @@ const CustomTooltip = ({ active, payload }) => {
 };
 
 export function Investments() {
-  const { investments, loadInvestments, getTotalInvested } = useInvestmentStore();
-  const { loadAccounts, accounts, loans } = useAccountStore();
+  const { investments, loadInvestments, getTotalInvested, loading: invLoading, lastUpdated: invAt } = useInvestmentStore();
+  const { loadAccounts, accounts, loans, loading: accLoading, lastUpdated: accAt } = useAccountStore();
   const isMobile = useIsMobile();
 
   useEffect(() => {
@@ -36,6 +38,18 @@ export function Investments() {
   const byIssuer = useMemo(() => investmentByIssuer(investments), [investments]);
   const nw = useMemo(() => calculateNetWorth(accounts, investments, loans), [accounts, investments, loans]);
   const pctOfWealth = nw.totalAssets > 0 ? Math.round((totalInvested / nw.totalAssets) * 100) : 0;
+
+  if (isInitialEmpty(investments, invLoading, invAt) || isInitialEmpty(accounts, accLoading, accAt)) {
+    return (
+      <PageLoadingSkeleton
+        kpiCount={3}
+        showTimeline={false}
+        showChart
+        showList
+        label="Carregando investimentos…"
+      />
+    );
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>

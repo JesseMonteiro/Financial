@@ -4,12 +4,14 @@ import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { ProgressBar } from '../components/ui/ProgressBar';
 import { IconBusyButton, SavingScope } from '../components/ui/Spinner';
+import { PageLoadingSkeleton } from '../components/ui/Skeleton';
 import { useGoalStore } from '../stores/goalStore';
 import { formatCurrency, formatDate } from '../utils/formatters';
 import { goalProjection } from '../utils/analytics';
+import { isInitialEmpty } from '../utils/loading';
 
 export function Goals() {
-  const { goals, loadGoals, addGoal, removeGoal, pending } = useGoalStore();
+  const { goals, loadGoals, addGoal, removeGoal, pending, loading, lastUpdated } = useGoalStore();
   const [showModal, setShowModal] = useState(false);
   const [saving, setSaving] = useState(false);
   const [title, setTitle] = useState('');
@@ -50,6 +52,18 @@ export function Goals() {
     () => Object.fromEntries(goals.map((g) => [g.id, goalProjection(g)])),
     [goals]
   );
+
+  if (isInitialEmpty(goals, loading, lastUpdated)) {
+    return (
+      <PageLoadingSkeleton
+        kpiCount={2}
+        showTimeline={false}
+        showChart={false}
+        showList
+        label="Carregando metas…"
+      />
+    );
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>

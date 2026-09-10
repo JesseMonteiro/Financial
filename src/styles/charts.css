@@ -1,17 +1,20 @@
 /* Custom Tooltip & Chart Styles */
 
-.custom-chart-tooltip {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
+.custom-chart-tooltip,
+.chart-tooltip {
+  background: var(--glass-regular-bg);
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-md);
   padding: 0.75rem 1rem;
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--glass-shadow), var(--glass-inset);
   color: var(--text-primary);
   font-size: var(--font-size-sm);
-  backdrop-filter: var(--backdrop-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
 }
 
-.custom-chart-tooltip .tooltip-title {
+.custom-chart-tooltip .tooltip-title,
+.chart-tooltip .tooltip-title {
   font-weight: 600;
   margin-bottom: 0.25rem;
   color: var(--text-secondary);
@@ -46,4 +49,103 @@
 .recharts-legend-item-text {
   color: var(--text-secondary) !important;
   font-size: var(--font-size-xs) !important;
+}
+
+.chart-donut-wrap {
+  position: relative;
+  width: 100%;
+}
+
+.chart-donut-center {
+  position: absolute;
+  inset: 0 0 42px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  text-align: center;
+}
+
+.chart-donut-center strong {
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.2;
+}
+
+.chart-donut-center span {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.chart-empty {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  text-align: center;
+}
+
+.heatmap-cell {
+  aspect-ratio: 1;
+  border-radius: 10px;
+  border: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  color: var(--text-muted);
+  font-weight: 600;
+  transition: transform 180ms var(--ease-spring);
+  cursor: default;
+}
+
+.heatmap-cell:hover {
+  transform: scale(1.06);
+  z-index: 1;
+}
+
+.progress-track {
+  width: 100%;
+  background-color: var(--bg-tertiary);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  border-radius: var(--radius-full);
+  transition: width var(--transition-normal);
+  background-image: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--progress-color, var(--primary)) 82%, white) 0%,
+    var(--progress-color, var(--primary)) 100%
+  );
+}
+
+.skeleton-chart {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 0.65rem;
+  height: 200px;
+}
+
+.skeleton-chart__bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.5rem;
+  height: 160px;
+}
+
+.skeleton-chart__bars > * {
+  flex: 1;
 }

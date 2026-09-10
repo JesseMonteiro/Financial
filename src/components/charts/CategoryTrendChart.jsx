@@ -12,11 +12,13 @@ import {
 import { formatCurrency } from '../../utils/formatters';
 import { getCategoryColor } from '../../utils/colors';
 import { useIsMobile } from '../../hooks/useMediaQuery';
+import { usePrefersReducedMotion } from '../../hooks/usePrefersReducedMotion';
+import { ChartEmpty } from './ChartEmpty';
 
 const CustomTooltip = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null;
   return (
-    <div className="custom-chart-tooltip">
+    <div className="chart-tooltip">
       <p className="tooltip-title">{label}</p>
       {payload.map((p) => (
         <div key={p.dataKey} style={{ color: p.color, fontSize: 12 }}>
@@ -29,14 +31,11 @@ const CustomTooltip = ({ active, payload, label }) => {
 
 export function CategoryTrendChart({ data = [], categories = [], height }) {
   const isMobile = useIsMobile();
+  const reduce = usePrefersReducedMotion();
   const chartHeight = height ?? (isMobile ? 220 : 300);
 
   if (!data.length || !categories.length) {
-    return (
-      <div style={{ width: '100%', height: chartHeight, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: 'var(--font-size-sm)' }}>
-        Sem tendência de categorias no período
-      </div>
-    );
+    return <ChartEmpty message="Sem tendência de categorias no período" height={chartHeight} />;
   }
 
   return (
@@ -53,9 +52,17 @@ export function CategoryTrendChart({ data = [], categories = [], height }) {
             tickFormatter={(val) => `R$ ${(val / 1000).toFixed(0)}k`}
           />
           <Tooltip content={<CustomTooltip />} />
-          <Legend />
+          <Legend wrapperStyle={{ fontSize: 11 }} />
           {categories.map((cat) => (
-            <Bar key={cat} dataKey={cat} stackId="a" fill={getCategoryColor(cat)} />
+            <Bar
+              key={cat}
+              dataKey={cat}
+              stackId="a"
+              fill={getCategoryColor(cat)}
+              radius={[4, 4, 0, 0]}
+              isAnimationActive={!reduce}
+              animationDuration={800}
+            />
           ))}
         </BarChart>
       </ResponsiveContainer>

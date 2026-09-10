@@ -12,12 +12,12 @@
   font-size: var(--font-size-sm);
   cursor: pointer;
   border: 1px solid transparent;
-  transition: all var(--transition-fast);
+  transition: transform 200ms var(--ease-spring), background var(--transition-fast), box-shadow var(--transition-fast), border-color var(--transition-fast), opacity var(--transition-fast);
   text-decoration: none;
 }
 
-.btn:active {
-  transform: scale(0.98);
+.btn:active:not(:disabled) {
+  transform: scale(0.96);
 }
 
 .btn:disabled,
@@ -112,13 +112,15 @@
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(4px);
+  background: rgba(0, 0, 0, 0.42);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 100;
   padding: var(--space-4);
+  animation: fadeInSoft 200ms ease;
 }
 
 .modal-content {
@@ -130,6 +132,7 @@
   max-width: 540px;
   box-shadow: var(--shadow-lg);
   position: relative;
+  animation: materialize 280ms var(--ease-spring);
 }
 
 .saving-scope {
@@ -153,20 +156,22 @@
   font-size: var(--font-size-sm);
   font-weight: 600;
   pointer-events: all;
-  animation: fadeIn 0.15s ease-out;
+  animation: fadeInSoft 0.15s ease-out;
 }
 
-/* Sidebar & Header */
+/* Sidebar — iPadOS floating rail */
 .sidebar {
   width: 260px;
-  background: var(--bg-secondary);
-  border-right: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  height: calc(100dvh - 24px);
+  margin: var(--chrome-inset) 8px var(--chrome-inset) var(--chrome-inset);
+  border-radius: 24px;
   position: sticky;
-  top: 0;
+  top: var(--chrome-inset);
   z-index: 50;
+  flex-shrink: 0;
+  overflow: visible;
   transition: width var(--transition-normal);
 }
 
@@ -174,18 +179,189 @@
   width: 80px;
 }
 
-.header {
-  height: 64px;
-  background: var(--bg-glass);
-  backdrop-filter: var(--backdrop-blur);
-  border-bottom: 1px solid var(--border-color);
+.sidebar-brand {
+  padding: 1.15rem 1.25rem;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 var(--card-padding);
+  border-bottom: 1px solid color-mix(in srgb, var(--border-color) 70%, transparent);
+}
+
+.sidebar-nav {
+  flex: 1;
+  padding: 0.75rem;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.sidebar-nav ul {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.sidebar-link {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  padding: 0.65rem 1rem;
+  border-radius: 14px;
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  transition: background var(--transition-fast), color var(--transition-fast), transform 180ms var(--ease-spring);
+}
+
+.sidebar-link:active {
+  transform: scale(0.98);
+}
+
+.sidebar-link--collapsed {
+  padding: 0.75rem;
+  justify-content: center;
+}
+
+.sidebar-link--active {
+  color: var(--primary);
+  background: var(--primary-light);
+  font-weight: 600;
+}
+
+.sidebar-footer {
+  padding: 1rem 1.15rem;
+  border-top: 1px solid color-mix(in srgb, var(--border-color) 70%, transparent);
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+/* Header — floating island */
+.header {
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 0.85rem 0 1rem;
+  margin: var(--chrome-inset) var(--chrome-inset) 0;
+  border-radius: var(--chrome-radius);
   position: sticky;
-  top: 0;
+  top: var(--chrome-inset);
   z-index: 40;
+  gap: 0.75rem;
+}
+
+.header-search {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+  max-width: 360px;
+  background: color-mix(in srgb, var(--bg-tertiary) 78%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border-color) 80%, transparent);
+  border-radius: var(--radius-full);
+  padding: 0.4rem 0.85rem;
+}
+
+.header-search input {
+  border: none;
+  background: transparent;
+  outline: none;
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  width: 100%;
+  font-family: inherit;
+}
+
+.header-cluster {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--bg-tertiary) 65%, transparent);
+}
+
+.header-cluster__btn {
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  border-radius: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-family: inherit;
+  gap: 6px;
+  transition: background var(--transition-fast), transform 180ms var(--ease-spring);
+}
+
+.header-cluster__btn:hover:not(:disabled) {
+  background: var(--primary-light);
+}
+
+.header-cluster__btn:active:not(:disabled) {
+  transform: scale(0.94);
+}
+
+.header-cluster__btn:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+.header-sync-label {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* Segmented control */
+.segmented {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 14px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  flex-wrap: wrap;
+}
+
+.segmented__btn {
+  position: relative;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  padding: 0.4rem 0.8rem;
+  border-radius: 11px;
+  cursor: pointer;
+  min-height: 32px;
+  transition: color var(--transition-fast);
+}
+
+.segmented__btn.is-active {
+  color: var(--primary);
+}
+
+.segmented__pill {
+  position: absolute;
+  inset: 0;
+  border-radius: 11px;
+  background: var(--bg-secondary);
+  box-shadow: var(--shadow-sm);
+  z-index: 0;
+}
+
+.segmented__label {
+  position: relative;
+  z-index: 1;
 }
 
 /* Liquid Glass floating tab bar (mobile) */
@@ -254,8 +430,14 @@
   -webkit-tap-highlight-color: transparent;
 }
 
-.liquid-tab span {
+.liquid-tab span,
+.liquid-tab svg {
+  position: relative;
+  z-index: 1;
   line-height: 1.1;
+}
+
+.liquid-tab span {
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -264,12 +446,21 @@
 
 .liquid-tab--active {
   color: var(--primary);
-  background: var(--primary-light);
+  background: transparent;
   font-weight: 600;
 }
 
 .liquid-tab--active svg {
   stroke-width: 2.25;
+}
+
+.liquid-tab-pill {
+  position: absolute;
+  inset: 3px 4px;
+  border-radius: 18px;
+  background: var(--primary-light);
+  z-index: 0;
+  pointer-events: none;
 }
 
 /* More menu sheet — solid panel for readable labels (not liquid-glass) */
@@ -284,7 +475,7 @@
   align-items: flex-end;
   justify-content: center;
   padding: 0;
-  animation: fadeIn 200ms ease;
+  animation: fadeInSoft 200ms ease;
 }
 
 .mobile-more-sheet {
@@ -434,15 +625,12 @@
   }
 }
 
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
 @media (prefers-reduced-motion: reduce) {
   .liquid-tabbar,
   .mobile-more-sheet,
-  .mobile-more-overlay {
+  .mobile-more-overlay,
+  .modal-overlay,
+  .modal-content {
     transition: none !important;
     animation: none !important;
   }

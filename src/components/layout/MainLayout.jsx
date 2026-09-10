@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Outlet } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import { LiquidGlassTabBar } from './LiquidGlassTabBar';
+import { PageTransition } from '../motion/PageTransition';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useJointStore } from '../../stores/jointStore';
 import { useIsMobile } from '../../hooks/useMediaQuery';
@@ -33,8 +33,8 @@ export function MainLayout() {
       )}
       <div className="main-wrapper">
         <Header onOpenMore={() => setMoreOpen(true)} isMobile={isMobile} />
-        <main className="content-container animate-fade-in">
-          <Outlet />
+        <main className="content-container">
+          <PageTransition />
         </main>
       </div>
       {isMobile && (

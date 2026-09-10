@@ -30,13 +30,9 @@ export function SkeletonCard({ lines = 3, className = '', style = {} }) {
   const widths = ['40%', '70%', '55%', '85%', '45%'];
   return (
     <div
-      className={className}
+      className={`surface ${className}`.trim()}
       style={{
-        backgroundColor: 'var(--bg-card)',
-        border: '1px solid var(--border-color)',
-        borderRadius: 'var(--radius-lg)',
         padding: '1.25rem',
-        boxShadow: 'var(--shadow-sm)',
         ...style,
       }}
     >
@@ -98,6 +94,26 @@ export function SkeletonList({ rows = 6 }) {
   );
 }
 
+/** Chart-shaped placeholder with fake bars. */
+export function SkeletonChart({ height = 200 }) {
+  const heights = [46, 72, 38, 88, 64, 52, 78];
+  return (
+    <div className="skeleton-chart" style={{ height }}>
+      <div className="skeleton-chart__bars">
+        {heights.map((h, i) => (
+          <Skeleton
+            key={i}
+            width="100%"
+            height={`${h}%`}
+            borderRadius="var(--radius-sm)"
+          />
+        ))}
+      </div>
+      <Skeleton width="70%" height={10} />
+    </div>
+  );
+}
+
 /** Full-page loading layout for credit / financial screens. */
 export function PageLoadingSkeleton({
   showKpis = true,
@@ -139,42 +155,21 @@ export function PageLoadingSkeleton({
       )}
 
       {showTimeline && (
-        <div
-          style={{
-            backgroundColor: 'var(--bg-card)',
-            border: '1px solid var(--border-color)',
-            borderRadius: 'var(--radius-lg)',
-            padding: '1.25rem',
-          }}
-        >
+        <div className="surface" style={{ padding: '1.25rem' }}>
           <Skeleton width="30%" height={14} style={{ marginBottom: '0.75rem' }} />
           <SkeletonTimeline count={6} />
         </div>
       )}
 
       {showChart && (
-        <div
-          style={{
-            backgroundColor: 'var(--bg-card)',
-            border: '1px solid var(--border-color)',
-            borderRadius: 'var(--radius-lg)',
-            padding: '1.25rem',
-          }}
-        >
+        <div className="surface" style={{ padding: '1.25rem' }}>
           <Skeleton width="40%" height={14} style={{ marginBottom: '1rem' }} />
-          <Skeleton width="100%" height={200} borderRadius="var(--radius-md)" />
+          <SkeletonChart />
         </div>
       )}
 
       {showList && (
-        <div
-          style={{
-            backgroundColor: 'var(--bg-card)',
-            border: '1px solid var(--border-color)',
-            borderRadius: 'var(--radius-lg)',
-            padding: '1.25rem',
-          }}
-        >
+        <div className="surface" style={{ padding: '1.25rem' }}>
           <Skeleton width="45%" height={14} style={{ marginBottom: '1rem' }} />
           <SkeletonList rows={5} />
         </div>

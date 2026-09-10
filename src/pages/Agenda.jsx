@@ -11,6 +11,8 @@ import {
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
 import { PaidCheckbox } from '../components/ui/PaidCheckbox';
+import { SegmentedControl } from '../components/ui/SegmentedControl';
+import { PageLoadingSkeleton } from '../components/ui/Skeleton';
 import { useTransactionStore } from '../stores/transactionStore';
 import { useAccountStore } from '../stores/accountStore';
 import { useCreditDataStore } from '../stores/creditDataStore';
@@ -23,6 +25,7 @@ import {
   summarizeAgenda,
   summarizeAgendaMonth,
 } from '../utils/agenda';
+import { isInitialEmpty } from '../utils/loading';
 
 const FILTERS = [
   { id: 'all', label: 'Todas' },
@@ -71,8 +74,8 @@ function shortCommitmentTitle(title, max = 16) {
 const CELL_EVENTS_MAX = 2;
 
 export function Agenda() {
-  const { loadTransactions, transactions, setManualPaid, pending } = useTransactionStore();
-  const { loadAccounts, accounts, loans } = useAccountStore();
+  const { loadTransactions, transactions, setManualPaid, pending, loading: txLoading, lastUpdated: txAt } = useTransactionStore();
+  const { loadAccounts, accounts, loans, loading: accLoading, lastUpdated: accAt } = useAccountStore();
   const { loadForAccounts, getMerged, transactionsByAccount } = useCreditDataStore();
   const [filter, setFilter] = useState('all');
   const [selectedYm, setSelectedYm] = useState(() => currentYm());
@@ -186,6 +189,21 @@ export function Agenda() {
     await setManualPaid(item.sourceId, next);
   };
 
+  const isInitialLoad =
+    isInitialEmpty(transactions, txLoading, txAt) || isInitialEmpty(accounts, accLoading, accAt);
+
+  if (isInitialLoad) {
+    return (
+      <PageLoadingSkeleton
+        kpiCount={3}
+        showTimeline
+        showChart={false}
+        showList
+        label="Carregando agenda…"
+      />
+    );
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
       <div className="page-header">
@@ -249,29 +267,12 @@ export function Agenda() {
         </Card>
       )}
 
-      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-        {FILTERS.map((f) => (
-          <button
-            key={f.id}
-            type="button"
-            onClick={() => setFilter(f.id)}
-            className="input"
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 6,
-              padding: '0.45rem 0.9rem',
-              cursor: 'pointer',
-              background: filter === f.id ? 'var(--primary)' : 'var(--bg-tertiary)',
-              color: filter === f.id ? '#fff' : 'var(--text-primary)',
-              fontWeight: 600,
-              fontSize: 'var(--font-size-sm)',
-            }}
-          >
-            {f.label}
-          </button>
-        ))}
-      </div>
+      <SegmentedControl
+        layoutId="agenda-filter"
+        value={filter}
+        onChange={setFilter}
+        options={FILTERS}
+      />
 
       {/* Horizontal month cards */}
       <div>

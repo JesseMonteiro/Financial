@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Download, Filter } from 'lucide-react';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
+import { SegmentedControl } from '../components/ui/SegmentedControl';
+import { PageLoadingSkeleton } from '../components/ui/Skeleton';
 import { BalanceChart } from '../components/charts/BalanceChart';
 import { ExpenseByCategoryChart } from '../components/charts/ExpenseByCategoryChart';
 import { IncomeVsExpenseChart } from '../components/charts/IncomeVsExpenseChart';
@@ -29,6 +31,7 @@ import {
   lastNMonths,
   monthLabel,
 } from '../utils/analytics';
+import { isInitialEmpty } from '../utils/loading';
 
 const PERIOD_OPTIONS = [
   { id: '3', label: '3 meses', months: 3 },
@@ -37,8 +40,8 @@ const PERIOD_OPTIONS = [
 ];
 
 export function Reports() {
-  const { loadTransactions, transactions } = useTransactionStore();
-  const { loadAccounts, accounts, loans } = useAccountStore();
+  const { loadTransactions, transactions, loading: txLoading, lastUpdated: txAt } = useTransactionStore();
+  const { loadAccounts, accounts, loans, loading: accLoading, lastUpdated: accAt } = useAccountStore();
   const { loadInvestments, investments } = useInvestmentStore();
   const [monthsCount, setMonthsCount] = useState(6);
   const [accountId, setAccountId] = useState('all');
@@ -95,6 +98,20 @@ export function Reports() {
   };
 
   const bankAccounts = accounts.filter((a) => a.type === 'BANK' || a.type === 'CREDIT');
+  const isInitialLoad =
+    isInitialEmpty(transactions, txLoading, txAt) || isInitialEmpty(accounts, accLoading, accAt);
+
+  if (isInitialLoad) {
+    return (
+      <PageLoadingSkeleton
+        showKpis={false}
+        showTimeline={false}
+        showChart
+        showList={false}
+        label="Carregando relatórios…"
+      />
+    );
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }} className="reports-page">
@@ -119,27 +136,12 @@ export function Reports() {
       <Card>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem', alignItems: 'center' }}>
           <Filter size={16} style={{ color: 'var(--text-muted)' }} />
-          <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
-            {PERIOD_OPTIONS.map((opt) => (
-              <button
-                key={opt.id}
-                type="button"
-                onClick={() => setMonthsCount(opt.months)}
-                className="input"
-                style={{
-                  padding: '0.35rem 0.75rem',
-                  cursor: 'pointer',
-                  background: monthsCount === opt.months ? 'var(--primary)' : 'var(--bg-tertiary)',
-                  color: monthsCount === opt.months ? '#fff' : 'var(--text-primary)',
-                  borderColor: monthsCount === opt.months ? 'var(--primary)' : 'var(--border-color)',
-                  fontWeight: 600,
-                  fontSize: 'var(--font-size-xs)',
-                }}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
+          <SegmentedControl
+            layoutId="reports-period"
+            value={String(monthsCount)}
+            onChange={(id) => setMonthsCount(Number(id))}
+            options={PERIOD_OPTIONS.map((opt) => ({ id: String(opt.months), label: opt.label }))}
+          />
           <select
             className="input"
             value={accountId}
@@ -153,28 +155,17 @@ export function Reports() {
               </option>
             ))}
           </select>
-          <div style={{ display: 'flex', gap: '0.35rem', marginLeft: 'auto' }}>
-            {[
-              { id: 'overview', label: 'Visão geral' },
-              { id: 'trends', label: 'Tendências' },
-              { id: 'flow', label: 'Fluxo Sankey' },
-            ].map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => setTab(t.id)}
-                className="input"
-                style={{
-                  padding: '0.35rem 0.75rem',
-                  cursor: 'pointer',
-                  background: tab === t.id ? 'var(--bg-secondary)' : 'transparent',
-                  fontWeight: 600,
-                  fontSize: 'var(--font-size-xs)',
-                }}
-              >
-                {t.label}
-              </button>
-            ))}
+          <div style={{ marginLeft: 'auto' }}>
+            <SegmentedControl
+              layoutId="reports-tab"
+              value={tab}
+              onChange={setTab}
+              options={[
+                { id: 'overview', label: 'Visão geral' },
+                { id: 'trends', label: 'Tendências' },
+                { id: 'flow', label: 'Fluxo Sankey' },
+              ]}
+            />
           </div>
         </div>
       </Card>

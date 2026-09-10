@@ -1,61 +1,78 @@
 import React, { useEffect } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
+import { LayoutGroup, motion } from 'framer-motion';
 import { LogOut, X, ShieldCheck } from 'lucide-react';
 import { mobilePrimaryTabs, mobileTabPaths, getVisibleNavItems } from './navItems';
 import { useScrollDirection } from '../../hooks/useScrollDirection';
 import { useAuthStore } from '../../stores/authStore';
 import { useJointStore } from '../../stores/jointStore';
+import { usePrefersReducedMotion } from '../../hooks/usePrefersReducedMotion';
+
+function TabPill({ reduce }) {
+  return (
+    <motion.span
+      layoutId={reduce ? undefined : 'mobile-tab-pill'}
+      className="liquid-tab-pill"
+      transition={reduce ? { duration: 0 } : { type: 'spring', stiffness: 420, damping: 34 }}
+    />
+  );
+}
 
 export function LiquidGlassTabBar({ moreOpen, onMoreOpen, onMoreClose }) {
   const { hidden } = useScrollDirection({ threshold: 10 });
   const location = useLocation();
   const isPrimaryRoute = mobileTabPaths.includes(location.pathname);
   const showBar = !hidden || moreOpen;
+  const reduce = usePrefersReducedMotion();
 
   return (
     <>
-      <nav
-        className={`liquid-tabbar ${showBar ? '' : 'liquid-tabbar--hidden'}`}
-        aria-label="Navegação principal"
-      >
-        {mobilePrimaryTabs.map((item) => {
-          const Icon = item.icon;
-          if (item.isMore) {
-            const active = moreOpen || !isPrimaryRoute;
-            return (
-              <button
-                key="more"
-                type="button"
-                className={`liquid-tab ${active ? 'liquid-tab--active' : ''}`}
-                onClick={() => (moreOpen ? onMoreClose() : onMoreOpen())}
-                aria-expanded={moreOpen}
-                aria-label="Mais opções"
-              >
-                <Icon size={22} strokeWidth={active ? 2.25 : 1.75} />
-                <span>{item.shortLabel}</span>
-              </button>
-            );
-          }
-          return (
-            <NavLink
-              key={item.path}
-              to={item.path}
-              end={item.path === '/'}
-              className={({ isActive }) =>
-                `liquid-tab ${isActive && !moreOpen ? 'liquid-tab--active' : ''}`
-              }
-              onClick={onMoreClose}
-            >
-              {({ isActive }) => (
-                <>
-                  <Icon size={22} strokeWidth={isActive && !moreOpen ? 2.25 : 1.75} />
+      <LayoutGroup>
+        <nav
+          className={`liquid-tabbar ${showBar ? '' : 'liquid-tabbar--hidden'}`}
+          aria-label="Navegação principal"
+        >
+          {mobilePrimaryTabs.map((item) => {
+            const Icon = item.icon;
+            if (item.isMore) {
+              const active = moreOpen || !isPrimaryRoute;
+              return (
+                <button
+                  key="more"
+                  type="button"
+                  className={`liquid-tab ${active ? 'liquid-tab--active' : ''}`}
+                  onClick={() => (moreOpen ? onMoreClose() : onMoreOpen())}
+                  aria-expanded={moreOpen}
+                  aria-label="Mais opções"
+                >
+                  {active && <TabPill reduce={reduce} />}
+                  <Icon size={22} strokeWidth={active ? 2.25 : 1.75} />
                   <span>{item.shortLabel}</span>
-                </>
-              )}
-            </NavLink>
-          );
-        })}
-      </nav>
+                </button>
+              );
+            }
+            return (
+              <NavLink
+                key={item.path}
+                to={item.path}
+                end={item.path === '/'}
+                className={({ isActive }) =>
+                  `liquid-tab ${isActive && !moreOpen ? 'liquid-tab--active' : ''}`
+                }
+                onClick={onMoreClose}
+              >
+                {({ isActive }) => (
+                  <>
+                    {isActive && !moreOpen && <TabPill reduce={reduce} />}
+                    <Icon size={22} strokeWidth={isActive && !moreOpen ? 2.25 : 1.75} />
+                    <span>{item.shortLabel}</span>
+                  </>
+                )}
+              </NavLink>
+            );
+          })}
+        </nav>
+      </LayoutGroup>
 
       <MobileMoreDrawer open={moreOpen} onClose={onMoreClose} />
     </>

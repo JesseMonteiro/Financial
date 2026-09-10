@@ -4,6 +4,7 @@ import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { IconBusyButton } from '../components/ui/Spinner';
+import { PageLoadingSkeleton } from '../components/ui/Skeleton';
 import api, {
   checkServerHealth,
   clearApiCache,
@@ -199,6 +200,18 @@ export function ConnectBank() {
       setSyncingItemId(null);
     }
   };
+
+  if (loading) {
+    return (
+      <PageLoadingSkeleton
+        kpiCount={2}
+        showTimeline={false}
+        showChart={false}
+        showList
+        label="Carregando conexões…"
+      />
+    );
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>

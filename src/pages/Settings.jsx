@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Settings as SettingsIcon, Moon, Sun, Palette, LayoutGrid, Check, MessageSquare, Link2, Users } from 'lucide-react';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
+import { Skeleton } from '../components/ui/Skeleton';
 import { useSettingsStore } from '../stores/settingsStore';
 import { useJointStore } from '../stores/jointStore';
 import { getPluggyCredentials, savePluggyCredentials, getPluggyItemIds } from '../services/storage';
@@ -223,7 +224,10 @@ export function Settings() {
           </div>
           
           {loadingStatus ? (
-            <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--text-muted)' }}>Carregando status do assistente...</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <Skeleton width="40%" height={14} />
+              <Skeleton width="70%" height={12} />
+            </div>
           ) : telegramLinked ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '1rem', backgroundColor: 'rgba(16, 185, 129, 0.1)', borderRadius: 'var(--radius-md)', border: '1px solid rgba(16, 185, 129, 0.2)' }}>
               <div style={{ width: 10, height: 10, borderRadius: '50%', backgroundColor: '#10b981' }}></div>

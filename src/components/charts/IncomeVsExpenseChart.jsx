@@ -2,11 +2,13 @@ import React from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
 import { formatCurrency } from '../../utils/formatters';
 import { useIsMobile } from '../../hooks/useMediaQuery';
+import { usePrefersReducedMotion } from '../../hooks/usePrefersReducedMotion';
+import { ChartEmpty } from './ChartEmpty';
 
 const CustomTooltip = ({ active, payload, label }) => {
   if (active && payload && payload.length) {
     return (
-      <div className="custom-chart-tooltip">
+      <div className="chart-tooltip">
         <p className="tooltip-title">{label}</p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
           <span style={{ color: 'var(--success)' }}>Receitas: {formatCurrency(payload[0]?.value)}</span>
@@ -20,14 +22,11 @@ const CustomTooltip = ({ active, payload, label }) => {
 
 export function IncomeVsExpenseChart({ data = [], height }) {
   const isMobile = useIsMobile();
+  const reduce = usePrefersReducedMotion();
   const chartHeight = height ?? (isMobile ? 200 : 280);
 
   if (!data || data.length === 0) {
-    return (
-      <div style={{ width: '100%', height: chartHeight, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: 'var(--font-size-sm)' }}>
-        Sem dados de fluxo de caixa para o período
-      </div>
-    );
+    return <ChartEmpty message="Sem dados de fluxo de caixa para o período" height={chartHeight} />;
   }
 
   return (
@@ -36,17 +35,33 @@ export function IncomeVsExpenseChart({ data = [], height }) {
         <BarChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" vertical={false} />
           <XAxis dataKey="mês" stroke="var(--text-muted)" fontSize={12} tickLine={false} />
-          <YAxis
-            stroke="var(--text-muted)"
-            fontSize={12}
-            tickLine={false}
-            axisLine={false}
-            tickFormatter={(val) => `R$ ${(val / 1000).toFixed(0)}k`}
-          />
+          {!isMobile && (
+            <YAxis
+              stroke="var(--text-muted)"
+              fontSize={12}
+              tickLine={false}
+              axisLine={false}
+              tickFormatter={(val) => `R$ ${(val / 1000).toFixed(0)}k`}
+            />
+          )}
           <Tooltip content={<CustomTooltip />} />
-          <Legend />
-          <Bar dataKey="receita" name="Receita" fill="var(--success)" radius={[4, 4, 0, 0]} />
-          <Bar dataKey="despesa" name="Despesa" fill="var(--danger)" radius={[4, 4, 0, 0]} />
+          <Legend wrapperStyle={{ fontSize: 11 }} />
+          <Bar
+            dataKey="receita"
+            name="Receita"
+            fill="var(--success)"
+            radius={[8, 8, 0, 0]}
+            isAnimationActive={!reduce}
+            animationDuration={800}
+          />
+          <Bar
+            dataKey="despesa"
+            name="Despesa"
+            fill="var(--danger)"
+            radius={[8, 8, 0, 0]}
+            isAnimationActive={!reduce}
+            animationDuration={800}
+          />
         </BarChart>
       </ResponsiveContainer>
     </div>

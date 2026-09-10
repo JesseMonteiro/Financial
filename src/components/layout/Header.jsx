@@ -6,6 +6,7 @@ import { useTransactionStore } from '../../stores/transactionStore';
 import { useInvestmentStore } from '../../stores/investmentStore';
 import { useCreditDataStore } from '../../stores/creditDataStore';
 import { clearApiCache } from '../../services/api';
+import { GlassSurface } from '../ui/GlassSurface';
 import { format } from 'date-fns';
 
 export function Header({ onOpenMore, isMobile = false }) {
@@ -37,7 +38,7 @@ export function Header({ onOpenMore, isMobile = false }) {
   };
 
   return (
-    <header className="header">
+    <GlassSurface as="header" className="header">
       {isMobile && (
         <button
           type="button"
@@ -50,31 +51,9 @@ export function Header({ onOpenMore, isMobile = false }) {
       )}
 
       {!isMobile && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, maxWidth: 360 }}>
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.5rem',
-            backgroundColor: 'var(--bg-tertiary)',
-            border: '1px solid var(--border-color)',
-            borderRadius: 'var(--radius-full)',
-            padding: '0.4rem 0.85rem',
-            width: '100%'
-          }}>
-            <Search size={16} style={{ color: 'var(--text-muted)' }} />
-            <input
-              type="text"
-              placeholder="Buscar transações, contas..."
-              style={{
-                border: 'none',
-                background: 'transparent',
-                outline: 'none',
-                color: 'var(--text-primary)',
-                fontSize: 'var(--font-size-sm)',
-                width: '100%'
-              }}
-            />
-          </div>
+        <div className="header-search">
+          <Search size={16} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+          <input type="text" placeholder="Buscar transações, contas..." />
         </div>
       )}
 
@@ -84,43 +63,41 @@ export function Header({ onOpenMore, isMobile = false }) {
         </div>
       )}
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '0.5rem' : '0.85rem' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '0.4rem' : '0.75rem' }}>
         {!isMobile && lastUpdated && (
-          <span className="hide-mobile" style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>
+          <span className="hide-mobile header-sync-label">
             Atualizado às {format(lastUpdated, 'HH:mm')}
           </span>
         )}
 
-        <button
-          onClick={handleRefresh}
-          disabled={isRefreshing}
-          className="btn btn-secondary"
-          style={{
-            padding: isMobile ? 0 : '0.4rem 0.75rem',
-            fontSize: 'var(--font-size-xs)',
-            width: isMobile ? 40 : undefined,
-            height: isMobile ? 40 : undefined,
-            minWidth: isMobile ? 40 : undefined,
-            borderRadius: isMobile ? '50%' : undefined,
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-          title="Forçar sincronização (ignora cache de 1h)"
-        >
-          <RefreshCw size={14} className={isRefreshing ? 'spin-slow' : ''} />
-          {!isMobile && (isRefreshing ? 'Atualizando...' : 'Sincronizar')}
-        </button>
-
-        <button
-          onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-          className="btn btn-outline"
-          style={{ width: 36, height: 36, padding: 0, borderRadius: '50%' }}
-          title={theme === 'dark' ? 'Mudar para Tema Claro' : 'Mudar para Tema Escuro'}
-        >
-          {theme === 'dark' ? <Sun size={18} style={{ color: '#f59e0b' }} /> : <Moon size={18} />}
-        </button>
+        <div className="header-cluster">
+          <button
+            type="button"
+            onClick={handleRefresh}
+            disabled={isRefreshing}
+            className="header-cluster__btn"
+            title="Forçar sincronização (ignora cache de 1h)"
+            aria-label={isRefreshing ? 'Atualizando' : 'Sincronizar'}
+            style={isMobile ? undefined : { width: 'auto', padding: '0 0.75rem', gap: 6 }}
+          >
+            <RefreshCw size={14} className={isRefreshing ? 'spin-slow' : ''} />
+            {!isMobile && (
+              <span style={{ fontSize: 'var(--font-size-xs)', fontWeight: 600 }}>
+                {isRefreshing ? 'Atualizando...' : 'Sincronizar'}
+              </span>
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+            className="header-cluster__btn"
+            title={theme === 'dark' ? 'Mudar para Tema Claro' : 'Mudar para Tema Escuro'}
+            aria-label="Alternar tema"
+          >
+            {theme === 'dark' ? <Sun size={18} style={{ color: '#f59e0b' }} /> : <Moon size={18} />}
+          </button>
+        </div>
       </div>
-    </header>
+    </GlassSurface>
   );
 }

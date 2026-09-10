@@ -18,6 +18,7 @@ import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { ProgressBar } from '../components/ui/ProgressBar';
 import { IconBusyButton } from '../components/ui/Spinner';
+import { PageLoadingSkeleton, SkeletonList } from '../components/ui/Skeleton';
 import { useBudgetStore } from '../stores/budgetStore';
 import { useAccountStore } from '../stores/accountStore';
 import { useReceivableStore } from '../stores/receivableStore';
@@ -31,6 +32,7 @@ import {
   isBillPayment,
   MONTHS_PT,
 } from '../utils/creditBillPeriod';
+import { isInitialEmpty } from '../utils/loading';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell
 } from 'recharts';
@@ -55,7 +57,7 @@ function dueMonthLabel(ym) {
 
 export function Budget() {
   const { budgets, loadBudgets, updateBudget, deleteBudget, pending } = useBudgetStore();
-  const { accounts, loadAccounts, loading: accountsLoading } = useAccountStore();
+  const { accounts, loadAccounts, loading: accountsLoading, lastUpdated: accAt } = useAccountStore();
   const { receivables, loadReceivables } = useReceivableStore();
   const {
     loadForAccounts,
@@ -270,6 +272,18 @@ export function Budget() {
   // ─────────────────────────────────────────────────────────────────────────
   // RENDER
   // ─────────────────────────────────────────────────────────────────────────
+  if (isInitialEmpty(accounts, accountsLoading, accAt)) {
+    return (
+      <PageLoadingSkeleton
+        kpiCount={4}
+        showTimeline={false}
+        showChart
+        showList
+        label="Carregando orçamento…"
+      />
+    );
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
 
@@ -426,9 +440,7 @@ export function Budget() {
         )}
 
         {loadingTx ? (
-          <p style={{ color: 'var(--text-muted)', padding: '2rem', textAlign: 'center' }}>
-            Carregando transações reais...
-          </p>
+          <SkeletonList rows={6} />
         ) : budgetRows.length === 0 ? (
           <p style={{ color: 'var(--text-muted)', padding: '2rem', textAlign: 'center' }}>
             Nenhuma transação encontrada para {dueMonthLabel(selectedMonth)}.

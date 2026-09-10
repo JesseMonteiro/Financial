@@ -3,15 +3,29 @@ import { Landmark, Info } from 'lucide-react';
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
 import { ProgressBar } from '../components/ui/ProgressBar';
+import { PageLoadingSkeleton } from '../components/ui/Skeleton';
 import { useAccountStore } from '../stores/accountStore';
 import { formatCurrency } from '../utils/formatters';
+import { isInitialEmpty } from '../utils/loading';
 
 export function Loans() {
-  const { loans, loadAccounts } = useAccountStore();
+  const { loans, loadAccounts, loading, lastUpdated, error } = useAccountStore();
 
   useEffect(() => {
     loadAccounts();
   }, []);
+
+  if (isInitialEmpty(loans, loading, lastUpdated, error)) {
+    return (
+      <PageLoadingSkeleton
+        kpiCount={2}
+        showTimeline={false}
+        showChart={false}
+        showList
+        label="Carregando empréstimos…"
+      />
+    );
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>

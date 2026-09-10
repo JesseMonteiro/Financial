@@ -78,18 +78,25 @@
   --shadow-glow: 0 0 20px rgba(99, 102, 241, 0.2);
   --backdrop-blur: blur(12px);
 
-  /* Liquid Glass (Apple-style floating tab bar) */
+  /* Liquid Glass — Regular (chrome) */
   --glass-bg: rgba(255, 255, 255, 0.55);
+  --glass-regular-bg: rgba(255, 255, 255, 0.52);
+  --glass-clear-bg: rgba(255, 255, 255, 0.18);
   --glass-border: rgba(255, 255, 255, 0.45);
-  --glass-highlight: rgba(255, 255, 255, 0.65);
+  --glass-highlight: rgba(255, 255, 255, 0.7);
   --glass-blur: blur(24px) saturate(180%);
+  --glass-clear-blur: blur(32px) saturate(200%) brightness(1.08);
   --glass-shadow: 0 8px 32px rgba(15, 23, 42, 0.12), 0 2px 8px rgba(15, 23, 42, 0.06);
-  --glass-inset: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  --glass-inset: inset 0 1px 1px rgba(255, 255, 255, 0.72), inset 0 -1px 1px rgba(255, 255, 255, 0.22);
+  --glass-tint: color-mix(in srgb, hsl(var(--primary-hsl)) 16%, var(--glass-regular-bg));
+  --chrome-inset: 12px;
+  --chrome-radius: 22px;
 
-  /* Transitions */
+  /* Motion */
+  --ease-spring: cubic-bezier(0.16, 1, 0.3, 1);
   --transition-fast: 150ms ease;
-  --transition-normal: 250ms ease;
-  --transition-slow: 400ms cubic-bezier(0.16, 1, 0.3, 1);
+  --transition-normal: 250ms var(--ease-spring);
+  --transition-slow: 400ms var(--ease-spring);
 
   /* Density Defaults */
   --card-padding: var(--space-6);
@@ -115,10 +122,13 @@
   --shadow-glow: 0 0 25px rgba(99, 102, 241, 0.35);
 
   --glass-bg: rgba(17, 24, 39, 0.55);
+  --glass-regular-bg: rgba(17, 24, 39, 0.52);
+  --glass-clear-bg: rgba(17, 24, 39, 0.28);
   --glass-border: rgba(255, 255, 255, 0.18);
-  --glass-highlight: rgba(255, 255, 255, 0.12);
+  --glass-highlight: rgba(255, 255, 255, 0.14);
   --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.45), 0 2px 8px rgba(0, 0, 0, 0.25);
-  --glass-inset: inset 0 1px 0 rgba(255, 255, 255, 0.15);
+  --glass-inset: inset 0 1px 1px rgba(255, 255, 255, 0.16), inset 0 -1px 1px rgba(255, 255, 255, 0.06);
+  --glass-tint: color-mix(in srgb, hsl(var(--primary-hsl)) 22%, var(--glass-regular-bg));
 }
 
 /* Density Overrides */

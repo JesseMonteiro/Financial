@@ -1,11 +1,11 @@
 import React from 'react';
 
-export function Card({ children, className = '', title, subtitle, action, onClick }) {
+export function Card({ children, className = '', title, subtitle, action, onClick, style }) {
   return (
-    <div 
-      className={`glass-card ${onClick ? 'cursor-pointer' : ''} ${className}`}
+    <div
+      className={`surface ${onClick ? 'cursor-pointer' : ''} ${className}`.trim()}
       onClick={onClick}
-      style={{ padding: 'var(--card-padding)' }}
+      style={style}
     >
       {(title || subtitle || action) && (
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-4)' }}>

@@ -14,9 +14,12 @@ import {
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { ProgressBar } from '../components/ui/ProgressBar';
+import { PageLoadingSkeleton } from '../components/ui/Skeleton';
+import { Stagger, StaggerItem } from '../components/motion/Stagger';
 import { BalanceChart } from '../components/charts/BalanceChart';
 import { ExpenseByCategoryChart } from '../components/charts/ExpenseByCategoryChart';
 import { IncomeVsExpenseChart } from '../components/charts/IncomeVsExpenseChart';
+import { Sparkline } from '../components/charts/Sparkline';
 import { useAccountStore } from '../stores/accountStore';
 import { useTransactionStore } from '../stores/transactionStore';
 import { useInvestmentStore } from '../stores/investmentStore';
@@ -36,11 +39,12 @@ import {
   isExpenseTx,
 } from '../utils/analytics';
 import { calculateNetWorth } from '../utils/calculations';
+import { isInitialEmpty } from '../utils/loading';
 import { Link } from 'react-router-dom';
 
 export function Dashboard() {
-  const { loadAccounts, accounts, loans } = useAccountStore();
-  const { loadTransactions, transactions } = useTransactionStore();
+  const { loadAccounts, accounts, loans, loading: accLoading, lastUpdated: accAt } = useAccountStore();
+  const { loadTransactions, transactions, loading: txLoading, lastUpdated: txAt } = useTransactionStore();
   const { loadInvestments, investments, getTotalInvested } = useInvestmentStore();
   const { loadBudgets, budgets } = useBudgetStore();
   const user = useAuthStore((s) => s.user);
@@ -101,6 +105,21 @@ export function Dashboard() {
 
   const bankCount = accounts.filter((a) => a.type === 'BANK').length;
   const creditCount = accounts.filter((a) => a.type === 'CREDIT').length;
+  const isInitialLoad =
+    isInitialEmpty(accounts, accLoading, accAt) || isInitialEmpty(transactions, txLoading, txAt);
+
+  if (isInitialLoad) {
+    return (
+      <PageLoadingSkeleton
+        showKpis
+        kpiCount={4}
+        showTimeline={false}
+        showChart
+        showList
+        label="Carregando dashboard…"
+      />
+    );
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
@@ -120,93 +139,105 @@ export function Dashboard() {
         </div>
       </div>
 
-      <div className="dashboard-grid">
-        <Card className="col-3" style={{ position: 'relative', overflow: 'hidden' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>
-              Patrimônio Líquido
-            </span>
-            <div style={{ padding: '0.4rem', borderRadius: 'var(--radius-md)', background: 'var(--primary-light)', color: 'var(--primary)' }}>
-              <Sparkles size={18} />
+      <Stagger className="dashboard-grid">
+        <StaggerItem className="col-3">
+          <Card style={{ position: 'relative', overflow: 'hidden' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>
+                Patrimônio Líquido
+              </span>
+              <div style={{ padding: '0.4rem', borderRadius: 'var(--radius-md)', background: 'var(--primary-light)', color: 'var(--primary)' }}>
+                <Sparkles size={18} />
+              </div>
             </div>
-          </div>
-          <h2 style={{ fontSize: 'var(--font-size-2xl)', fontWeight: 700, margin: '0.5rem 0', color: summary.netWorth >= 0 ? 'var(--text-primary)' : 'var(--danger)' }}>
-            {formatCurrency(summary.netWorth)}
-          </h2>
-          <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>
-            Ativos: {formatCurrency(summary.bankBalance + totalInvestments)} • Dívidas: -{formatCurrency(summary.creditDebt)}
-          </span>
-        </Card>
+            <h2 style={{ fontSize: 'var(--font-size-2xl)', fontWeight: 700, margin: '0.5rem 0', color: summary.netWorth >= 0 ? 'var(--text-primary)' : 'var(--danger)' }}>
+              {formatCurrency(summary.netWorth)}
+            </h2>
+            <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>
+              Ativos: {formatCurrency(summary.bankBalance + totalInvestments)} • Dívidas: -{formatCurrency(summary.creditDebt)}
+            </span>
+            <Sparkline data={netWorthSeries} dataKey="patrimônio" color="var(--primary)" />
+          </Card>
+        </StaggerItem>
 
-        <Card className="col-3">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>
-              Saldo em Contas
-            </span>
-            <div style={{ padding: '0.4rem', borderRadius: 'var(--radius-md)', background: 'rgba(16, 185, 129, 0.12)', color: 'var(--success)' }}>
-              <Wallet size={18} />
+        <StaggerItem className="col-3">
+          <Card>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>
+                Saldo em Contas
+              </span>
+              <div style={{ padding: '0.4rem', borderRadius: 'var(--radius-md)', background: 'rgba(16, 185, 129, 0.12)', color: 'var(--success)' }}>
+                <Wallet size={18} />
+              </div>
             </div>
-          </div>
-          <h2 style={{ fontSize: 'var(--font-size-2xl)', fontWeight: 700, margin: '0.5rem 0', color: 'var(--text-primary)' }}>
-            {formatCurrency(summary.bankBalance)}
-          </h2>
-          <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>
-            {bankCount} {bankCount === 1 ? 'conta bancária' : 'contas bancárias'}
-            {summary.reservedBalance > 0
-              ? ` · caixinhas ${formatCurrency(summary.reservedBalance)} em investimentos`
-              : ''}
-          </span>
-        </Card>
+            <h2 style={{ fontSize: 'var(--font-size-2xl)', fontWeight: 700, margin: '0.5rem 0', color: 'var(--text-primary)' }}>
+              {formatCurrency(summary.bankBalance)}
+            </h2>
+            <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>
+              {bankCount} {bankCount === 1 ? 'conta bancária' : 'contas bancárias'}
+              {summary.reservedBalance > 0
+                ? ` · caixinhas ${formatCurrency(summary.reservedBalance)} em investimentos`
+                : ''}
+            </span>
+            <Sparkline data={incomeExpenseSeries} dataKey="net" color="var(--success)" />
+          </Card>
+        </StaggerItem>
 
-        <Card className="col-3">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>
-              Taxa de Poupança
-            </span>
-            <div style={{ padding: '0.4rem', borderRadius: 'var(--radius-md)', background: 'rgba(59, 130, 246, 0.12)', color: 'var(--info)' }}>
-              <Percent size={18} />
+        <StaggerItem className="col-3">
+          <Card>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>
+                Taxa de Poupança
+              </span>
+              <div style={{ padding: '0.4rem', borderRadius: 'var(--radius-md)', background: 'rgba(59, 130, 246, 0.12)', color: 'var(--info)' }}>
+                <Percent size={18} />
+              </div>
             </div>
-          </div>
-          <h2
-            style={{
-              fontSize: 'var(--font-size-2xl)',
-              fontWeight: 700,
-              margin: '0.5rem 0',
-              color: (cashflow.savingsRate ?? 0) >= 0 ? 'var(--success)' : 'var(--danger)',
-            }}
-          >
-            {cashflow.savingsRate == null ? '—' : `${cashflow.savingsRate.toFixed(0)}%`}
-          </h2>
-          <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>
-            Líquido do mês: {formatCurrency(cashflow.net)}
-          </span>
-        </Card>
+            <h2
+              style={{
+                fontSize: 'var(--font-size-2xl)',
+                fontWeight: 700,
+                margin: '0.5rem 0',
+                color: (cashflow.savingsRate ?? 0) >= 0 ? 'var(--success)' : 'var(--danger)',
+              }}
+            >
+              {cashflow.savingsRate == null ? '—' : `${cashflow.savingsRate.toFixed(0)}%`}
+            </h2>
+            <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>
+              Líquido do mês: {formatCurrency(cashflow.net)}
+            </span>
+            <Sparkline data={incomeExpenseSeries} dataKey="net" color="var(--info)" />
+          </Card>
+        </StaggerItem>
 
-        <Card className="col-3">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>
-              Gastos vs Mês Ant.
-            </span>
-            <div style={{ padding: '0.4rem', borderRadius: 'var(--radius-md)', background: 'rgba(244, 63, 94, 0.12)', color: 'var(--danger)' }}>
-              <PiggyBank size={18} />
+        <StaggerItem className="col-3">
+          <Card>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>
+                Gastos vs Mês Ant.
+              </span>
+              <div style={{ padding: '0.4rem', borderRadius: 'var(--radius-md)', background: 'rgba(244, 63, 94, 0.12)', color: 'var(--danger)' }}>
+                <PiggyBank size={18} />
+              </div>
             </div>
-          </div>
-          <h2
-            style={{
-              fontSize: 'var(--font-size-2xl)',
-              fontWeight: 700,
-              margin: '0.5rem 0',
-              color: mom.expenseDeltaPct > 0 ? 'var(--danger)' : 'var(--success)',
-            }}
-          >
-            {mom.expenseDeltaPct > 0 ? '+' : ''}
-            {mom.expenseDeltaPct.toFixed(0)}%
-          </h2>
-          <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>
-            Este mês {formatCurrency(cashflow.expense)} · ant. {formatCurrency(mom.previous.expense)}
-          </span>
-        </Card>
-      </div>
+            <h2
+              style={{
+                fontSize: 'var(--font-size-2xl)',
+                fontWeight: 700,
+                margin: '0.5rem 0',
+                color: mom.expenseDeltaPct > 0 ? 'var(--danger)' : 'var(--success)',
+              }}
+            >
+              {mom.expenseDeltaPct > 0 ? '+' : ''}
+              {mom.expenseDeltaPct.toFixed(0)}%
+            </h2>
+            <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>
+              Este mês {formatCurrency(cashflow.expense)} · ant. {formatCurrency(mom.previous.expense)}
+            </span>
+            <Sparkline data={incomeExpenseSeries} dataKey="despesa" color="var(--danger)" />
+          </Card>
+        </StaggerItem>
+      </Stagger>
 
       {(insights.length > 0 || recap.current.total > 0) && (
         <div className="dashboard-grid">

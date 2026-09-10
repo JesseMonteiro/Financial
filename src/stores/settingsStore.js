@@ -54,6 +54,7 @@ export const useSettingsStore = create((set, get) => ({
   },
 
   setAnimationsEnabled: (enabled) => {
+    document.documentElement.setAttribute('data-animations', enabled ? 'on' : 'off');
     setLocalSetting('animationsEnabled', enabled);
     updateProfileSettings({ animationsEnabled: enabled });
     set({ animationsEnabled: enabled });
@@ -70,5 +71,6 @@ export const useSettingsStore = create((set, get) => ({
     const currentDensity = get().density;
     document.documentElement.setAttribute('data-theme', currentTheme);
     document.documentElement.setAttribute('data-density', currentDensity);
+    document.documentElement.setAttribute('data-animations', get().animationsEnabled ? 'on' : 'off');
   }
 }));

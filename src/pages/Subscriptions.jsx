@@ -2,11 +2,13 @@ import React, { useEffect, useMemo } from 'react';
 import { Repeat, Info } from 'lucide-react';
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
+import { PageLoadingSkeleton } from '../components/ui/Skeleton';
 import { useTransactionStore } from '../stores/transactionStore';
 import { useAccountStore } from '../stores/accountStore';
 import { useCreditDataStore } from '../stores/creditDataStore';
 import { formatCurrency, formatDate } from '../utils/formatters';
 import { detectSubscriptions, groupSubscriptionsByKind } from '../utils/subscriptions';
+import { isInitialEmpty } from '../utils/loading';
 
 const FREQ_LABEL = {
   weekly: 'Semanal',
@@ -16,8 +18,8 @@ const FREQ_LABEL = {
 };
 
 export function Subscriptions() {
-  const { loadTransactions, transactions } = useTransactionStore();
-  const { loadAccounts, accounts } = useAccountStore();
+  const { loadTransactions, transactions, loading: txLoading, lastUpdated: txAt } = useTransactionStore();
+  const { loadAccounts, accounts, loading: accLoading, lastUpdated: accAt } = useAccountStore();
   const { loadForAccounts, getMerged, transactionsByAccount } = useCreditDataStore();
 
   const creditCards = useMemo(() => accounts.filter((a) => a.type === 'CREDIT'), [accounts]);
@@ -53,6 +55,18 @@ export function Subscriptions() {
     () => subscriptions.reduce((s, r) => s + (r.monthlyEquivalent || 0), 0),
     [subscriptions]
   );
+
+  if (isInitialEmpty(transactions, txLoading, txAt) || isInitialEmpty(accounts, accLoading, accAt)) {
+    return (
+      <PageLoadingSkeleton
+        kpiCount={2}
+        showTimeline={false}
+        showChart={false}
+        showList
+        label="Carregando assinaturas…"
+      />
+    );
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
