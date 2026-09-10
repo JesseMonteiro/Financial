@@ -265,9 +265,11 @@ export function hasInstallmentNumber(transactions, seriesKey, n) {
 /**
  * Mercado Pago (and similar) truncates later-parcel descriptions
  * (`MERCADOLIVRE*MERCADOLIVRE` → `MERCADOLIVRE*MERC`), splitting series keys.
- * Same account + N/M + similar merchant prefix + amount within R$ 0,10
- * (matches installmentSeriesKey rounding). Amount-only ±R$ 0,50 was matching
- * unrelated ~R$ 10 parcels (Carrefour 9,99 vs Ferreira Costa 10,48 as 5/10).
+ * Same account + N/M + similar merchant prefix + amount within R$ 0,20.
+ * Inter PIX 12× drifts ~R$ 0,11 from parcela 1 (271,22) to later ones (271,11);
+ * R$ 0,10 missed that and projected phantom 11/12 onto the open bill.
+ * Amount-only ±R$ 0,50 was matching unrelated ~R$ 10 parcels
+ * (Carrefour 9,99 vs Ferreira Costa 10,48 as 5/10).
  */
 export function hasSimilarInstallment(transactions, sample, n) {
   const total = Number(installmentTotalOf(sample));
@@ -276,6 +278,7 @@ export function hasSimilarInstallment(transactions, sample, n) {
   const acct = sample?.accountId || '';
   const sampleDesc = normalizeInstallmentDesc(sample?.description);
   const prefix = sampleDesc.slice(0, 14);
+  const sampleCents = Math.round(sampleAmt * 100);
   for (const t of transactions) {
     if (isBillPayment(t)) continue;
     if (acct && t.accountId && t.accountId !== acct) continue;
@@ -287,7 +290,7 @@ export function hasSimilarInstallment(transactions, sample, n) {
       (desc.startsWith(prefix) || sampleDesc.startsWith(desc.slice(0, 14)));
     if (!prefixOk) continue;
     const amt = Math.abs(txBillingAmount(t));
-    if (Math.abs(amt - sampleAmt) <= 0.1) return true;
+    if (Math.abs(Math.round(amt * 100) - sampleCents) <= 20) return true;
   }
   return false;
 }
@@ -368,17 +371,22 @@ export function sumProjectedCharges(items = [], { chargeSumMode = 'signed_net' }
 /**
  * Total for a due month that already has an official Pluggy bill.
  * Starts from official `totalAmount` + app-projected parcels in this bucket
- * (Amazon/Bradesco drafts omit installments). When the connector opts in,
- * lift to cycle charges if those are higher — closed Amazon statements can
- * still publish a short `totalAmount` while POSTED/PENDING txs already match
- * the bank PDF.
+ * (Amazon/Bradesco drafts omit installments). Inter already publishes future
+ * official bills with remaining parcels in `totalAmount` — adding projections
+ * double-counts (Jesse Sep/2026: 929.29 + phantom 1/12 drift = 1430.50).
+ * When the connector opts in, lift to cycle charges if those are higher —
+ * closed Amazon statements can still publish a short `totalAmount` while
+ * POSTED/PENDING txs already match the bank PDF.
  */
 export function resolveOfficialBillTotal(official, cycleItems = [], {
   chargeSumMode = 'signed_net',
   liftOfficialToCycleCharges = false,
+  includeProjectedInOfficialTotal = true,
 } = {}) {
   const officialAmt = Number(official?.totalAmount) || 0;
-  const projectedAmt = sumProjectedCharges(cycleItems, { chargeSumMode });
+  const projectedAmt = includeProjectedInOfficialTotal
+    ? sumProjectedCharges(cycleItems, { chargeSumMode })
+    : 0;
   const combined = Math.round((officialAmt + projectedAmt) * 100) / 100;
   if (!liftOfficialToCycleCharges) return combined;
   const cycleSum = sumCycleCharges(cycleItems, {
@@ -1119,6 +1127,7 @@ export function buildCreditCardBills({
         totalAmount += resolveOfficialBillTotal(official, scopedItems, {
           chargeSumMode,
           liftOfficialToCycleCharges: Boolean(profile?.liftOfficialToCycleCharges),
+          includeProjectedInOfficialTotal: profile?.includeProjectedInOfficialTotal !== false,
         });
         hasOfficial = true;
         dueDate = String(official.dueDate).slice(0, 10);

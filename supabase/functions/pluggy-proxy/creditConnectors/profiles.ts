@@ -32,6 +32,9 @@
  * @property {boolean} [liftOfficialToCycleCharges]
  *   When true, an official Pluggy `totalAmount` that is short of the due-month
  *   cycle charges is lifted to the cycle sum (Amazon/Bradescard closed bills).
+ * @property {boolean} [includeProjectedInOfficialTotal]
+ *   When false, official `totalAmount` is used as-is (Inter already includes
+ *   remaining installments on future official bills). Default true.
  * @property {boolean} [slideProjectionToOpen]
  *   When true and the open cycle has no official bill, slide stale installment
  *   series so N+1 lands on the open month (`projectionAnchorDue`). Bradesco
@@ -150,6 +153,8 @@ export const CONNECTOR_PROFILES = [
     openTotalSource: 'cycle_charges',
     chargeSumMode: 'signed_net',
     remapStalePending: 'after_cycle_end',
+    // Future official bills already include remaining parcels in totalAmount
+    includeProjectedInOfficialTotal: false,
     // Payment tx often lands on next billId; payments[] usually empty
     paymentOftenOnNextCycle: true,
     guidePath: 'docs/connectors/inter.md',

@@ -49,6 +49,7 @@ export function cardBillAmountForMonth({
     const amount = resolveOfficialBillTotal(matchingBill, scoped, {
       chargeSumMode: profile.chargeSumMode || 'signed_net',
       liftOfficialToCycleCharges: Boolean(profile.liftOfficialToCycleCharges),
+      includeProjectedInOfficialTotal: profile.includeProjectedInOfficialTotal !== false,
     });
     return {
       amount,
