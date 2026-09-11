@@ -109,3 +109,58 @@ export function toManualAccountRow(acc, userId) {
     updated_at: new Date().toISOString(),
   };
 }
+
+export function roundMoney(n) {
+  return Math.round((Number(n) || 0) * 100) / 100;
+}
+
+export function manualSeriesLength(txData = {}) {
+  const isRecurring = Boolean(txData.isRecurring);
+  const isContinuous = isRecurring && Boolean(txData.isContinuous);
+  if (!isRecurring) return 1;
+  if (isContinuous) return 24;
+  return Math.max(1, parseInt(txData.occurrences, 10) || 12);
+}
+
+/**
+ * Parcelada (>1) splits `total` across occurrences. Single/recurring-continuous
+ * keep the same amount on every occurrence.
+ */
+export function splitManualTotal(total, txData = {}) {
+  const n = manualSeriesLength(txData);
+  const abs = Math.abs(Number(total) || 0);
+  const isRecurring = Boolean(txData.isRecurring);
+  const isContinuous = isRecurring && Boolean(txData.isContinuous);
+  if (!isRecurring || isContinuous || n <= 1) {
+    return Array.from({ length: n }, () => roundMoney(abs));
+  }
+  const per = roundMoney(abs / n);
+  const parts = Array.from({ length: n }, () => per);
+  parts[n - 1] = roundMoney(abs - per * (n - 1));
+  return parts;
+}
+
+export function previewInstallmentSplit(total, txData = {}) {
+  const isRecurring = Boolean(txData.isRecurring);
+  const isContinuous = isRecurring && Boolean(txData.isContinuous);
+  if (!isRecurring || isContinuous) return null;
+  const parts = splitManualTotal(total, txData);
+  if (parts.length <= 1) return null;
+  const per = parts[0];
+  const last = parts[parts.length - 1];
+  return {
+    count: parts.length,
+    per,
+    last,
+    lastDiffers: Math.abs(last - per) > 0.001,
+  };
+}
+
+export function totalFromStoredInstallments(installments = [], { isRecurring, isContinuous } = {}) {
+  const amounts = installments.map((t) => Math.abs(Number(t.amount) || 0));
+  if (!amounts.length) return 0;
+  if (isRecurring && !isContinuous && amounts.length > 1) {
+    return roundMoney(amounts.reduce((sum, value) => sum + value, 0));
+  }
+  return roundMoney(amounts[0]);
+}

@@ -8,7 +8,8 @@ import {
   Receipt,
   CheckCircle2,
   TrendingUp,
-  AlertCircle
+  AlertCircle,
+  Plus
 } from 'lucide-react';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
@@ -18,6 +19,8 @@ import { PageLoadingSkeleton, Skeleton, SkeletonList } from '../components/ui/Sk
 import { useAccountStore } from '../stores/accountStore';
 import { useReceivableStore } from '../stores/receivableStore';
 import { useCreditDataStore } from '../stores/creditDataStore';
+import { useTransactionStore } from '../stores/transactionStore';
+import { PurchaseModal } from './ManualExpenses';
 import { formatCurrency, formatDate } from '../utils/formatters';
 import { translateCategory } from '../utils/categories';
 import { getCategoryColor } from '../utils/colors';
@@ -56,8 +59,11 @@ export function CreditCards() {
     transactionsByAccount,
     billsByAccount,
   } = useCreditDataStore();
+  const { addManualTransaction } = useTransactionStore();
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
+  const [purchaseAccount, setPurchaseAccount] = useState(null);
+  const [savingPurchase, setSavingPurchase] = useState(false);
 
   // Multi-card selection state ('all' or specific card.id)
   const [selectedCardId, setSelectedCardId] = useState('all');
@@ -286,6 +292,21 @@ export function CreditCards() {
     if (bill.isPaid) return { variant: 'success', text: 'Paga' };
     return { variant: 'neutral', text: 'Fechada' };
   }
+
+  const handlePurchaseSave = async (payload) => {
+    setSavingPurchase(true);
+    try {
+      await addManualTransaction(payload);
+      if (payload.accountId) {
+        await loadForAccounts([payload.accountId], { force: true });
+      }
+      setPurchaseAccount(null);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSavingPurchase(false);
+    }
+  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
@@ -580,6 +601,17 @@ export function CreditCards() {
         <Card
           className="col-8"
           title={`Extrato Discriminado: ${formatDueMonthTitle(activeSelectedKey)}`}
+          action={
+            activeCard?.isManual ? (
+              <Button
+                size="sm"
+                icon={Plus}
+                onClick={() => setPurchaseAccount(activeCard)}
+              >
+                Adicionar compra
+              </Button>
+            ) : null
+          }
         >
           <div style={{
             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
@@ -774,6 +806,14 @@ export function CreditCards() {
         </Card>
       </div>
       </>
+      )}
+      {purchaseAccount && (
+        <PurchaseModal
+          account={purchaseAccount}
+          onClose={() => { if (!savingPurchase) setPurchaseAccount(null); }}
+          onSave={handlePurchaseSave}
+          saving={savingPurchase}
+        />
       )}
       {iconAccount && (
         <IconPicker

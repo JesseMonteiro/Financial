@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useId } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useTransactionStore } from '../stores/transactionStore';
 import { useAccountStore } from '../stores/accountStore';
@@ -12,6 +12,7 @@ import { formatCurrency, formatDate } from '../utils/formatters';
 import { translateCategory } from '../utils/categories';
 import { getCategoryColor } from '../utils/colors';
 import { isInitialEmpty } from '../utils/loading';
+import { previewInstallmentSplit, totalFromStoredInstallments } from '../utils/manualAccounts';
 import { AccountIcon, accountById } from '../components/AccountIcon';
 import {
   Plus,
@@ -121,6 +122,13 @@ export function ExpenseFormFields({
   occurrences,
   setOccurrences,
 }) {
+  const radioName = `recurrence_type_${useId()}`;
+  const splitPreview = previewInstallmentSplit(amount, {
+    isRecurring,
+    isContinuous,
+    occurrences,
+  });
+
   return (
     <>
       <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
@@ -137,7 +145,7 @@ export function ExpenseFormFields({
           />
         </div>
         <div>
-          <label className="label" style={{ display: 'block', marginBottom: '0.4rem', fontSize: 'var(--font-size-xs)', fontWeight: 600 }}>Valor por Ocorrência (R$)</label>
+          <label className="label" style={{ display: 'block', marginBottom: '0.4rem', fontSize: 'var(--font-size-xs)', fontWeight: 600 }}>Valor total (R$)</label>
           <input
             type="number"
             step="0.01"
@@ -148,6 +156,12 @@ export function ExpenseFormFields({
             required
             style={{ width: '100%' }}
           />
+          {splitPreview && (
+            <p style={{ margin: '0.4rem 0 0', fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>
+              {splitPreview.count} parcelas de {formatCurrency(splitPreview.per)}
+              {splitPreview.lastDiffers ? ` · última ${formatCurrency(splitPreview.last)}` : ''}
+            </p>
+          )}
         </div>
       </div>
 
@@ -199,7 +213,7 @@ export function ExpenseFormFields({
               <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer', fontSize: 'var(--font-size-xs)' }}>
                 <input
                   type="radio"
-                  name="recurrence_type"
+                  name={radioName}
                   checked={!isContinuous}
                   onChange={() => setIsContinuous(false)}
                 />
@@ -208,7 +222,7 @@ export function ExpenseFormFields({
               <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer', fontSize: 'var(--font-size-xs)' }}>
                 <input
                   type="radio"
-                  name="recurrence_type"
+                  name={radioName}
                   checked={isContinuous}
                   onChange={() => setIsContinuous(true)}
                 />
@@ -243,6 +257,12 @@ export function ExpenseFormFields({
                     className="input"
                     style={{ width: '100%' }}
                   />
+                  {splitPreview && (
+                    <p style={{ margin: '0.35rem 0 0', fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>
+                      Valor por parcela: {formatCurrency(splitPreview.per)}
+                      {splitPreview.lastDiffers ? ` (última ${formatCurrency(splitPreview.last)})` : ''}
+                    </p>
+                  )}
                 </div>
               ) : (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', alignSelf: 'center', color: 'var(--text-muted)', fontSize: '11px', marginTop: '1.2rem' }}>
@@ -270,6 +290,66 @@ function blankFormState(accountId = 'manual') {
     occurrences: '12',
     accountId: accountId || 'manual',
   };
+}
+
+export function PurchaseModal({ account, onClose, onSave, saving }) {
+  const [form, setForm] = useState(() => blankFormState(account?.id));
+  const setField = (key) => (value) => setForm((prev) => ({ ...prev, [key]: value }));
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!form.description || !form.amount || saving) return;
+    onSave({
+      description: form.description,
+      amount: parseFloat(form.amount),
+      category: form.category,
+      date: new Date(`${form.date}T12:00:00.000Z`),
+      isRecurring: form.isRecurring,
+      isContinuous: form.isRecurring && form.isContinuous,
+      frequency: form.frequency,
+      occurrences: parseInt(form.occurrences, 10) || 12,
+      accountId: account.id,
+    });
+  };
+
+  return (
+    <div className="modal-overlay" onClick={() => { if (!saving) onClose(); }}>
+      <SavingScope active={saving}>
+        <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 560 }}>
+          <h2 style={{ fontSize: 'var(--font-size-xl)', fontWeight: 700, marginBottom: '0.35rem' }}>
+            Adicionar compra
+          </h2>
+          <p style={{ color: 'var(--text-muted)', fontSize: 'var(--font-size-sm)', marginBottom: '1rem' }}>
+            {account.name} {account.isManual ? '· Manual' : ''}
+          </p>
+          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            <ExpenseFormFields
+              description={form.description}
+              setDescription={setField('description')}
+              amount={form.amount}
+              setAmount={setField('amount')}
+              category={form.category}
+              setCategory={setField('category')}
+              date={form.date}
+              setDate={setField('date')}
+              isRecurring={form.isRecurring}
+              setIsRecurring={setField('isRecurring')}
+              isContinuous={form.isContinuous}
+              setIsContinuous={setField('isContinuous')}
+              frequency={form.frequency}
+              setFrequency={setField('frequency')}
+              occurrences={form.occurrences}
+              setOccurrences={setField('occurrences')}
+            />
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
+              <Button variant="outline" type="button" onClick={onClose} disabled={saving}>Cancelar</Button>
+              <Button type="submit" loading={saving}>Salvar compra</Button>
+            </div>
+          </form>
+        </div>
+      </SavingScope>
+    </div>
+  );
 }
 
 export function ManualExpenses() {
@@ -387,16 +467,18 @@ export function ManualExpenses() {
     if (!sample) return;
     setEditingAmount(null);
     setEditingId(sample.id);
+    const isRecurring = Boolean(group.isRecurring || group.installmentsCount > 1);
+    const isContinuous = Boolean(group.isContinuous);
     setForm({
       description: group.description || '',
-      amount: String(Math.abs(Number(sample.amount) || 0)),
+      amount: String(totalFromStoredInstallments(group.allInstallments, { isRecurring, isContinuous })),
       category: group.category || 'Other',
       date: String(group.date || '').slice(0, 10),
-      isRecurring: Boolean(group.isRecurring || group.installmentsCount > 1),
-      isContinuous: Boolean(group.isContinuous),
+      isRecurring,
+      isContinuous,
       frequency: 'monthly',
       occurrences: String(
-        group.isContinuous ? 24 : Math.max(group.installmentsCount, 1)
+        isContinuous ? 24 : Math.max(group.installmentsCount, 1)
       ),
       accountId: sample.accountId || 'manual',
     });

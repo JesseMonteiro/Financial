@@ -8,6 +8,7 @@ import {
   deleteStoredManualTransactions,
 } from '../services/storage';
 import { CACHE_TTL_MS, isFreshTimestamp } from '../services/clientCache';
+import { splitManualTotal } from '../utils/manualAccounts';
 
 function addPending(pending, ids) {
   const next = { ...pending };
@@ -119,6 +120,11 @@ export const useTransactionStore = create((set, get) => ({
     const parentId = crypto.randomUUID();
     const userId = await getCurrentUserId();
 
+    const amounts = splitManualTotal(txData.amount, {
+      isRecurring,
+      isContinuous,
+      occurrences,
+    });
     const newTxs = [];
     for (let i = 0; i < occurrences; i++) {
       const txDate = new Date(baseDate);
@@ -131,7 +137,7 @@ export const useTransactionStore = create((set, get) => ({
           txDate.setMonth(baseDate.getMonth() + i);
         }
       }
-      newTxs.push(buildManualTx(txData, {
+      newTxs.push(buildManualTx({ ...txData, amount: amounts[i] }, {
         id: crypto.randomUUID(),
         txDate,
         parentId,
@@ -256,7 +262,7 @@ export const useTransactionStore = create((set, get) => ({
    * @param {string} id - any installment id in the group (or the single expense id)
    * @param {{
    *   description: string,
-   *   amount: number,
+   *   amount: number,  // valor total; parcelada (>1) é dividido entre as ocorrências
    *   category?: string,
    *   date: Date|string,
    *   isRecurring?: boolean,
@@ -294,7 +300,11 @@ export const useTransactionStore = create((set, get) => ({
         : 1;
     const baseDate = new Date(txData.date || new Date());
     const parentId = crypto.randomUUID();
-    const amount = -Math.abs(parseFloat(txData.amount));
+    const amounts = splitManualTotal(txData.amount, {
+      isRecurring,
+      isContinuous,
+      occurrences,
+    });
     const description = String(txData.description || '').trim();
     const category = txData.category || 'Other';
     const frequency = txData.frequency || 'monthly';
@@ -323,7 +333,7 @@ export const useTransactionStore = create((set, get) => ({
         id: crypto.randomUUID(),
         description: `${description}${suffix}`,
         originalDescription: description,
-        amount,
+        amount: -Math.abs(amounts[i] || 0),
         category,
         date: txDate.toISOString(),
         type: 'DEBIT',
