@@ -26,6 +26,7 @@ import { translateCategory } from '../utils/categories';
 import { getCategoryColor } from '../utils/colors';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell } from 'recharts';
 import { AccountIcon } from '../components/AccountIcon';
+import { CreditCardFace } from '../components/CreditCardFace';
 import { IconPicker } from '../components/IconPicker';
 import {
   buildCreditCardBills,
@@ -332,9 +333,9 @@ export function CreditCards() {
 
       {isPageLoading ? (
         <>
-          <div style={{ display: 'flex', gap: '0.75rem', overflow: 'hidden' }}>
+          <div style={{ display: 'flex', gap: '0.85rem', overflow: 'hidden' }}>
             {[1, 2, 3].map((i) => (
-              <Skeleton key={i} width={200} height={64} borderRadius="var(--radius-md)" />
+              <Skeleton key={i} width={188} height={118} borderRadius="12px" />
             ))}
           </div>
           <PageLoadingSkeleton
@@ -350,29 +351,22 @@ export function CreditCards() {
 
       {/* Credit Card Selector Tabs */}
       {creditCards.length > 0 && (
-        <div className="chip-scroll">
+        <div className="chip-scroll credit-card-strip">
           <div
+            className="credit-card-all-chip"
             onClick={() => setSelectedCardId('all')}
             style={{
-              padding: '0.75rem 1.25rem',
-              borderRadius: 'var(--radius-md)',
-              cursor: 'pointer',
               border: selectedCardId === 'all' ? '2px solid var(--primary)' : '1px solid var(--border-color)',
               backgroundColor: selectedCardId === 'all' ? 'var(--primary-light)' : 'var(--bg-tertiary)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.75rem',
-              transition: 'all 0.2s ease',
-              flexShrink: 0
             }}
           >
             <CreditCardIcon size={20} style={{ color: selectedCardId === 'all' ? 'var(--primary)' : 'var(--text-muted)' }} />
             <div>
               <span style={{ fontSize: 'var(--font-size-xs)', fontWeight: 700, display: 'block', color: selectedCardId === 'all' ? 'var(--primary)' : 'var(--text-primary)' }}>
-                Todos os Cartões (Consolidado)
+                Todos os Cartões
               </span>
               <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                {creditCards.length} cartões • Total: {formatCurrency(totalDebtAllCards)}
+                {creditCards.length} cartões • {formatCurrency(totalDebtAllCards)}
               </span>
             </div>
           </div>
@@ -382,40 +376,15 @@ export function CreditCards() {
             const openBill = openTotalByCardId[card.id];
             const debtLabel = openBill != null ? openBill : Math.abs(card.balance || 0);
             return (
-              <div
+              <CreditCardFace
                 key={card.id}
+                account={card}
+                lastFour={card.number || '****'}
+                amountLabel={formatCurrency(debtLabel)}
+                selected={isSelected}
                 onClick={() => setSelectedCardId(card.id)}
-                style={{
-                  padding: '0.75rem 1.25rem',
-                  borderRadius: 'var(--radius-md)',
-                  cursor: 'pointer',
-                  border: isSelected ? '2px solid var(--primary)' : '1px solid var(--border-color)',
-                  backgroundColor: isSelected ? 'var(--primary-light)' : 'var(--bg-tertiary)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.75rem',
-                  transition: 'all 0.2s ease',
-                  flexShrink: 0
-                }}
-              >
-                <AccountIcon
-                  account={card}
-                  size={28}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setIconAccount(card);
-                  }}
-                  title="Alterar ícone"
-                />
-                <div>
-                  <span style={{ fontSize: 'var(--font-size-xs)', fontWeight: 700, display: 'block', color: isSelected ? 'var(--primary)' : 'var(--text-primary)' }}>
-                    {card.name}{card.isManual ? ' · Manual' : ''}
-                  </span>
-                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                    Final {card.number || '****'} • Fatura: {formatCurrency(debtLabel)}
-                  </span>
-                </div>
-              </div>
+                onEdit={() => setIconAccount(card)}
+              />
             );
           })}
         </div>
