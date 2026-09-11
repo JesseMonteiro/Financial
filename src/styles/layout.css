@@ -146,11 +146,25 @@ body {
   flex: 0 0 0.5rem;
 }
 
+.credit-card-carousel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
 .credit-card-strip {
   align-items: stretch;
   padding-top: 8px;
   padding-bottom: 12px;
   gap: 0.85rem;
+}
+
+.credit-card-slide {
+  flex: 0 0 auto;
+}
+
+.credit-card-dots {
+  display: none;
 }
 
 .credit-card-all-chip {
@@ -370,16 +384,274 @@ body {
   opacity: 1;
 }
 
+.credit-bill-strip {
+  padding: 0.75rem 0.25rem;
+}
+
+.credit-bill-chip {
+  min-width: 185px;
+  flex-shrink: 0;
+  padding: 1rem;
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  border: 1.5px solid var(--border-color);
+  background: var(--bg-tertiary);
+  box-shadow: var(--shadow-sm);
+  transition: border-color 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.credit-bill-chip.is-open {
+  border-color: var(--warning);
+}
+
+.credit-bill-chip.is-future {
+  border-color: var(--info);
+}
+
+.credit-bill-chip.is-paid {
+  border-color: var(--success);
+}
+
+.credit-bill-chip.is-selected {
+  border: 2px solid var(--primary);
+  background: var(--primary-light);
+  box-shadow: var(--shadow-glow);
+  transform: translateY(-3px);
+}
+
+.credit-bill-chip__title {
+  margin-bottom: 0.4rem;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+.credit-bill-chip.is-selected .credit-bill-chip__title {
+  color: var(--primary);
+}
+
+.credit-bill-chip__amount-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  display: block;
+}
+
+.credit-bill-chip__amount {
+  font-size: var(--font-size-base);
+  font-weight: 800;
+  color: var(--text-primary);
+  margin: 2px 0;
+}
+
+.credit-bill-chip.is-selected .credit-bill-chip__amount {
+  color: var(--primary);
+}
+
+.credit-bill-chip__meta {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.credit-bill-chip__body {
+  margin-top: 0.6rem;
+}
+
+.credit-kpi-compact {
+  display: none;
+}
+
+.credit-bill-current {
+  display: none;
+}
+
 @media (max-width: 768px) {
-  .credit-card-face,
-  .credit-card-all-chip {
-    width: 160px;
+  .credit-card-strip {
+    scroll-snap-type: x mandatory;
+    padding-inline: 9%;
+    padding-top: 4px;
+    padding-bottom: 8px;
+    gap: 0.7rem;
+    scrollbar-width: none;
+    overscroll-behavior-x: contain;
+    touch-action: pan-x;
   }
-  .credit-card-all-chip {
-    min-height: 101px;
+
+  .credit-card-strip::-webkit-scrollbar {
+    display: none;
   }
+
+  .credit-card-strip.chip-scroll::after,
+  .credit-bill-strip.chip-scroll::after {
+    display: none;
+  }
+
+  .credit-card-slide {
+    flex: 0 0 82%;
+    scroll-snap-align: center;
+    scroll-snap-stop: always;
+    display: flex;
+  }
+
+  .credit-card-slide .credit-card-face__last,
+  .credit-card-slide .credit-card-face__amount {
+    font-size: 13px;
+  }
+
+  .credit-card-slide .credit-card-face,
+  .credit-card-slide .credit-card-all-chip {
+    width: 100%;
+  }
+
+  .credit-card-slide .credit-card-all-chip {
+    aspect-ratio: 1.586 / 1;
+    min-height: 0;
+    height: auto;
+  }
+
+  .credit-card-face.is-selected {
+    transform: none;
+  }
+
+  .credit-card-face:hover,
+  .credit-card-all-chip:hover {
+    transform: none;
+  }
+
   .credit-card-face__edit {
     opacity: 1;
+  }
+
+  .credit-card-dots {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .credit-card-dots button {
+    width: 7px;
+    height: 7px;
+    padding: 0;
+    border: none;
+    border-radius: 99px;
+    background: var(--border-color);
+    cursor: pointer;
+    transition: width 0.15s ease, background-color 0.15s ease;
+  }
+
+  .credit-card-dots button.is-active {
+    width: 16px;
+    background: var(--primary);
+  }
+
+  .credit-kpi-compact {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1px;
+    background: var(--border-color);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+  }
+
+  .credit-kpi-cell {
+    background: var(--bg-secondary);
+    padding: 0.7rem 0.8rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    min-width: 0;
+    border-left: 3px solid transparent;
+  }
+
+  .credit-kpi-cell--open {
+    border-left-color: var(--warning);
+  }
+
+  .credit-kpi-cell--paid {
+    border-left-color: var(--success);
+  }
+
+  .credit-kpi-cell--debt {
+    border-left-color: var(--danger);
+  }
+
+  .credit-kpi-cell--limit {
+    border-left-color: var(--info);
+  }
+
+  .credit-kpi-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+
+  .credit-kpi-value {
+    font-size: var(--font-size-base);
+    font-weight: 800;
+    color: var(--text-primary);
+    line-height: 1.25;
+  }
+
+  .credit-kpi-cell--paid .credit-kpi-value {
+    color: var(--success);
+  }
+
+  .credit-kpi-cell--debt .credit-kpi-value {
+    color: var(--danger);
+  }
+
+  .credit-kpi-cell--limit .credit-kpi-value {
+    color: var(--success);
+  }
+
+  .credit-kpi-meta {
+    font-size: 10px;
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .credit-bill-selector.surface {
+    padding: 0;
+    background: transparent;
+    border: none;
+    box-shadow: none;
+  }
+
+  .credit-bill-current {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 0.5rem;
+  }
+
+  .credit-bill-strip {
+    scroll-snap-type: x mandatory;
+    padding: 0.25rem 12% 0.5rem;
+    gap: 0.7rem;
+    scrollbar-width: none;
+    overscroll-behavior-x: contain;
+    touch-action: pan-x;
+  }
+
+  .credit-bill-strip::-webkit-scrollbar {
+    display: none;
+  }
+
+  .credit-bill-chip {
+    flex: 0 0 76%;
+    min-width: 0;
+    scroll-snap-align: center;
+    scroll-snap-stop: always;
+    transform: none;
+    padding: 0.85rem 1rem;
+  }
+
+  .credit-bill-chip.is-selected {
+    transform: none;
   }
 }
 

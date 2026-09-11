@@ -27,6 +27,7 @@ import { getCategoryColor } from '../utils/colors';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell } from 'recharts';
 import { AccountIcon } from '../components/AccountIcon';
 import { CreditCardFace } from '../components/CreditCardFace';
+import { useIsMobile } from '../hooks/useMediaQuery';
 import {
   buildCreditCardBills,
   summarizeCardOpenBill,
@@ -43,6 +44,36 @@ import {
 function purchaseTimestamp(tx) {
   const timestamp = new Date(resolvePurchaseDate(tx)).getTime();
   return Number.isFinite(timestamp) ? timestamp : Number.NEGATIVE_INFINITY;
+}
+
+function centerChild(container, child, behavior = 'smooth') {
+  if (!container || !child) return false;
+  const cRect = container.getBoundingClientRect();
+  const eRect = child.getBoundingClientRect();
+  const delta = (eRect.left + eRect.width / 2) - (cRect.left + cRect.width / 2);
+  if (Math.abs(delta) < 6) return false;
+  container.scrollTo({ left: container.scrollLeft + delta, behavior });
+  return true;
+}
+
+function nearestAttr(container, attr) {
+  const cRect = container.getBoundingClientRect();
+  const center = cRect.left + cRect.width / 2;
+  let best = null;
+  let bestDist = Infinity;
+  for (const el of container.querySelectorAll(`[${attr}]`)) {
+    const rect = el.getBoundingClientRect();
+    const dist = Math.abs(rect.left + rect.width / 2 - center);
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = el.getAttribute(attr);
+    }
+  }
+  return best;
+}
+
+function attrSelector(attr, value) {
+  return `[${attr}="${CSS.escape(String(value))}"]`;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -67,8 +98,14 @@ export function CreditCards() {
 
   // Multi-card selection state ('all' or specific card.id)
   const [selectedCardId, setSelectedCardId] = useState('all');
+  const isMobile = useIsMobile();
 
   const timelineRef = useRef(null);
+  const cardStripRef = useRef(null);
+  const ignoreCardScrollRef = useRef(false);
+  const ignoreBillScrollRef = useRef(false);
+  const selectedCardIdRef = useRef(selectedCardId);
+  selectedCardIdRef.current = selectedCardId;
 
   // ── Accounts & Receivables ──────────────────────────────────────────────────
   useEffect(() => { loadAccounts(); loadReceivables(); }, []);
@@ -182,37 +219,101 @@ export function CreditCards() {
   }, [currentOpenKey, selectedBillKey]);
 
   const activeSelectedKey = selectedBillKey || currentOpenKey;
+  const activeSelectedKeyRef = useRef(activeSelectedKey);
+  activeSelectedKeyRef.current = activeSelectedKey;
+
+  const selectBill = (key) => {
+    if (!key || key === activeSelectedKeyRef.current) return;
+    setSelectedBillKey(key);
+    setSearch('');
+    setSelectedCategory('all');
+  };
 
   // Scroll selected bill into view on load or when selected key changes
   useEffect(() => {
     if (timelineRef.current && activeSelectedKey && !loadingData) {
-      // Wait slightly for DOM to settle
+      let releaseTimer;
       const timer = setTimeout(() => {
         const container = timelineRef.current;
-        const selectedEl = container.querySelector(`[data-bill-key="${activeSelectedKey}"]`);
-        if (selectedEl) {
-          const containerWidth = container.clientWidth;
-          const elementLeft = selectedEl.offsetLeft;
-          const elementWidth = selectedEl.clientWidth;
-          container.scrollTo({
-            left: elementLeft - (containerWidth / 2) + (elementWidth / 2),
-            behavior: 'smooth'
-          });
-        }
+        const selectedEl = container?.querySelector(attrSelector('data-bill-key', activeSelectedKey));
+        if (!selectedEl) return;
+        ignoreBillScrollRef.current = true;
+        const moved = centerChild(container, selectedEl);
+        releaseTimer = window.setTimeout(() => { ignoreBillScrollRef.current = false; }, moved ? 500 : 80);
       }, 100);
-      return () => clearTimeout(timer);
+      return () => {
+        clearTimeout(timer);
+        clearTimeout(releaseTimer);
+        ignoreBillScrollRef.current = false;
+      };
     }
   }, [activeSelectedKey, loadingData]);
+
+  useEffect(() => {
+    if (!isMobile || isPageLoading || !cardStripRef.current) return undefined;
+    let releaseTimer;
+    const timer = setTimeout(() => {
+      const container = cardStripRef.current;
+      const selectedEl = container?.querySelector(attrSelector('data-card-id', selectedCardId));
+      if (!selectedEl) return;
+      ignoreCardScrollRef.current = true;
+      const moved = centerChild(container, selectedEl);
+      releaseTimer = window.setTimeout(() => { ignoreCardScrollRef.current = false; }, moved ? 500 : 80);
+    }, 80);
+    return () => {
+      clearTimeout(timer);
+      clearTimeout(releaseTimer);
+      ignoreCardScrollRef.current = false;
+    };
+  }, [selectedCardId, isMobile, isPageLoading]);
+
+  useEffect(() => {
+    if (!isMobile) return undefined;
+    const cardStrip = cardStripRef.current;
+    const billStrip = timelineRef.current;
+    const listeners = [];
+
+    const bind = (container, attr, ignoreRef, onSelect) => {
+      if (!container) return;
+      let debounce;
+      const pick = () => {
+        if (ignoreRef.current) return;
+        const id = nearestAttr(container, attr);
+        if (id) onSelect(id);
+      };
+      const onScroll = () => {
+        clearTimeout(debounce);
+        debounce = window.setTimeout(pick, 90);
+      };
+      container.addEventListener('scroll', onScroll, { passive: true });
+      container.addEventListener('scrollend', pick);
+      listeners.push(() => {
+        clearTimeout(debounce);
+        container.removeEventListener('scroll', onScroll);
+        container.removeEventListener('scrollend', pick);
+      });
+    };
+
+    bind(cardStrip, 'data-card-id', ignoreCardScrollRef, (id) => {
+      if (id === selectedCardIdRef.current) return;
+      setSelectedCardId(id);
+    });
+    bind(billStrip, 'data-bill-key', ignoreBillScrollRef, (id) => {
+      selectBill(id);
+    });
+
+    return () => listeners.forEach((off) => off());
+  }, [isMobile, isPageLoading, creditCards.length, sortedBillKeys.length]);
 
   // Navigation
   const activeIndex = sortedBillKeys.indexOf(activeSelectedKey);
   const handlePrev = () => {
-    if (activeIndex > 0) { setSelectedBillKey(sortedBillKeys[activeIndex - 1]); setSearch(''); setSelectedCategory('all'); }
+    if (activeIndex > 0) selectBill(sortedBillKeys[activeIndex - 1]);
   };
   const handleNext = () => {
-    if (activeIndex >= 0 && activeIndex < sortedBillKeys.length - 1) { setSelectedBillKey(sortedBillKeys[activeIndex + 1]); setSearch(''); setSelectedCategory('all'); }
+    if (activeIndex >= 0 && activeIndex < sortedBillKeys.length - 1) selectBill(sortedBillKeys[activeIndex + 1]);
   };
-  const handleGoToCurrent = () => { setSelectedBillKey(currentOpenKey); setSearch(''); setSelectedCategory('all'); };
+  const handleGoToCurrent = () => { selectBill(currentOpenKey); };
 
   // KPIs
   const currentOpenBill = billsData[currentOpenKey];
@@ -307,7 +408,7 @@ export function CreditCards() {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: isMobile ? 'var(--space-4)' : 'var(--space-6)' }}>
 
       {/* Page Header */}
       <div>
@@ -346,49 +447,111 @@ export function CreditCards() {
       ) : (
       <>
 
-      {/* Credit Card Selector Tabs */}
+      {/* Credit Card Selector */}
       {creditCards.length > 0 && (
-        <div className="chip-scroll credit-card-strip">
-          <div
-            className="credit-card-all-chip"
-            onClick={() => setSelectedCardId('all')}
-            style={{
-              border: selectedCardId === 'all' ? '2px solid var(--primary)' : '1px solid var(--border-color)',
-              backgroundColor: selectedCardId === 'all' ? 'var(--primary-light)' : 'var(--bg-tertiary)',
-            }}
-          >
-            <CreditCardIcon size={20} style={{ color: selectedCardId === 'all' ? 'var(--primary)' : 'var(--text-muted)' }} />
-            <div>
-              <span style={{ fontSize: 'var(--font-size-xs)', fontWeight: 700, display: 'block', color: selectedCardId === 'all' ? 'var(--primary)' : 'var(--text-primary)' }}>
-                Todos os Cartões
-              </span>
-              <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                {creditCards.length} cartões • {formatCurrency(totalDebtAllCards)}
-              </span>
+        <div className="credit-card-carousel">
+          <div ref={cardStripRef} className="chip-scroll credit-card-strip">
+            <div className="credit-card-slide" data-card-id="all">
+              <div
+                className="credit-card-all-chip"
+                role="button"
+                tabIndex={0}
+                onClick={() => setSelectedCardId('all')}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setSelectedCardId('all');
+                  }
+                }}
+                style={{
+                  border: selectedCardId === 'all' ? '2px solid var(--primary)' : '1px solid var(--border-color)',
+                  backgroundColor: selectedCardId === 'all' ? 'var(--primary-light)' : 'var(--bg-tertiary)',
+                }}
+              >
+                <CreditCardIcon size={20} style={{ color: selectedCardId === 'all' ? 'var(--primary)' : 'var(--text-muted)' }} />
+                <div>
+                  <span style={{ fontSize: 'var(--font-size-xs)', fontWeight: 700, display: 'block', color: selectedCardId === 'all' ? 'var(--primary)' : 'var(--text-primary)' }}>
+                    Todos os Cartões
+                  </span>
+                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                    {creditCards.length} cartões • {formatCurrency(totalDebtAllCards)}
+                  </span>
+                </div>
+              </div>
             </div>
-          </div>
 
-          {creditCardsByOpenBill.map(card => {
-            const isSelected = selectedCardId === card.id;
-            const openBill = openTotalByCardId[card.id];
-            const debtLabel = openBill != null ? openBill : Math.abs(card.balance || 0);
-            return (
-              <CreditCardFace
-                key={card.id}
-                account={card}
-                lastFour={card.number || '****'}
-                amountLabel={formatCurrency(debtLabel)}
-                selected={isSelected}
-                uploading={Boolean(pending[card.id])}
-                onClick={() => setSelectedCardId(card.id)}
-                onUpload={(file) => setCardFace(card.id, file)}
+            {creditCardsByOpenBill.map(card => {
+              const isSelected = selectedCardId === card.id;
+              const openBill = openTotalByCardId[card.id];
+              const debtLabel = openBill != null ? openBill : Math.abs(card.balance || 0);
+              return (
+                <div className="credit-card-slide" data-card-id={card.id} key={card.id}>
+                  <CreditCardFace
+                    account={card}
+                    lastFour={card.number || '****'}
+                    amountLabel={formatCurrency(debtLabel)}
+                    selected={isSelected}
+                    uploading={Boolean(pending[card.id])}
+                    onClick={() => setSelectedCardId(card.id)}
+                    onUpload={(file) => setCardFace(card.id, file)}
+                  />
+                </div>
+              );
+            })}
+          </div>
+          {isMobile && (
+            <div className="credit-card-dots" role="tablist" aria-label="Cartões">
+              <button
+                type="button"
+                className={selectedCardId === 'all' ? 'is-active' : ''}
+                aria-label="Todos os cartões"
+                onClick={() => setSelectedCardId('all')}
               />
-            );
-          })}
+              {creditCardsByOpenBill.map((card) => (
+                <button
+                  key={card.id}
+                  type="button"
+                  className={selectedCardId === card.id ? 'is-active' : ''}
+                  aria-label={card.name || 'Cartão'}
+                  onClick={() => setSelectedCardId(card.id)}
+                />
+              ))}
+            </div>
+          )}
         </div>
       )}
 
       {/* ── KPI Row ── */}
+      {isMobile ? (
+        <div className="credit-kpi-compact">
+          <div className="credit-kpi-cell credit-kpi-cell--open">
+            <span className="credit-kpi-label">Fatura em aberto</span>
+            <span className="credit-kpi-value">{formatCurrency(currentOpenTotal)}</span>
+            <span className="credit-kpi-meta">
+              Vence {formatDueMonthShort(currentOpenKey, currentOpenBill?.dueDate)}
+            </span>
+          </div>
+          <div className="credit-kpi-cell credit-kpi-cell--paid">
+            <span className="credit-kpi-label">Última paga</span>
+            <span className="credit-kpi-value">{formatCurrency(lastPaidBill?.total || 0)}</span>
+            <span className="credit-kpi-meta">
+              {lastPaidBill ? formatDueMonthTitle(lastPaidKey) : '—'}
+            </span>
+          </div>
+          <div className="credit-kpi-cell credit-kpi-cell--debt">
+            <span className="credit-kpi-label">Saldo devedor</span>
+            <span className="credit-kpi-value">{formatCurrency(totalDebt)}</span>
+            <span className="credit-kpi-meta">
+              {selectedCardId === 'all' ? 'Soma consolidada' : 'Neste cartão'}
+            </span>
+          </div>
+          <div className="credit-kpi-cell credit-kpi-cell--limit">
+            <span className="credit-kpi-label">Limite disponível</span>
+            <span className="credit-kpi-value">{formatCurrency(availableLimit)}</span>
+            <span className="credit-kpi-meta">{100 - pctUsed}% livre</span>
+          </div>
+        </div>
+      ) : (
       <div className="dashboard-grid">
         <Card className="col-3" style={{ borderLeft: '4px solid var(--warning)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -450,12 +613,14 @@ export function CreditCards() {
           </span>
         </Card>
       </div>
+      )}
 
       {/* ── Bill Selector ── */}
       <Card
-        title="Seletor de Faturas"
-        subtitle={selectedCardId === 'all' ? "Valores consolidados (soma) de todas as faturas históricas, fatura aberta e projeções" : "Faturas históricas (oficiais), fatura em aberto e projeções de parcelas futuras"}
-        action={
+        className="credit-bill-selector"
+        title={isMobile ? undefined : 'Seletor de Faturas'}
+        subtitle={isMobile ? undefined : (selectedCardId === 'all' ? "Valores consolidados (soma) de todas as faturas históricas, fatura aberta e projeções" : "Faturas históricas (oficiais), fatura em aberto e projeções de parcelas futuras")}
+        action={isMobile ? undefined : (
           <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
             <Button size="sm" variant="outline" onClick={handlePrev} disabled={activeIndex <= 0}>
               <ChevronLeft size={15} /> Anterior
@@ -467,57 +632,56 @@ export function CreditCards() {
               Próxima <ChevronRight size={15} />
             </Button>
           </div>
-        }
+        )}
       >
+        {isMobile && activeSelectedKey && currentOpenKey && activeSelectedKey !== currentOpenKey && (
+          <div className="credit-bill-current">
+            <Button size="sm" variant="secondary" onClick={handleGoToCurrent}>
+              Fatura atual
+            </Button>
+          </div>
+        )}
         <div
           ref={timelineRef}
-          className="chip-scroll"
-          style={{ padding: '0.75rem 0.25rem' }}
+          className="chip-scroll credit-bill-strip"
         >
           {sortedBillKeys.map(k => {
             const bill = billsData[k];
             const isSelected = k === activeSelectedKey;
-            const badge = billBadge(bill, k);
+            const badge = billBadge(bill);
             const displayAmount = bill?.total || 0;
 
             const title = formatDueMonthTitle(k);
             const dueStr = formatDueMonthShort(k, bill?.dueDate);
 
-            let borderColor = 'var(--border-color)';
-            if (bill?.type === 'CURRENT_OPEN') borderColor = 'var(--warning)';
-            else if (bill?.type === 'FUTURE') borderColor = 'var(--info)';
-            else if (bill?.isPaid) borderColor = 'var(--success)';
+            const typeClass =
+              bill?.type === 'CURRENT_OPEN' ? 'is-open' :
+              bill?.type === 'FUTURE' ? 'is-future' :
+              bill?.isPaid ? 'is-paid' : '';
 
             return (
               <div
                 key={k}
+                role="button"
+                tabIndex={0}
                 data-bill-key={k}
-                onClick={() => { setSelectedBillKey(k); setSearch(''); setSelectedCategory('all'); }}
-                style={{
-                  minWidth: 185,
-                  flexShrink: 0,
-                  padding: '1rem',
-                  borderRadius: 'var(--radius-lg)',
-                  cursor: 'pointer',
-                  border: isSelected ? `2px solid var(--primary)` : `1.5px solid ${borderColor}`,
-                  backgroundColor: isSelected ? 'var(--primary-light)' : 'var(--bg-tertiary)',
-                  boxShadow: isSelected ? 'var(--shadow-glow)' : 'var(--shadow-sm)',
-                  transition: 'all 0.2s ease',
-                  transform: isSelected ? 'translateY(-3px)' : 'none'
+                className={`credit-bill-chip ${typeClass} ${isSelected ? 'is-selected' : ''}`.trim()}
+                onClick={() => selectBill(k)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    selectBill(k);
+                  }
                 }}
               >
-                <div style={{ marginBottom: '0.4rem' }}>
-                  <span style={{ fontSize: '11px', fontWeight: 700, color: isSelected ? 'var(--primary)' : 'var(--text-secondary)' }}>
-                    {title}
-                  </span>
-                </div>
+                <div className="credit-bill-chip__title">{title}</div>
                 <Badge variant={badge.variant}>{badge.text}</Badge>
-                <div style={{ marginTop: '0.6rem' }}>
-                  <span style={{ fontSize: '10px', color: 'var(--text-muted)', display: 'block' }}>VALOR CONSOLIDADO</span>
-                  <h4 style={{ fontSize: 'var(--font-size-base)', fontWeight: 800, color: isSelected ? 'var(--primary)' : 'var(--text-primary)', margin: '2px 0' }}>
+                <div className="credit-bill-chip__body">
+                  <span className="credit-bill-chip__amount-label">VALOR CONSOLIDADO</span>
+                  <h4 className="credit-bill-chip__amount">
                     {formatCurrency(displayAmount)}
                   </h4>
-                  <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+                  <span className="credit-bill-chip__meta">
                     Vence {dueStr} • {bill?.items?.length || 0} itens
                   </span>
                 </div>
