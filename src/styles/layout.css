@@ -416,6 +416,26 @@ body {
   color: #1a1a1a;
 }
 
+.credit-card-face__owner {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 2;
+  max-width: calc(100% - 88px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  line-height: 1.2;
+  padding: 0.22rem 0.5rem;
+  border-radius: 99px;
+  background: rgba(0, 0, 0, 0.62);
+  color: #fff;
+  text-shadow: none;
+}
+
 .credit-bill-strip {
   padding: 0.75rem 0.25rem;
 }

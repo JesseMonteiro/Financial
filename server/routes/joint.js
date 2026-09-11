@@ -144,23 +144,41 @@ async function loadMemberInvestmentsBundle(profile) {
 
 async function signIconOverlays(supabase, overlays) {
   const next = {};
-  await Promise.all(Object.entries(overlays || {}).map(async ([id, value]) => {
+  await Promise.all(Object.entries(asIconMap(overlays)).map(async ([id, value]) => {
     const overlay = value && typeof value === 'object' ? { ...value } : {};
     if (overlay.path) {
-      const { data } = await supabase.storage
+      const { data, error } = await supabase.storage
         .from(ICON_BUCKET)
         .createSignedUrl(overlay.path, ICON_SIGNED_TTL_SEC);
+      if (error) console.warn('[Joint] icon sign', id, error.message);
       overlay.url = data?.signedUrl || overlay.url || null;
     }
-    if (overlay.facePath) {
-      const { data } = await supabase.storage
-        .from(ICON_BUCKET)
-        .createSignedUrl(overlay.facePath, ICON_SIGNED_TTL_SEC);
-      overlay.faceUrl = data?.signedUrl || overlay.faceUrl || null;
+    const facePath = overlay.facePath || overlay.face_path;
+    if (facePath) {
+      overlay.facePath = facePath;
+      if (/^https?:/i.test(facePath)) {
+        overlay.faceUrl = facePath;
+      } else {
+        const { data, error } = await supabase.storage
+          .from(ICON_BUCKET)
+          .createSignedUrl(facePath, ICON_SIGNED_TTL_SEC);
+        if (error) console.warn('[Joint] face sign', id, error.message);
+        overlay.faceUrl = data?.signedUrl || overlay.faceUrl || null;
+      }
     }
     next[id] = overlay;
   }));
   return next;
+}
+
+function asIconMap(value) {
+  if (!value) return {};
+  let parsed = value;
+  if (typeof value === 'string') {
+    try { parsed = JSON.parse(value); } catch { return {}; }
+  }
+  if (typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+  return parsed;
 }
 
 function tagOwner(list, ownerUserId, ownerLabel) {
@@ -344,9 +362,7 @@ router.get('/moment-data', checkAuth, async (req, res) => {
       const profile = profileById[id];
       iconsByUser[id] = await signIconOverlays(
         service,
-        profile?.custom_account_icons && typeof profile.custom_account_icons === 'object'
-          ? profile.custom_account_icons
-          : {}
+        asIconMap(profile?.custom_account_icons)
       );
     }
 

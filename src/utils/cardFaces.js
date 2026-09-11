@@ -87,3 +87,19 @@ export function resolveCardFace(account) {
     cssBackground: `linear-gradient(145deg, ${color} 0%, ${darken(color)} 100%)`,
   };
 }
+
+export function mergeLocalCardFaces(accounts, localAccounts) {
+  if (!localAccounts?.length) return accounts || [];
+  const byId = new Map(localAccounts.map((a) => [a.id, a]));
+  return (accounts || []).map((acc) => {
+    const local = byId.get(acc.id);
+    if (!local) return acc;
+    return {
+      ...acc,
+      cardFaceUrl: acc.cardFaceUrl || local.cardFaceUrl || null,
+      cardFacePath: acc.cardFacePath || local.cardFacePath || null,
+      number: acc.number || local.number || '',
+      iconKey: acc.iconKey || local.iconKey,
+    };
+  });
+}

@@ -477,6 +477,19 @@ export async function getCustomAccountIcons() {
   return signIconOverlays(fromDb);
 }
 
+export async function signStoragePath(path) {
+  if (!path) return null;
+  if (/^https?:/i.test(path)) return path;
+  const { data, error } = await supabase.storage
+    .from(ICON_BUCKET)
+    .createSignedUrl(path, ICON_SIGNED_TTL_SEC);
+  if (error) {
+    console.warn('signStoragePath:', error.message);
+    return null;
+  }
+  return data?.signedUrl || null;
+}
+
 export async function saveCustomAccountIcons(icons) {
   const safe = icons && typeof icons === 'object' ? icons : {};
   const persisted = {};

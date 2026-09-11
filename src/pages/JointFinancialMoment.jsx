@@ -31,6 +31,8 @@ import {
 } from 'lucide-react';
 import { AccountIcon, accountById } from '../components/AccountIcon';
 import { MomentBillStrip } from '../components/MomentBillStrip';
+import { useAccountStore } from '../stores/accountStore';
+import { mergeLocalCardFaces } from '../utils/cardFaces';
 
 function toCamelManualFromApi(row) {
   return row;
@@ -60,6 +62,7 @@ export function JointFinancialMoment() {
     pending,
     error,
   } = useJointStore();
+  const { accounts: myAccounts, loadAccounts } = useAccountStore();
   const isMobile = useIsMobile();
 
   const [selectedMonth, setSelectedMonth] = useState('');
@@ -77,11 +80,16 @@ export function JointFinancialMoment() {
         await loadMomentData({ force: true }).catch(console.error);
       }
     })();
-  }, [loadStatus, loadMomentData]);
+    loadAccounts();
+  }, [loadStatus, loadMomentData, loadAccounts]);
 
   const creditCards = useMemo(
     () => (accounts || []).filter((a) => a.type === 'CREDIT'),
     [accounts]
+  );
+  const accountsForFaces = useMemo(
+    () => mergeLocalCardFaces(accounts, myAccounts),
+    [accounts, myAccounts]
   );
   const bankAccounts = useMemo(
     () => (accounts || []).filter((a) => a.type === 'BANK'),
@@ -465,7 +473,7 @@ export function JointFinancialMoment() {
         </p>
       ) : (
         <>
-          <MomentBillStrip bills={activeMonthData.activeBills} accounts={accounts} />
+          <MomentBillStrip bills={activeMonthData.activeBills} accounts={accountsForFaces} />
           <div className="moment-bill-total">
             <span>Total Faturas</span>
             <span style={{ color: 'var(--danger)' }}>{formatCurrency(activeMonthData.creditCardsTotal)}</span>

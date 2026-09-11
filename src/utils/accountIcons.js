@@ -322,6 +322,7 @@ export function resolveAccountIcon(account, ctx = {}) {
 export function decorateAccountWithIcon(account, ctx = {}) {
   const item = account?.itemId ? itemsMap(ctx.itemsById)[account.itemId] : null;
   const icon = resolveAccountIcon(account, ctx);
+  const overlay = iconOverlayFor(ctx.customIcons, account?.id);
   return {
     ...account,
     connectorName: account.connectorName || item?.connector?.name || account._connector || null,
@@ -331,8 +332,14 @@ export function decorateAccountWithIcon(account, ctx = {}) {
     iconKey: icon.key,
     iconSource: icon.source,
     iconColor: icon.color,
-    cardFaceUrl: ctx.customIcons?.[account?.id]?.faceUrl || null,
+    cardFaceUrl: overlay?.faceUrl || null,
+    cardFacePath: overlay?.facePath || overlay?.face_path || null,
   };
+}
+
+function iconOverlayFor(customIcons, accountId) {
+  if (!customIcons || accountId == null) return null;
+  return customIcons[accountId] || customIcons[String(accountId)] || null;
 }
 
 export function decorateAccountsWithIcons(accounts, ctx = {}) {

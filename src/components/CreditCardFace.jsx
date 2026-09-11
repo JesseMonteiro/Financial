@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Pencil } from 'lucide-react';
 import { AccountIcon } from './AccountIcon';
 import { resolveCardFace } from '../utils/cardFaces';
+import { signStoragePath } from '../services/supabaseStorage';
 
 const STATUS_LABEL = {
   paid: 'Paga',
@@ -20,16 +21,39 @@ export function CreditCardFace({
   onClick,
   onUpload,
   status,
+  ownerLabel,
 }) {
-  const face = resolveCardFace(account);
+  const [signedFaceUrl, setSignedFaceUrl] = useState(account?.cardFaceUrl || null);
+  const face = resolveCardFace({
+    ...account,
+    cardFaceUrl: account?.cardFaceUrl || signedFaceUrl || null,
+  });
   const [broken, setBroken] = useState(false);
   const [error, setError] = useState(null);
   const fileRef = useRef(null);
-  const showPhoto = Boolean(face.src) && !broken;
+  const waitingCustomFace = Boolean(account?.cardFacePath) && !account?.cardFaceUrl && !signedFaceUrl;
+  const showPhoto = Boolean(face.src) && !broken && !waitingCustomFace;
 
   useEffect(() => {
     setBroken(false);
   }, [face.src]);
+
+  useEffect(() => {
+    if (account?.cardFaceUrl) {
+      setSignedFaceUrl(account.cardFaceUrl);
+      return undefined;
+    }
+    const path = account?.cardFacePath;
+    if (!path) {
+      setSignedFaceUrl(null);
+      return undefined;
+    }
+    let cancelled = false;
+    signStoragePath(path).then((url) => {
+      if (!cancelled) setSignedFaceUrl(url);
+    });
+    return () => { cancelled = true; };
+  }, [account?.cardFaceUrl, account?.cardFacePath]);
 
   const openPicker = () => {
     if (uploading) return;
@@ -88,6 +112,9 @@ export function CreditCardFace({
         <span className={`credit-card-face__status is-${status}`}>
           {STATUS_LABEL[status]}
         </span>
+      )}
+      {ownerLabel && (
+        <span className="credit-card-face__owner">{ownerLabel}</span>
       )}
       {onUpload && (
         <>

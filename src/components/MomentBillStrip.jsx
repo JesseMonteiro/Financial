@@ -15,6 +15,7 @@ export function MomentBillStrip({ bills, accounts }) {
               lastFour={account?.number || '****'}
               amountLabel={formatCurrency(b.amount)}
               status={b.isPaid ? 'paid' : 'due'}
+              ownerLabel={b.ownerLabel || account?.ownerLabel}
             />
           </div>
         );
