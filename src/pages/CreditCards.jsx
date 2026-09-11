@@ -16,6 +16,7 @@ import { Badge } from '../components/ui/Badge';
 import { ProgressBar } from '../components/ui/ProgressBar';
 import { PageLoadingSkeleton, Skeleton, SkeletonList } from '../components/ui/Skeleton';
 import { useAccountStore } from '../stores/accountStore';
+import { useReceivableStore } from '../stores/receivableStore';
 import { useCreditDataStore } from '../stores/creditDataStore';
 import { formatCurrency, formatDate } from '../utils/formatters';
 import { translateCategory } from '../utils/categories';
