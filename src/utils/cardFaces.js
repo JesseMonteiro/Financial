@@ -1,11 +1,37 @@
 import { CATALOG_BY_ID, catalogEntryUrl, suggestIconKey } from './accountIcons';
 
-/** Front photos we validated as the physical card (not lifestyle crops). */
-const CARD_FACE_SRC = {
-  'santander-unique': '/card-faces/santander-unique.png',
+function publicFace(file) {
+  const base = import.meta.env.BASE_URL || '/';
+  const prefix = base.endsWith('/') ? base : `${base}/`;
+  return `${prefix}card-faces/${file}`;
+}
+
+/** Catalog id → file under public/card-faces/. Products fall back to parent bank file. */
+const CARD_FACE_FILE = {
+  'santander-unique': 'santander-unique.png',
+  'santander-sx': 'santander.png',
+  'santander-unlimited': 'santander.png',
+  santander: 'santander.png',
+  'nubank-ultravioleta': 'nubank-ultravioleta.png',
+  'nubank-rewards': 'nubank.png',
+  nubank: 'nubank.png',
+  'itau-personnalite': 'itau.png',
+  'itau-latam': 'itau.png',
+  'itau-click': 'itau.png',
+  itau: 'itau.png',
+  'inter-black': 'inter.png',
+  inter: 'inter.png',
+  'mercado-pago': 'mercado-pago.png',
+  amazon: 'amazon.png',
+  'porto-seguro': 'porto-seguro.png',
+  'c6-carbon': 'c6.png',
+  c6: 'c6.png',
+  'bradesco-elo': 'bradesco.png',
+  bradesco: 'bradesco.png',
+  picpay: 'picpay.png',
 };
 
-const DARK_TEXT_KEYS = new Set(['itau-click', 'itau', 'inter', 'amazon']);
+const DARK_TEXT_KEYS = new Set();
 
 function parseHex(hex) {
   const h = String(hex || '').replace('#', '');
@@ -29,19 +55,22 @@ function productShortLabel(entry, account) {
   return entry.label;
 }
 
+function faceFileFor(entry) {
+  if (!entry) return null;
+  return CARD_FACE_FILE[entry.id] || (entry.parent ? CARD_FACE_FILE[entry.parent] : null) || null;
+}
+
 /**
  * Resolve the physical-card face for the credit-cards strip.
- * Photos only for catalog *products* with a stored asset; banks get CSS plastic.
  */
 export function resolveCardFace(account) {
   const key = account?.iconKey || suggestIconKey({ ...account, type: 'CREDIT' });
   const entry = key ? CATALOG_BY_ID[key] : null;
   const parent = entry?.parent ? CATALOG_BY_ID[entry.parent] : null;
   const color = entry?.color || account?.iconColor || '#1a1a1a';
-  const src =
-    account?.iconSource === 'upload' || entry?.kind !== 'card'
-      ? null
-      : CARD_FACE_SRC[entry?.id] || null;
+  const file = faceFileFor(entry);
+  const catalogSrc = file ? publicFace(file) : null;
+  const src = account?.cardFaceUrl || catalogSrc || null;
   const logoTarget = parent || entry;
   return {
     key: entry?.id || null,

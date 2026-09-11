@@ -111,6 +111,12 @@ async function signIconOverlays(supabase, overlays) {
         .createSignedUrl(overlay.path, ICON_SIGNED_TTL_SEC);
       overlay.url = data?.signedUrl || overlay.url || null;
     }
+    if (overlay.facePath) {
+      const { data } = await supabase.storage
+        .from(ICON_BUCKET)
+        .createSignedUrl(overlay.facePath, ICON_SIGNED_TTL_SEC);
+      overlay.faceUrl = data?.signedUrl || overlay.faceUrl || null;
+    }
     next[id] = overlay;
   }));
   return next;

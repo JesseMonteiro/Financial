@@ -5,6 +5,7 @@ import {
   ICON_SIGNED_TTL_SEC,
   extFromImageFile,
   validateIconFile,
+  validateCardFaceFile,
 } from '../utils/accountIcons.js';
 
 export async function getCurrentUserId() {
@@ -438,6 +439,12 @@ async function signIconOverlays(overlays) {
         .createSignedUrl(overlay.path, ICON_SIGNED_TTL_SEC);
       overlay.url = data?.signedUrl || overlay.url || null;
     }
+    if (overlay.facePath) {
+      const { data } = await supabase.storage
+        .from(ICON_BUCKET)
+        .createSignedUrl(overlay.facePath, ICON_SIGNED_TTL_SEC);
+      overlay.faceUrl = data?.signedUrl || overlay.faceUrl || null;
+    }
     next[id] = overlay;
   }));
   return next;
@@ -478,6 +485,7 @@ export async function saveCustomAccountIcons(icons) {
     persisted[id] = {};
     if (value.key) persisted[id].key = value.key;
     if (value.path) persisted[id].path = value.path;
+    if (value.facePath) persisted[id].facePath = value.facePath;
   }
   persistLocalCustomAccountIcons(persisted);
 
@@ -509,6 +517,26 @@ export async function uploadAccountIconFile(accountId, file) {
   });
   if (error) {
     console.error('Error uploading account icon:', error);
+    throw error;
+  }
+  const { data } = await supabase.storage.from(ICON_BUCKET).createSignedUrl(path, ICON_SIGNED_TTL_SEC);
+  return { path, url: data?.signedUrl || null };
+}
+
+export async function uploadCardFaceFile(accountId, file) {
+  const invalid = validateCardFaceFile(file);
+  if (invalid) throw new Error(invalid);
+  const userId = await getCurrentUserId();
+  if (!userId) throw new Error('Faça login para enviar a foto do cartão.');
+  const ext = extFromImageFile(file);
+  const path = `${userId}/${accountId}-face.${ext}`;
+  const { error } = await supabase.storage.from(ICON_BUCKET).upload(path, file, {
+    upsert: true,
+    contentType: file.type || 'image/png',
+    cacheControl: '3600',
+  });
+  if (error) {
+    console.error('Error uploading card face:', error);
     throw error;
   }
   const { data } = await supabase.storage.from(ICON_BUCKET).createSignedUrl(path, ICON_SIGNED_TTL_SEC);

@@ -16,6 +16,7 @@
 export const ICON_BUCKET = 'account-icons';
 export const ICON_SIGNED_TTL_SEC = 60 * 60 * 24 * 7;
 export const ICON_MAX_BYTES = 1024 * 1024;
+export const CARD_FACE_MAX_BYTES = 2 * 1024 * 1024;
 export const ICON_MIME = ['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml'];
 
 export function pluggyConnectorIconUrl(fileId) {
@@ -326,6 +327,7 @@ export function decorateAccountWithIcon(account, ctx = {}) {
     iconKey: icon.key,
     iconSource: icon.source,
     iconColor: icon.color,
+    cardFaceUrl: ctx.customIcons?.[account?.id]?.faceUrl || null,
   };
 }
 
@@ -347,6 +349,13 @@ export function extFromImageFile(file) {
 export function validateIconFile(file) {
   if (!file) return 'Selecione uma imagem.';
   if (file.size > ICON_MAX_BYTES) return 'A imagem deve ter no máximo 1 MB.';
+  if (file.type && !ICON_MIME.includes(file.type)) return 'Use PNG, JPG, WEBP ou SVG.';
+  return null;
+}
+
+export function validateCardFaceFile(file) {
+  if (!file) return 'Selecione uma imagem.';
+  if (file.size > CARD_FACE_MAX_BYTES) return 'A foto do cartão deve ter no máximo 2 MB.';
   if (file.type && !ICON_MIME.includes(file.type)) return 'Use PNG, JPG, WEBP ou SVG.';
   return null;
 }

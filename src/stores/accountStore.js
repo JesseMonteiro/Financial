@@ -7,6 +7,7 @@ import {
   getCustomAccountIcons,
   saveCustomAccountIcons,
   uploadAccountIconFile,
+  uploadCardFaceFile,
   deleteAccountIconFile,
   getStoredManualAccounts,
   saveStoredManualAccounts,
@@ -209,15 +210,68 @@ export const useAccountStore = create((set, get) => ({
         if (prev.path && prev.path !== uploaded.path) {
           await deleteAccountIconFile(prev.path);
         }
-        nextIcons[accountId] = { path: uploaded.path, url: uploaded.url };
+        nextIcons[accountId] = {
+          ...prev,
+          path: uploaded.path,
+          url: uploaded.url,
+        };
+        delete nextIcons[accountId].key;
       } else if (payload.key) {
         if (prev.path) await deleteAccountIconFile(prev.path);
         nextIcons[accountId] = { key: payload.key };
+        if (prev.facePath) nextIcons[accountId].facePath = prev.facePath;
+        if (prev.faceUrl) nextIcons[accountId].faceUrl = prev.faceUrl;
       } else {
         if (prev.path) await deleteAccountIconFile(prev.path);
-        delete nextIcons[accountId];
+        if (prev.facePath) {
+          nextIcons[accountId] = { facePath: prev.facePath, faceUrl: prev.faceUrl || null };
+        } else {
+          delete nextIcons[accountId];
+        }
       }
 
+      const signed = await saveCustomAccountIcons(nextIcons);
+      set((state) => ({
+        customAccountIcons: signed,
+        accounts: withIcons(state.accounts, { ...state, customAccountIcons: signed }),
+      }));
+    } catch (err) {
+      set(snapshot);
+      throw err;
+    } finally {
+      set((state) => {
+        const next = { ...state.pending };
+        delete next[accountId];
+        return { pending: next };
+      });
+    }
+  },
+
+  /**
+   * Persist a full-bleed card photo for the credit-cards strip (does not change the circular icon).
+   */
+  setCardFace: async (accountId, file) => {
+    const { accounts, customAccountIcons, pending } = get();
+    if (pending[accountId]) return;
+    const target = accounts.find((acc) => acc.id === accountId);
+    if (!target) return;
+
+    const snapshot = { accounts, customAccountIcons };
+    const prev = customAccountIcons[accountId] || {};
+
+    set((state) => ({
+      pending: { ...state.pending, [accountId]: true },
+    }));
+
+    try {
+      const uploaded = await uploadCardFaceFile(accountId, file);
+      if (prev.facePath && prev.facePath !== uploaded.path) {
+        await deleteAccountIconFile(prev.facePath);
+      }
+      const nextIcons = {
+        ...get().customAccountIcons,
+        [accountId]: { ...prev, facePath: uploaded.path, faceUrl: uploaded.url },
+      };
       const signed = await saveCustomAccountIcons(nextIcons);
       set((state) => ({
         customAccountIcons: signed,

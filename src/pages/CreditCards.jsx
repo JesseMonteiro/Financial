@@ -27,7 +27,6 @@ import { getCategoryColor } from '../utils/colors';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell } from 'recharts';
 import { AccountIcon } from '../components/AccountIcon';
 import { CreditCardFace } from '../components/CreditCardFace';
-import { IconPicker } from '../components/IconPicker';
 import {
   buildCreditCardBills,
   summarizeCardOpenBill,
@@ -51,7 +50,7 @@ function purchaseTimestamp(tx) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function CreditCards() {
-  const { accounts, loadAccounts, setAccountIcon, connectors, loading: accountsLoading, lastUpdated: accountsUpdatedAt } = useAccountStore();
+  const { accounts, loadAccounts, setCardFace, pending, loading: accountsLoading, lastUpdated: accountsUpdatedAt } = useAccountStore();
   const { receivables, loadReceivables } = useReceivableStore();
   const {
     loadForAccounts,
@@ -68,8 +67,6 @@ export function CreditCards() {
 
   // Multi-card selection state ('all' or specific card.id)
   const [selectedCardId, setSelectedCardId] = useState('all');
-  const [iconAccount, setIconAccount] = useState(null);
-  const [savingIcon, setSavingIcon] = useState(false);
 
   const timelineRef = useRef(null);
 
@@ -382,8 +379,9 @@ export function CreditCards() {
                 lastFour={card.number || '****'}
                 amountLabel={formatCurrency(debtLabel)}
                 selected={isSelected}
+                uploading={Boolean(pending[card.id])}
                 onClick={() => setSelectedCardId(card.id)}
-                onEdit={() => setIconAccount(card)}
+                onUpload={(file) => setCardFace(card.id, file)}
               />
             );
           })}
@@ -782,32 +780,6 @@ export function CreditCards() {
           onClose={() => { if (!savingPurchase) setPurchaseAccount(null); }}
           onSave={handlePurchaseSave}
           saving={savingPurchase}
-        />
-      )}
-      {iconAccount && (
-        <IconPicker
-          account={accounts.find((a) => a.id === iconAccount.id) || iconAccount}
-          connectors={connectors}
-          saving={savingIcon}
-          onClose={() => { if (!savingIcon) setIconAccount(null); }}
-          onSelectKey={async (key) => {
-            setSavingIcon(true);
-            try {
-              await setAccountIcon(iconAccount.id, { key });
-              setIconAccount(null);
-            } finally {
-              setSavingIcon(false);
-            }
-          }}
-          onUpload={async (file) => {
-            setSavingIcon(true);
-            try {
-              await setAccountIcon(iconAccount.id, { file });
-              setIconAccount(null);
-            } finally {
-              setSavingIcon(false);
-            }
-          }}
         />
       )}
     </div>

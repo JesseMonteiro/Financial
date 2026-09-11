@@ -218,6 +218,39 @@ body {
   overflow: hidden;
 }
 
+.credit-card-face__meta {
+  position: absolute;
+  top: 10px;
+  left: 12px;
+  right: 40px;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  z-index: 1;
+}
+
+.credit-card-face__name {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.credit-card-face__error {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 38px;
+  z-index: 3;
+  font-size: 10px;
+  font-weight: 600;
+  color: #fecaca;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
+}
+
 .credit-card-face__logo {
   position: absolute;
   top: 10px;
