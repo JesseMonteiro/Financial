@@ -567,9 +567,27 @@ body {
 }
 
 .moment-util-compact,
-.moment-mobile-stack,
-.moment-bill-total {
+.moment-mobile-stack {
   display: none;
+}
+
+.moment-bill-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 0.5rem;
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  border-top: 1px solid var(--border-color);
+}
+
+.moment-bills-card {
+  min-width: 0;
+}
+
+.moment-bills-card .credit-card-strip {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .moment-salary-row {
@@ -884,7 +902,6 @@ body {
     margin-inline: calc(-1 * var(--space-4));
   }
 
-  .moment-bill-total,
   .moment-util-compact,
   .moment-mobile-stack {
     display: block;

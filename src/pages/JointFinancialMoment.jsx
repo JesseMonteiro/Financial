@@ -455,7 +455,7 @@ export function JointFinancialMoment() {
 
   const billsCard = activeMonthData && (
     <Card
-      className={isMobile ? 'moment-bills-card' : undefined}
+      className="moment-bills-card"
       title="Faturas de Cartão de Crédito"
       subtitle={isMobile ? undefined : 'Faturas das duas contas com vencimento neste mês.'}
     >
@@ -463,50 +463,14 @@ export function JointFinancialMoment() {
         <p style={{ color: 'var(--text-muted)', fontSize: 'var(--font-size-xs)', textAlign: 'center', padding: '1rem' }}>
           Nenhuma fatura neste mês.
         </p>
-      ) : isMobile ? (
+      ) : (
         <>
           <MomentBillStrip bills={activeMonthData.activeBills} accounts={accounts} />
-          <div className="moment-bill-total" style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '0.35rem', fontSize: 'var(--font-size-xs)', fontWeight: 700 }}>
+          <div className="moment-bill-total">
             <span>Total Faturas</span>
             <span style={{ color: 'var(--danger)' }}>{formatCurrency(activeMonthData.creditCardsTotal)}</span>
           </div>
         </>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.5rem' }}>
-          {activeMonthData.activeBills.map((b, i) => (
-            <div key={i} className="list-row" style={{ padding: '0.65rem 0.75rem' }}>
-              <div className="list-row-main" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '0.15rem' }}>
-                <span style={{ fontWeight: 600, fontSize: 'var(--font-size-xs)', display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
-                  <AccountIcon account={accountById(accounts, b.cardId)} size={16} type="CREDIT" />
-                  {b.cardName}
-                </span>
-                <div className="list-row-meta" style={{ gap: '0.4rem' }}>
-                  {b.ownerLabel && (
-                    <Badge variant="neutral" style={{ fontSize: '9px' }}>{b.ownerLabel}</Badge>
-                  )}
-                  <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
-                    Vence {formatDate(b.dueDate)}
-                  </span>
-                  {b.isPaid ? (
-                    <Badge variant="success" style={{ fontSize: '9px' }}>Paga</Badge>
-                  ) : (
-                    <Badge variant="warning" style={{ fontSize: '9px' }}>Pendente</Badge>
-                  )}
-                  {b.isFallback && (
-                    <Badge variant="neutral" style={{ fontSize: '9px' }}>Estimada</Badge>
-                  )}
-                </div>
-              </div>
-              <span style={{ fontWeight: 700, fontSize: 'var(--font-size-xs)', color: 'var(--danger)' }}>
-                - {formatCurrency(b.amount)}
-              </span>
-            </div>
-          ))}
-          <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid var(--border-color)', paddingTop: '0.5rem', fontSize: 'var(--font-size-xs)', fontWeight: 700 }}>
-            <span>Total Faturas</span>
-            <span style={{ color: 'var(--danger)' }}>{formatCurrency(activeMonthData.creditCardsTotal)}</span>
-          </div>
-        </div>
       )}
     </Card>
   );
