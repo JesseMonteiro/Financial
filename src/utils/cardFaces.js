@@ -1,4 +1,4 @@
-import { CATALOG_BY_ID, catalogEntryUrl, suggestIconKey } from './accountIcons';
+import { CATALOG_BY_ID, catalogEntryUrl, suggestIconKey, shareCardFacesByProduct } from './accountIcons';
 
 function publicFace(file) {
   const base = import.meta.env.BASE_URL || '/';
@@ -88,18 +88,42 @@ export function resolveCardFace(account) {
   };
 }
 
+function creditFaceKey(account) {
+  if (!account) return null;
+  return account.iconKey || suggestIconKey({ ...account, type: 'CREDIT' }) || null;
+}
+
+function pickFace(account) {
+  if (!account?.cardFaceUrl && !account?.cardFacePath) return null;
+  return { cardFaceUrl: account.cardFaceUrl || null, cardFacePath: account.cardFacePath || null };
+}
+
+/**
+ * Copy uploaded card photos onto the same account id, then onto the same catalog
+ * product (so the partner's Unique/Nubank/Inter can reuse the logged-in photo).
+ */
 export function mergeLocalCardFaces(accounts, localAccounts) {
   if (!localAccounts?.length) return accounts || [];
-  const byId = new Map(localAccounts.map((a) => [a.id, a]));
+  const byId = new Map(localAccounts.map((a) => [String(a.id), a]));
+  const byKey = new Map();
+  for (const local of localAccounts) {
+    const face = pickFace(local);
+    const key = creditFaceKey(local);
+    if (face && key && !byKey.has(key)) byKey.set(key, { ...face, number: local.number, iconKey: local.iconKey });
+  }
   return (accounts || []).map((acc) => {
-    const local = byId.get(acc.id);
-    if (!local) return acc;
+    const local = byId.get(String(acc.id));
+    const key = creditFaceKey(acc) || creditFaceKey(local);
+    const fromKey = key ? byKey.get(key) : null;
+    if (!local && !fromKey) return acc;
     return {
       ...acc,
-      cardFaceUrl: acc.cardFaceUrl || local.cardFaceUrl || null,
-      cardFacePath: acc.cardFacePath || local.cardFacePath || null,
-      number: acc.number || local.number || '',
-      iconKey: acc.iconKey || local.iconKey,
+      cardFaceUrl: acc.cardFaceUrl || local?.cardFaceUrl || fromKey?.cardFaceUrl || null,
+      cardFacePath: acc.cardFacePath || local?.cardFacePath || fromKey?.cardFacePath || null,
+      number: acc.number || local?.number || '',
+      iconKey: acc.iconKey || local?.iconKey || fromKey?.iconKey || null,
     };
   });
 }
+
+export { shareCardFacesByProduct };

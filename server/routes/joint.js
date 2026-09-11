@@ -4,7 +4,7 @@ import { getServiceRoleClient } from '../services/supabaseClient.js';
 import { createPluggyClient } from '../services/pluggyClient.js';
 import { cacheMiddleware, clearUserCache } from '../middleware/cache.js';
 import { hydrateManualAccount, syntheticManualBill } from '../../src/utils/manualAccounts.js';
-import { decorateAccountWithIcon, ICON_BUCKET, ICON_SIGNED_TTL_SEC } from '../../src/utils/accountIcons.js';
+import { decorateAccountWithIcon, collectFacesByCatalogKey, shareCardFacesByProduct, ICON_BUCKET, ICON_SIGNED_TTL_SEC } from '../../src/utils/accountIcons.js';
 
 const router = Router();
 
@@ -25,7 +25,8 @@ async function fetchAccountsForItems(client, itemIds) {
       try {
         const res = await client.get('/accounts', { params: { itemId } });
         const list = res.data.results || res.data || [];
-        return Array.isArray(list) ? list : [];
+        const accounts = Array.isArray(list) ? list : [];
+        return accounts.map((acc) => ({ ...acc, itemId: acc.itemId || itemId }));
       } catch (e) {
         console.warn(`[Joint] accounts item ${itemId}:`, e.message);
         return [];
@@ -57,7 +58,11 @@ async function fetchTransactionsForAccounts(client, accountIds) {
       try {
         const res = await client.get('/v2/transactions', { params: { accountId } });
         const list = res.data.results || res.data || [];
-        return Array.isArray(list) ? list : [];
+        const txs = Array.isArray(list) ? list : [];
+        return txs.map((t) => ({
+          ...t,
+          accountId: t.accountId || t.account_id || t.account?.id || accountId,
+        }));
       } catch (e) {
         console.warn(`[Joint] txs account ${accountId}:`, e.message);
         return [];
@@ -189,6 +194,40 @@ function tagOwner(list, ownerUserId, ownerLabel) {
   }));
 }
 
+function asRpcProfileList(value) {
+  if (Array.isArray(value)) return value;
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
+function mergeProfileFromRpc(existing, row) {
+  if (!row) return existing || null;
+  const next = { ...(existing || {}), id: row.id || existing?.id };
+  next.display_name = existing?.display_name || row.display_name || next.display_name;
+  next.monthly_salaries = (existing?.monthly_salaries && Object.keys(existing.monthly_salaries).length)
+    ? existing.monthly_salaries
+    : (row.monthly_salaries || {});
+  next.custom_account_names = (existing?.custom_account_names && Object.keys(existing.custom_account_names).length)
+    ? existing.custom_account_names
+    : (row.custom_account_names || {});
+  const existingIcons = asIconMap(existing?.custom_account_icons);
+  const rpcIcons = asIconMap(row.custom_account_icons);
+  next.custom_account_icons = Object.keys(existingIcons).length ? { ...rpcIcons, ...existingIcons } : rpcIcons;
+  const existingItems = asItemIdList(existing?.pluggy_item_ids);
+  const rpcItems = asItemIdList(row.pluggy_item_ids);
+  next.pluggy_item_ids = existingItems.length ? existing.pluggy_item_ids : (rpcItems.length ? row.pluggy_item_ids : existing?.pluggy_item_ids);
+  next.pluggy_client_id = existing?.pluggy_client_id || row.pluggy_client_id || null;
+  next.pluggy_client_secret = existing?.pluggy_client_secret || row.pluggy_client_secret || null;
+  return next;
+}
+
 async function requireActiveJointMembers(req) {
   const { data: link, error: linkError } = await req.supabase.rpc('get_my_joint_link');
   if (linkError) throw linkError;
@@ -201,7 +240,7 @@ async function requireActiveJointMembers(req) {
   try {
     service = getServiceRoleClient();
   } catch (e) {
-    console.warn('[Joint] SERVICE_ROLE ausente, usando client do usuário:', e.message);
+    console.warn('[Joint] SERVICE_ROLE ausente, usando RPC + client do usuário:', e.message);
     service = req.supabase;
   }
 
@@ -215,9 +254,22 @@ async function requireActiveJointMembers(req) {
   if (profileError) throw profileError;
 
   const profileById = Object.fromEntries((profiles || []).map((p) => [p.id, p]));
+
+  const { data: rpcData, error: rpcError } = await req.supabase.rpc('get_joint_member_profiles');
+  if (rpcError) {
+    console.warn('[Joint] get_joint_member_profiles:', rpcError.message);
+  } else {
+    for (const row of asRpcProfileList(rpcData)) {
+      if (!row?.id) continue;
+      profileById[row.id] = mergeProfileFromRpc(profileById[row.id], row);
+    }
+  }
+
   const members = memberIds.map((id) => ({
     id,
-    displayName: profileById[id]?.display_name || (id === req.user.id ? 'Você' : 'Parceiro'),
+    displayName:
+      profileById[id]?.display_name
+      || (id === req.user.id ? 'Você' : (link.partner_display_name || 'Parceiro')),
     monthlySalaries: profileById[id]?.monthly_salaries || {},
   }));
 
@@ -304,18 +356,24 @@ router.get('/moment-data', checkAuth, async (req, res) => {
     const billsByAccount = {};
     const seenAccountIds = new Set();
 
-    for (const b of bundles) {
-      const customNames =
-        b.profile?.custom_account_names && typeof b.profile.custom_account_names === 'object'
-          ? b.profile.custom_account_names
-          : {};
-      const customIcons = await signIconOverlays(
+    const signedIconsByUser = {};
+    await Promise.all(bundles.map(async (b) => {
+      signedIconsByUser[b.id] = await signIconOverlays(
         service,
         b.profile?.custom_account_icons && typeof b.profile.custom_account_icons === 'object'
           ? b.profile.custom_account_icons
           : {}
       );
-      const iconCtx = { customIcons, itemsById: b.itemsById || {} };
+    }));
+    const facesByKey = collectFacesByCatalogKey(Object.values(signedIconsByUser));
+
+    for (const b of bundles) {
+      const customNames =
+        b.profile?.custom_account_names && typeof b.profile.custom_account_names === 'object'
+          ? b.profile.custom_account_names
+          : {};
+      const customIcons = signedIconsByUser[b.id] || {};
+      const iconCtx = { customIcons, itemsById: b.itemsById || {}, facesByKey };
       for (const acc of b.accounts) {
         if (seenAccountIds.has(acc.id)) continue;
         seenAccountIds.add(acc.id);
@@ -357,14 +415,7 @@ router.get('/moment-data', checkAuth, async (req, res) => {
 
     const labelById = Object.fromEntries(members.map((m) => [m.id, m.displayName]));
 
-    const iconsByUser = {};
-    for (const id of memberIds) {
-      const profile = profileById[id];
-      iconsByUser[id] = await signIconOverlays(
-        service,
-        asIconMap(profile?.custom_account_icons)
-      );
-    }
+    const iconsByUser = signedIconsByUser;
 
     for (const row of manualAccounts || []) {
       if (seenAccountIds.has(row.id)) continue;
@@ -372,7 +423,10 @@ router.get('/moment-data', checkAuth, async (req, res) => {
       const hydrated = hydrateManualAccount(row);
       hydrated.ownerUserId = row.user_id;
       hydrated.ownerLabel = labelById[row.user_id] || 'Usuário';
-      accounts.push(decorateAccountWithIcon(hydrated, { customIcons: iconsByUser[row.user_id] || {} }));
+      accounts.push(decorateAccountWithIcon(hydrated, {
+        customIcons: iconsByUser[row.user_id] || {},
+        facesByKey,
+      }));
       if (hydrated.type === 'CREDIT') {
         const bill = syntheticManualBill(hydrated);
         if (bill) {
@@ -384,7 +438,7 @@ router.get('/moment-data', checkAuth, async (req, res) => {
     res.json({
       link,
       members,
-      accounts,
+      accounts: shareCardFacesByProduct(accounts),
       transactions,
       billsByAccount,
       manuals: (manuals || []).map((row) => ({

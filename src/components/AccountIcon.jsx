@@ -22,7 +22,7 @@ export function AccountIcon({
   const [srcIndex, setSrcIndex] = React.useState(0);
   const candidateKey = Array.isArray(src)
     ? src.filter(Boolean).join('\n')
-    : String(src || account?.iconUrl || '');
+    : [src, account?.iconUrl, ...(account?.iconUrls || [])].filter(Boolean).join('\n');
   const candidates = React.useMemo(
     () => (candidateKey ? candidateKey.split('\n').filter(Boolean) : []),
     [candidateKey],
@@ -113,6 +113,7 @@ export function AccountLabel({ account, size = 16, name, style }) {
 }
 
 export function accountById(accounts, id) {
-  if (!id || !accounts?.length) return null;
-  return accounts.find((acc) => acc.id === id) || null;
+  if (id == null || id === '' || !accounts?.length) return null;
+  const sid = String(id);
+  return accounts.find((acc) => acc.id === id || String(acc.id) === sid) || null;
 }

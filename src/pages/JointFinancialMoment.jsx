@@ -32,7 +32,8 @@ import {
 import { AccountIcon, accountById } from '../components/AccountIcon';
 import { MomentBillStrip } from '../components/MomentBillStrip';
 import { useAccountStore } from '../stores/accountStore';
-import { mergeLocalCardFaces } from '../utils/cardFaces';
+import { decorateAccountWithIcon, decorateAccountsWithIcons } from '../utils/accountIcons';
+import { mergeLocalCardFaces, shareCardFacesByProduct } from '../utils/cardFaces';
 
 function toCamelManualFromApi(row) {
   return row;
@@ -46,7 +47,7 @@ export function JointFinancialMoment() {
   const {
     link,
     members,
-    accounts,
+    accounts: jointAccounts,
     transactions: pluggyTxs,
     billsByAccount,
     manuals,
@@ -62,7 +63,7 @@ export function JointFinancialMoment() {
     pending,
     error,
   } = useJointStore();
-  const { accounts: myAccounts, loadAccounts } = useAccountStore();
+  const { accounts: myAccounts, loadAccounts, connectors, itemsById } = useAccountStore();
   const isMobile = useIsMobile();
 
   const [selectedMonth, setSelectedMonth] = useState('');
@@ -83,14 +84,20 @@ export function JointFinancialMoment() {
     loadAccounts();
   }, [loadStatus, loadMomentData, loadAccounts]);
 
+  const accounts = useMemo(
+    () => shareCardFacesByProduct(
+      decorateAccountsWithIcons(mergeLocalCardFaces(jointAccounts, myAccounts), {
+        connectors: connectors || [],
+        itemsById: itemsById || {},
+      })
+    ),
+    [jointAccounts, myAccounts, connectors, itemsById]
+  );
   const creditCards = useMemo(
     () => (accounts || []).filter((a) => a.type === 'CREDIT'),
     [accounts]
   );
-  const accountsForFaces = useMemo(
-    () => mergeLocalCardFaces(accounts, myAccounts),
-    [accounts, myAccounts]
-  );
+  const accountsForFaces = accounts;
   const bankAccounts = useMemo(
     () => (accounts || []).filter((a) => a.type === 'BANK'),
     [accounts]
@@ -503,7 +510,10 @@ export function JointFinancialMoment() {
                     <Badge variant="neutral" style={{ fontSize: '9px' }}>{t.ownerLabel}</Badge>
                   )}
                   <Badge variant="neutral" style={{ fontSize: '9px', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                    <AccountIcon account={accountById(accounts, t.accountId)} size={12} />
+                    <AccountIcon
+                      account={accountById(accounts, t.accountId) || decorateAccountWithIcon({ name: t.accountName, type: 'BANK' })}
+                      size={12}
+                    />
                     {t.accountName}
                   </Badge>
                   {t.isPending && <Badge variant="warning" style={{ fontSize: '9px' }}>Pendente</Badge>}

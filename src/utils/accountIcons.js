@@ -255,15 +255,18 @@ export function resolveAccountIcon(account, ctx = {}) {
   const customIcons = ctx.customIcons || {};
   const itemsById = itemsMap(ctx.itemsById);
   const connectors = ctx.connectors || [];
-  const custom = account?.id ? customIcons[account.id] : null;
+  const custom = iconOverlayFor(customIcons, account?.id);
 
   if (custom?.url) {
-    return { url: custom.url, key: custom.key || null, source: 'upload', color: null };
+    const urls = [custom.url, ...(custom.key && CATALOG_BY_ID[custom.key] ? catalogEntryUrls(CATALOG_BY_ID[custom.key], connectors) : [])];
+    return { url: custom.url, urls: uniqueUrls(urls), key: custom.key || null, source: 'upload', color: null };
   }
   if (custom?.key && CATALOG_BY_ID[custom.key]) {
     const entry = CATALOG_BY_ID[custom.key];
+    const urls = catalogEntryUrls(entry, connectors);
     return {
-      url: catalogEntryUrl(entry, connectors),
+      url: urls[0] || null,
+      urls,
       key: entry.id,
       source: 'catalog',
       color: entry.color,
@@ -274,8 +277,10 @@ export function resolveAccountIcon(account, ctx = {}) {
   if (account?.type === 'CREDIT') {
     const product = matchCatalog(blob, { kind: 'card' });
     if (product?.kind === 'card') {
+      const urls = catalogEntryUrls(product, connectors);
       return {
-        url: catalogEntryUrl(product, connectors),
+        url: urls[0] || null,
+        urls,
         key: product.id,
         source: 'catalog',
         color: product.color,
@@ -293,13 +298,15 @@ export function resolveAccountIcon(account, ctx = {}) {
     account?.connector?.primaryColor ||
     account?.bankData?.primaryColor;
   if (pluggyUrl) {
-    return { url: pluggyUrl, key: null, source: 'pluggy', color: pluggyColor || null };
+    return { url: pluggyUrl, urls: [pluggyUrl], key: null, source: 'pluggy', color: pluggyColor || null };
   }
 
   const bank = matchCatalog(blob, { kind: 'bank' });
   if (bank) {
+    const urls = catalogEntryUrls(bank, connectors);
     return {
-      url: catalogEntryUrl(bank, connectors),
+      url: urls[0] || null,
+      urls,
       key: bank.id,
       source: 'catalog',
       color: bank.color,
@@ -310,30 +317,58 @@ export function resolveAccountIcon(account, ctx = {}) {
   if (connector?.imageUrl) {
     return {
       url: connector.imageUrl,
+      urls: [connector.imageUrl],
       key: null,
       source: 'pluggy',
       color: connector.primaryColor || null,
     };
   }
 
-  return { url: null, key: null, source: 'fallback', color: pluggyColor || null };
+  return { url: null, urls: [], key: null, source: 'fallback', color: pluggyColor || null };
+}
+
+export function collectFacesByCatalogKey(iconMaps = []) {
+  const out = {};
+  for (const icons of iconMaps) {
+    if (!icons || typeof icons !== 'object') continue;
+    for (const value of Object.values(icons)) {
+      const overlay = value && typeof value === 'object' ? value : null;
+      if (!overlay) continue;
+      const key = overlay.key;
+      const facePath = overlay.facePath || overlay.face_path || null;
+      const faceUrl = overlay.faceUrl || overlay.face_url || null;
+      if (!key || !(facePath || faceUrl) || out[key]) continue;
+      out[key] = { facePath, faceUrl };
+    }
+  }
+  return out;
 }
 
 export function decorateAccountWithIcon(account, ctx = {}) {
   const item = account?.itemId ? itemsMap(ctx.itemsById)[account.itemId] : null;
   const icon = resolveAccountIcon(account, ctx);
   const overlay = iconOverlayFor(ctx.customIcons, account?.id);
+  const productKey = overlay?.key || icon.key || account?.iconKey || null;
+  const family = (productKey && ctx.facesByKey?.[productKey]) || null;
+  const overlayFacePath = overlay?.facePath || overlay?.face_path || null;
+  const overlayFaceUrl = overlay?.faceUrl || overlay?.face_url || null;
   return {
     ...account,
     connectorName: account.connectorName || item?.connector?.name || account._connector || null,
     connectorId: account.connectorId || item?.connector?.id || account._connectorId || null,
     connectorImageUrl: item?.connector?.imageUrl || account.connectorImageUrl || null,
-    iconUrl: icon.url,
-    iconKey: icon.key,
-    iconSource: icon.source,
-    iconColor: icon.color,
-    cardFaceUrl: overlay?.faceUrl || null,
-    cardFacePath: overlay?.facePath || overlay?.face_path || null,
+    iconUrl: icon.url || account.iconUrl || null,
+    iconUrls: uniqueUrls([
+      ...(icon.urls || []),
+      icon.url,
+      account.iconUrl,
+      ...(account.iconUrls || []),
+    ]),
+    iconKey: icon.key || account.iconKey || null,
+    iconSource: icon.source || account.iconSource || null,
+    iconColor: icon.color || account.iconColor || account.bankData?.primaryColor || null,
+    cardFaceUrl: overlayFaceUrl || family?.faceUrl || account.cardFaceUrl || null,
+    cardFacePath: overlayFacePath || family?.facePath || account.cardFacePath || null,
   };
 }
 
@@ -344,6 +379,29 @@ function iconOverlayFor(customIcons, accountId) {
 
 export function decorateAccountsWithIcons(accounts, ctx = {}) {
   return (accounts || []).map((acc) => decorateAccountWithIcon(acc, ctx));
+}
+
+export function shareCardFacesByProduct(accounts = []) {
+  const byKey = new Map();
+  for (const acc of accounts) {
+    if (acc?.type && acc.type !== 'CREDIT') continue;
+    const key = acc.iconKey || suggestIconKey({ ...acc, type: 'CREDIT' });
+    if ((acc.cardFaceUrl || acc.cardFacePath) && key && !byKey.has(key)) {
+      byKey.set(key, {
+        cardFaceUrl: acc.cardFaceUrl || null,
+        cardFacePath: acc.cardFacePath || null,
+      });
+    }
+  }
+  if (byKey.size === 0) return accounts;
+  return accounts.map((acc) => {
+    if (acc?.type && acc.type !== 'CREDIT') return acc;
+    if (acc.cardFaceUrl || acc.cardFacePath) return acc;
+    const key = acc.iconKey || suggestIconKey({ ...acc, type: 'CREDIT' });
+    const shared = key ? byKey.get(key) : null;
+    if (!shared) return acc;
+    return { ...acc, cardFaceUrl: shared.cardFaceUrl, cardFacePath: shared.cardFacePath };
+  });
 }
 
 export function extFromImageFile(file) {
