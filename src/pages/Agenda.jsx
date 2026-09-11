@@ -26,6 +26,7 @@ import {
   summarizeAgendaMonth,
 } from '../utils/agenda';
 import { isInitialEmpty } from '../utils/loading';
+import { AccountIcon, accountById } from '../components/AccountIcon';
 
 const FILTERS = [
   { id: 'all', label: 'Todas' },
@@ -42,10 +43,14 @@ function statusBadge(status) {
   return <Badge variant="warning">A pagar</Badge>;
 }
 
-function typeIcon(type) {
-  if (type === 'bill') return <CreditCard size={16} />;
-  if (type === 'subscription') return <Repeat size={16} />;
-  if (type === 'loan') return <Landmark size={16} />;
+function typeIcon(item, accounts) {
+  if (item.type === 'bill') {
+    const card = accountById(accounts, item.cardId);
+    if (card) return <AccountIcon account={card} size={20} />;
+    return <CreditCard size={16} />;
+  }
+  if (item.type === 'subscription') return <Repeat size={16} />;
+  if (item.type === 'loan') return <Landmark size={16} />;
   return <CalendarDays size={16} />;
 }
 
@@ -510,7 +515,7 @@ export function Agenda() {
                             flexShrink: 0,
                           }}
                         >
-                          {typeIcon(item.type)}
+                          {typeIcon(item, accounts)}
                         </div>
                         <div style={{ minWidth: 0 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>

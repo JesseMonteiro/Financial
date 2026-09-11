@@ -159,6 +159,7 @@ export function computeFinancialMomentMonth({
     });
     if (!bill) return;
     activeBills.push({
+      cardId: card.id,
       cardName: card.name,
       dueDate: bill.dueDate,
       amount: bill.amount,

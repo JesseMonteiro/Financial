@@ -108,7 +108,16 @@
   box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
 }
 
-/* Modal Overlay */
+/* Account / card icons */
+.account-icon-btn:hover .account-icon,
+.account-icon-btn:focus-visible .account-icon {
+  box-shadow: 0 0 0 2px var(--primary);
+}
+
+.account-icon-btn:focus-visible {
+  outline: none;
+}
+
 .modal-overlay {
   position: fixed;
   inset: 0;

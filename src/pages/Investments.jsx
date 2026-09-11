@@ -12,6 +12,7 @@ import { investmentAllocation, investmentByIssuer } from '../utils/analytics';
 import { calculateNetWorth } from '../utils/calculations';
 import { isInitialEmpty } from '../utils/loading';
 import { useIsMobile } from '../hooks/useMediaQuery';
+import { AccountIcon, accountById } from '../components/AccountIcon';
 
 const CustomTooltip = ({ active, payload }) => {
   if (!active || !payload?.length) return null;
@@ -169,9 +170,13 @@ export function Investments() {
                       </Badge>
                       <Badge variant="info">{subtypeLabel}</Badge>
                     </div>
-                    <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
+                    <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)', marginTop: '0.2rem', display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap' }}>
                       Emissor: {inv.issuer || inv.institution || 'Banco'} · {share}% da carteira
-                      {inv.sourceAccountName ? ` · Conta: ${inv.sourceAccountName}` : ''}
+                      {inv.sourceAccountName ? (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                          · Conta: <AccountIcon account={accountById(accounts, inv.sourceAccountId)} size={14} /> {inv.sourceAccountName}
+                        </span>
+                      ) : null}
                       {inv.owner ? ` · Titular: ${inv.owner}` : ''}
                       {inv.dueDate ? ` · Venc. ${new Date(inv.dueDate).toLocaleDateString('pt-BR')}` : ''}
                     </p>

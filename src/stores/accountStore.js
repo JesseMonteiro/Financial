@@ -1,9 +1,13 @@
 import { create } from 'zustand';
-import { fetchAccounts, fetchLoans } from '../services/api';
+import { fetchAccounts, fetchLoans, fetchItems, fetchConnectors } from '../services/api';
 import { calculateNetWorth } from '../utils/calculations';
 import {
   getCustomAccountNames,
   saveCustomAccountNames,
+  getCustomAccountIcons,
+  saveCustomAccountIcons,
+  uploadAccountIconFile,
+  deleteAccountIconFile,
   getStoredManualAccounts,
   saveStoredManualAccounts,
   deleteStoredManualAccounts,
@@ -11,6 +15,7 @@ import {
 } from '../services/storage';
 import { CACHE_TTL_MS, isFreshTimestamp } from '../services/clientCache';
 import { hydrateManualAccount } from '../utils/manualAccounts';
+import { decorateAccountsWithIcons, suggestIconKey } from '../utils/accountIcons';
 import { useTransactionStore } from './transactionStore';
 
 function mergeAccounts(pluggyList, customNames, manuals) {
@@ -26,6 +31,18 @@ function mergeAccounts(pluggyList, customNames, manuals) {
   return [...pluggy, ...extra];
 }
 
+function itemsByIdFromList(items) {
+  return Object.fromEntries((items || []).filter((i) => i?.id).map((i) => [i.id, i]));
+}
+
+function withIcons(list, state) {
+  return decorateAccountsWithIcons(list, {
+    customIcons: state.customAccountIcons || {},
+    itemsById: state.itemsById || {},
+    connectors: state.connectors || [],
+  });
+}
+
 export const useAccountStore = create((set, get) => ({
   accounts: [],
   loans: [],
@@ -33,6 +50,9 @@ export const useAccountStore = create((set, get) => ({
   error: null,
   lastUpdated: null,
   customAccountNames: {},
+  customAccountIcons: {},
+  itemsById: {},
+  connectors: [],
   pending: {},
 
   /**
@@ -53,10 +73,13 @@ export const useAccountStore = create((set, get) => ({
     else set({ error: null });
 
     try {
-      const [accountsData, loansData, customNames] = await Promise.all([
+      const [accountsData, loansData, customNames, customIcons, items, connectors] = await Promise.all([
         fetchAccounts(undefined, { force }),
         fetchLoans(undefined, { force }),
         getCustomAccountNames(),
+        getCustomAccountIcons(),
+        fetchItems({ force }).catch(() => []),
+        fetchConnectors({ force }).catch(() => []),
       ]);
 
       let manuals = [];
@@ -68,10 +91,21 @@ export const useAccountStore = create((set, get) => ({
         manuals = get().accounts.filter((acc) => acc.isManual);
       }
 
+      const itemsById = itemsByIdFromList(items);
+      const iconCtx = {
+        customAccountIcons: customIcons || {},
+        itemsById,
+        connectors: connectors || [],
+      };
+      const merged = mergeAccounts(accountsData, customNames || {}, manuals);
+
       set({
-        accounts: mergeAccounts(accountsData, customNames || {}, manuals),
+        accounts: withIcons(merged, iconCtx),
         loans: loansData || [],
         customAccountNames: customNames || {},
+        customAccountIcons: customIcons || {},
+        itemsById,
+        connectors: connectors || [],
         loading: false,
         lastUpdated: new Date(),
         error: manualsError
@@ -100,7 +134,7 @@ export const useAccountStore = create((set, get) => ({
         return { ...acc, name: nextName, originalName: nextName };
       });
       set((state) => ({
-        accounts: updatedAccounts,
+        accounts: withIcons(updatedAccounts, state),
         pending: { ...state.pending, [accountId]: true },
       }));
       try {
@@ -131,13 +165,64 @@ export const useAccountStore = create((set, get) => ({
     });
 
     set((state) => ({
-      accounts: updatedAccounts,
+      accounts: withIcons(updatedAccounts, state),
       customAccountNames: nextNames,
       pending: { ...state.pending, [accountId]: true },
     }));
 
     try {
       await saveCustomAccountNames(nextNames);
+    } catch (err) {
+      set(snapshot);
+      throw err;
+    } finally {
+      set((state) => {
+        const next = { ...state.pending };
+        delete next[accountId];
+        return { pending: next };
+      });
+    }
+  },
+
+  /**
+   * Persist a catalog key or uploaded image for an account/card.
+   * @param {string} accountId
+   * @param {{ key?: string|null, file?: File }} payload
+   */
+  setAccountIcon: async (accountId, payload = {}) => {
+    const { accounts, customAccountIcons, pending } = get();
+    if (pending[accountId]) return;
+    const target = accounts.find((acc) => acc.id === accountId);
+    if (!target) return;
+
+    const snapshot = { accounts, customAccountIcons };
+    const nextIcons = { ...customAccountIcons };
+    const prev = nextIcons[accountId] || {};
+
+    set((state) => ({
+      pending: { ...state.pending, [accountId]: true },
+    }));
+
+    try {
+      if (payload.file) {
+        const uploaded = await uploadAccountIconFile(accountId, payload.file);
+        if (prev.path && prev.path !== uploaded.path) {
+          await deleteAccountIconFile(prev.path);
+        }
+        nextIcons[accountId] = { path: uploaded.path, url: uploaded.url };
+      } else if (payload.key) {
+        if (prev.path) await deleteAccountIconFile(prev.path);
+        nextIcons[accountId] = { key: payload.key };
+      } else {
+        if (prev.path) await deleteAccountIconFile(prev.path);
+        delete nextIcons[accountId];
+      }
+
+      const signed = await saveCustomAccountIcons(nextIcons);
+      set((state) => ({
+        customAccountIcons: signed,
+        accounts: withIcons(state.accounts, { ...state, customAccountIcons: signed }),
+      }));
     } catch (err) {
       set(snapshot);
       throw err;
@@ -198,17 +283,35 @@ export const useAccountStore = create((set, get) => ({
     if (!rows.length) return [];
 
     const hydrated = rows.map((r) => hydrateManualAccount(r));
-    const snapshot = get().accounts;
+    const snapshot = {
+      accounts: get().accounts,
+      customAccountIcons: get().customAccountIcons,
+    };
+    const nextIcons = { ...get().customAccountIcons };
+    for (const row of hydrated) {
+      const key = suggestIconKey(row);
+      if (key) nextIcons[row.id] = { key };
+    }
+
     set((state) => ({
-      accounts: [...state.accounts, ...hydrated],
+      customAccountIcons: nextIcons,
+      accounts: withIcons([...state.accounts, ...hydrated], { ...state, customAccountIcons: nextIcons }),
       pending: { ...state.pending, ...Object.fromEntries(rows.map((r) => [r.id, true])) },
     }));
 
     try {
       await saveStoredManualAccounts(rows);
-      return hydrated;
+      const assigned = hydrated.some((row) => nextIcons[row.id]?.key);
+      if (assigned) {
+        const signed = await saveCustomAccountIcons(nextIcons);
+        set((state) => ({
+          customAccountIcons: signed,
+          accounts: withIcons(state.accounts, { ...state, customAccountIcons: signed }),
+        }));
+      }
+      return get().accounts.filter((acc) => rows.some((r) => r.id === acc.id));
     } catch (err) {
-      set({ accounts: snapshot });
+      set({ accounts: snapshot.accounts, customAccountIcons: snapshot.customAccountIcons });
       throw err;
     } finally {
       set((state) => {
@@ -256,7 +359,7 @@ export const useAccountStore = create((set, get) => ({
 
     const snapshot = accounts;
     set((state) => ({
-      accounts: state.accounts.map((acc) => (acc.id === accountId ? next : acc)),
+      accounts: withIcons(state.accounts.map((acc) => (acc.id === accountId ? next : acc)), state),
       pending: { ...state.pending, [accountId]: true },
     }));
 
@@ -297,7 +400,7 @@ export const useAccountStore = create((set, get) => ({
       }
     }
 
-    const snapshot = accounts;
+    const snapshot = { accounts, customAccountIcons: get().customAccountIcons };
     set((state) => ({
       accounts: state.accounts.filter((acc) => !ids.includes(acc.id)),
       pending: { ...state.pending, ...Object.fromEntries(ids.map((id) => [id, true])) },
@@ -307,8 +410,21 @@ export const useAccountStore = create((set, get) => ({
       await deleteStoredManualTransactionsForAccounts(ids);
       await deleteStoredManualAccounts(ids);
       useTransactionStore.getState().dropManualsForAccounts?.(ids);
+      const nextIcons = { ...get().customAccountIcons };
+      let iconsChanged = false;
+      for (const id of ids) {
+        if (nextIcons[id]) {
+          if (nextIcons[id].path) await deleteAccountIconFile(nextIcons[id].path);
+          delete nextIcons[id];
+          iconsChanged = true;
+        }
+      }
+      if (iconsChanged) {
+        const signed = await saveCustomAccountIcons(nextIcons);
+        set({ customAccountIcons: signed });
+      }
     } catch (err) {
-      set({ accounts: snapshot });
+      set({ accounts: snapshot.accounts, customAccountIcons: snapshot.customAccountIcons });
       throw err;
     } finally {
       set((state) => {

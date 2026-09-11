@@ -4,6 +4,7 @@ import { getServiceRoleClient } from '../services/supabaseClient.js';
 import { createPluggyClient } from '../services/pluggyClient.js';
 import { cacheMiddleware, clearUserCache } from '../middleware/cache.js';
 import { hydrateManualAccount, syntheticManualBill } from '../../src/utils/manualAccounts.js';
+import { decorateAccountWithIcon, ICON_BUCKET, ICON_SIGNED_TTL_SEC } from '../../src/utils/accountIcons.js';
 
 const router = Router();
 
@@ -57,17 +58,35 @@ async function fetchBillsForAccount(client, accountId) {
   }
 }
 
+async function fetchItemsByIds(client, itemIds) {
+  const results = await Promise.all(
+    itemIds.map(async (itemId) => {
+      try {
+        const res = await client.get(`/items/${itemId}`);
+        return res.data || null;
+      } catch (e) {
+        console.warn(`[Joint] item ${itemId}:`, e.message);
+        return null;
+      }
+    })
+  );
+  return Object.fromEntries(results.filter((item) => item?.id).map((item) => [item.id, item]));
+}
+
 async function loadMemberPluggyBundle(profile) {
   const itemIds = asItemIdList(profile?.pluggy_item_ids);
   const clientId = profile?.pluggy_client_id || process.env.PLUGGY_CLIENT_ID || null;
   const clientSecret = profile?.pluggy_client_secret || process.env.PLUGGY_CLIENT_SECRET || null;
 
   if (!clientId || !clientSecret || itemIds.length === 0) {
-    return { accounts: [], transactions: [], billsByAccount: {}, itemIds };
+    return { accounts: [], transactions: [], billsByAccount: {}, itemIds, itemsById: {} };
   }
 
   const client = await createPluggyClient(clientId, clientSecret);
-  const accounts = await fetchAccountsForItems(client, itemIds);
+  const [accounts, itemsById] = await Promise.all([
+    fetchAccountsForItems(client, itemIds),
+    fetchItemsByIds(client, itemIds),
+  ]);
   const accountIds = accounts.map((a) => a.id).filter(Boolean);
   const transactions = await fetchTransactionsForAccounts(client, accountIds);
 
@@ -79,7 +98,22 @@ async function loadMemberPluggyBundle(profile) {
     })
   );
 
-  return { accounts, transactions, billsByAccount, itemIds };
+  return { accounts, transactions, billsByAccount, itemIds, itemsById };
+}
+
+async function signIconOverlays(supabase, overlays) {
+  const next = {};
+  await Promise.all(Object.entries(overlays || {}).map(async ([id, value]) => {
+    const overlay = value && typeof value === 'object' ? { ...value } : {};
+    if (overlay.path) {
+      const { data } = await supabase.storage
+        .from(ICON_BUCKET)
+        .createSignedUrl(overlay.path, ICON_SIGNED_TTL_SEC);
+      overlay.url = data?.signedUrl || overlay.url || null;
+    }
+    next[id] = overlay;
+  }));
+  return next;
 }
 
 function tagOwner(list, ownerUserId, ownerLabel) {
@@ -172,7 +206,7 @@ router.get('/moment-data', checkAuth, async (req, res) => {
     const { data: profiles, error: profileError } = await service
       .from('profiles')
       .select(
-        'id, display_name, pluggy_item_ids, pluggy_client_id, pluggy_client_secret, monthly_salaries, custom_account_names'
+        'id, display_name, pluggy_item_ids, pluggy_client_id, pluggy_client_secret, monthly_salaries, custom_account_names, custom_account_icons'
       )
       .in('id', memberIds);
 
@@ -204,16 +238,23 @@ router.get('/moment-data', checkAuth, async (req, res) => {
         b.profile?.custom_account_names && typeof b.profile.custom_account_names === 'object'
           ? b.profile.custom_account_names
           : {};
+      const customIcons = await signIconOverlays(
+        service,
+        b.profile?.custom_account_icons && typeof b.profile.custom_account_icons === 'object'
+          ? b.profile.custom_account_icons
+          : {}
+      );
+      const iconCtx = { customIcons, itemsById: b.itemsById || {} };
       for (const acc of b.accounts) {
         if (seenAccountIds.has(acc.id)) continue;
         seenAccountIds.add(acc.id);
-        accounts.push({
+        accounts.push(decorateAccountWithIcon({
           ...acc,
           originalName: acc.originalName || acc.name,
           name: customNames[acc.id] || acc.name,
           ownerUserId: b.id,
           ownerLabel: b.label,
-        });
+        }, iconCtx));
       }
       transactions.push(...tagOwner(b.transactions, b.id, b.label));
       for (const [accId, bills] of Object.entries(b.billsByAccount || {})) {
@@ -245,13 +286,24 @@ router.get('/moment-data', checkAuth, async (req, res) => {
 
     const labelById = Object.fromEntries(members.map((m) => [m.id, m.displayName]));
 
+    const iconsByUser = {};
+    for (const id of memberIds) {
+      const profile = profileById[id];
+      iconsByUser[id] = await signIconOverlays(
+        service,
+        profile?.custom_account_icons && typeof profile.custom_account_icons === 'object'
+          ? profile.custom_account_icons
+          : {}
+      );
+    }
+
     for (const row of manualAccounts || []) {
       if (seenAccountIds.has(row.id)) continue;
       seenAccountIds.add(row.id);
       const hydrated = hydrateManualAccount(row);
       hydrated.ownerUserId = row.user_id;
       hydrated.ownerLabel = labelById[row.user_id] || 'Usuário';
-      accounts.push(hydrated);
+      accounts.push(decorateAccountWithIcon(hydrated, { customIcons: iconsByUser[row.user_id] || {} }));
       if (hydrated.type === 'CREDIT') {
         const bill = syntheticManualBill(hydrated);
         if (bill) {

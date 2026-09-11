@@ -30,6 +30,7 @@ import {
   Save,
   Repeat
 } from 'lucide-react';
+import { AccountIcon, accountById } from '../components/AccountIcon';
 
 export function FinancialMoment() {
   const { accounts, loadAccounts, loading: accountsLoading, lastUpdated: accountsUpdatedAt } = useAccountStore();
@@ -522,8 +523,9 @@ export function FinancialMoment() {
                     {activeMonthData.activeBills.map((b, i) => (
                       <div key={i} className="list-row" style={{ padding: '0.65rem 0.75rem' }}>
                         <div className="list-row-main" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '0.15rem' }}>
-                          <span style={{ fontWeight: 600, fontSize: 'var(--font-size-xs)' }}>
-                            💳 {b.cardName}
+                          <span style={{ fontWeight: 600, fontSize: 'var(--font-size-xs)', display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                            <AccountIcon account={accountById(accounts, b.cardId)} size={16} type="CREDIT" />
+                            {b.cardName}
                           </span>
                           <div style={{ display: 'flex', gap: '0.4rem', marginTop: '0.15rem' }}>
                             <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
@@ -575,7 +577,8 @@ export function FinancialMoment() {
                             <Repeat size={12} /> {t.description || t.descriptionRaw || 'Débito automático'}
                           </span>
                           <div className="list-row-meta" style={{ gap: '0.4rem' }}>
-                            <Badge variant="neutral" style={{ fontSize: '9px' }}>
+                            <Badge variant="neutral" style={{ fontSize: '9px', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                              <AccountIcon account={accountById(accounts, t.accountId)} size={12} />
                               {t.accountName}
                             </Badge>
                             <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>

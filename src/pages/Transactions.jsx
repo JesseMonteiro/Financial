@@ -9,6 +9,7 @@ import { useAccountStore } from '../stores/accountStore';
 import { formatCurrency, formatDateRelative, formatDate } from '../utils/formatters';
 import { translateCategory } from '../utils/categories';
 import { isInitialEmpty } from '../utils/loading';
+import { AccountIcon, accountById } from '../components/AccountIcon';
 
 export function Transactions() {
   const { loadTransactions, getFilteredTransactions, transactions: rawTransactions, filters, setFilters, loading, lastUpdated } = useTransactionStore();
@@ -83,7 +84,11 @@ export function Transactions() {
             />
           </div>
 
-          <select
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+            {filters.accountId !== 'all' && (
+              <AccountIcon account={accountById(accounts, filters.accountId)} size={20} />
+            )}
+            <select
             value={filters.accountId}
             onChange={(e) => setFilters({ accountId: e.target.value })}
             className="input"
@@ -96,6 +101,7 @@ export function Transactions() {
               </option>
             ))}
           </select>
+          </div>
 
           <select
             value={filters.type}

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plug, ShieldCheck, RefreshCw, AlertTriangle, CheckCircle2, Globe, Radio, Trash2, Send, Building2 } from 'lucide-react';
+import { Plug, ShieldCheck, RefreshCw, AlertTriangle, CheckCircle2, Globe, Radio, Trash2, Send } from 'lucide-react';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
@@ -269,7 +269,24 @@ export function ConnectBank() {
               backgroundColor: 'var(--bg-tertiary)'
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                <CheckCircle2 size={24} style={{ color: 'var(--success)' }} />
+                {item.connector?.imageUrl ? (
+                  <img
+                    src={item.connector.imageUrl}
+                    alt=""
+                    width={28}
+                    height={28}
+                    style={{
+                      width: 28,
+                      height: 28,
+                      borderRadius: 8,
+                      objectFit: 'cover',
+                      background: 'var(--bg-secondary)',
+                      boxShadow: 'inset 0 0 0 1px var(--border-color)',
+                    }}
+                  />
+                ) : (
+                  <CheckCircle2 size={24} style={{ color: 'var(--success)' }} />
+                )}
                 <div>
                   <h4 style={{ fontWeight: 600 }}>{item.connector?.name || 'Banco Santander'} (Open Finance)</h4>
                   <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>

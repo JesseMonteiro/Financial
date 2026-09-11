@@ -21,7 +21,8 @@ import { formatCurrency, formatDate } from '../utils/formatters';
 import { translateCategory } from '../utils/categories';
 import { getCategoryColor } from '../utils/colors';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell } from 'recharts';
-import { useReceivableStore } from '../stores/receivableStore';
+import { AccountIcon } from '../components/AccountIcon';
+import { IconPicker } from '../components/IconPicker';
 import {
   buildCreditCardBills,
   summarizeCardOpenBill,
@@ -45,7 +46,7 @@ function purchaseTimestamp(tx) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function CreditCards() {
-  const { accounts, loadAccounts, loading: accountsLoading, lastUpdated: accountsUpdatedAt } = useAccountStore();
+  const { accounts, loadAccounts, setAccountIcon, connectors, loading: accountsLoading, lastUpdated: accountsUpdatedAt } = useAccountStore();
   const { receivables, loadReceivables } = useReceivableStore();
   const {
     loadForAccounts,
@@ -59,6 +60,8 @@ export function CreditCards() {
 
   // Multi-card selection state ('all' or specific card.id)
   const [selectedCardId, setSelectedCardId] = useState('all');
+  const [iconAccount, setIconAccount] = useState(null);
+  const [savingIcon, setSavingIcon] = useState(false);
 
   const timelineRef = useRef(null);
 
@@ -373,7 +376,15 @@ export function CreditCards() {
                   flexShrink: 0
                 }}
               >
-                <CreditCardIcon size={20} style={{ color: isSelected ? 'var(--primary)' : 'var(--text-muted)' }} />
+                <AccountIcon
+                  account={card}
+                  size={28}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIconAccount(card);
+                  }}
+                  title="Alterar ícone"
+                />
                 <div>
                   <span style={{ fontSize: 'var(--font-size-xs)', fontWeight: 700, display: 'block', color: isSelected ? 'var(--primary)' : 'var(--text-primary)' }}>
                     {card.name}{card.isManual ? ' · Manual' : ''}
@@ -656,8 +667,8 @@ export function CreditCards() {
                         </h4>
                         <div className="list-row-meta" style={{ gap: '0.4rem' }}>
                           {selectedCardId === 'all' && cardObj && (
-                            <Badge variant="neutral" style={{ fontWeight: 600, fontSize: '10px' }}>
-                              💳 {cardObj.name}
+                            <Badge variant="neutral" style={{ fontWeight: 600, fontSize: '10px', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                              <AccountIcon account={cardObj} size={12} /> {cardObj.name}
                             </Badge>
                           )}
                           <Badge variant={isPayment ? 'success' : 'neutral'}>
@@ -762,6 +773,32 @@ export function CreditCards() {
         </Card>
       </div>
       </>
+      )}
+      {iconAccount && (
+        <IconPicker
+          account={accounts.find((a) => a.id === iconAccount.id) || iconAccount}
+          connectors={connectors}
+          saving={savingIcon}
+          onClose={() => { if (!savingIcon) setIconAccount(null); }}
+          onSelectKey={async (key) => {
+            setSavingIcon(true);
+            try {
+              await setAccountIcon(iconAccount.id, { key });
+              setIconAccount(null);
+            } finally {
+              setSavingIcon(false);
+            }
+          }}
+          onUpload={async (file) => {
+            setSavingIcon(true);
+            try {
+              await setAccountIcon(iconAccount.id, { file });
+              setIconAccount(null);
+            } finally {
+              setSavingIcon(false);
+            }
+          }}
+        />
       )}
     </div>
   );

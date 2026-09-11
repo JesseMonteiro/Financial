@@ -11,6 +11,7 @@ export {
   deleteStoredManualAccounts, deleteStoredManualTransactionsForAccounts,
   getProfileSettings, updateProfileSettings,
   getCustomAccountNames, saveCustomAccountNames,
+  getCustomAccountIcons, saveCustomAccountIcons, uploadAccountIconFile, deleteAccountIconFile,
   getMonthlySalaries, saveMonthlySalaries,
   getPluggyCredentials, savePluggyCredentials, getPluggyItemIds
 } from './supabaseStorage.js';

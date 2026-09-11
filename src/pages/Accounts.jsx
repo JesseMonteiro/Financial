@@ -2,7 +2,6 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   Wallet,
   CreditCard,
-  Building2,
   Plus,
   Edit2,
   Check,
@@ -36,6 +35,9 @@ import {
 } from '../services/api';
 import { getCurrentUserId } from '../services/storage';
 import { ExpenseFormFields, MANUAL_CATEGORY_OPTIONS } from './ManualExpenses';
+import { AccountIcon } from '../components/AccountIcon';
+import { IconPicker } from '../components/IconPicker';
+import { decorateAccountWithIcon } from '../utils/accountIcons';
 
 function SyncUpdatedBadge({ updatedAt }) {
   const sync = getDataSyncMeta(updatedAt);
@@ -119,11 +121,24 @@ function blankPurchaseForm() {
 }
 
 function AddManualModal({ onClose, onSave, saving }) {
+  const connectors = useAccountStore((s) => s.connectors);
   const [form, setForm] = useState(blankAddForm);
   const showAccount = form.kind === 'account' || form.kind === 'both';
   const showCard = form.kind === 'card' || form.kind === 'both';
 
   const set = (key) => (e) => setForm((prev) => ({ ...prev, [key]: e.target.value }));
+
+  const previewCtx = { connectors: connectors || [] };
+  const accountPreview = decorateAccountWithIcon({
+    type: 'BANK',
+    name: form.accountName.trim() || form.institutionName.trim() || 'Conta',
+    institutionName: form.institutionName.trim(),
+  }, previewCtx);
+  const cardPreview = decorateAccountWithIcon({
+    type: 'CREDIT',
+    name: form.cardName.trim() || `${form.institutionName.trim()} Cartão`,
+    institutionName: form.institutionName.trim(),
+  }, previewCtx);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -164,7 +179,20 @@ function AddManualModal({ onClose, onSave, saving }) {
             />
             <div>
               <label className="label" style={{ display: 'block', marginBottom: '0.35rem', fontSize: 'var(--font-size-xs)', fontWeight: 600 }}>Instituição</label>
-              <input className="input" required value={form.institutionName} onChange={set('institutionName')} placeholder="Ex: Nubank, Inter, Caixa" style={{ width: '100%' }} />
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                <AccountIcon account={showCard && !showAccount ? cardPreview : accountPreview} size={32} />
+                <input className="input" required value={form.institutionName} onChange={set('institutionName')} placeholder="Ex: Nubank, Inter, Caixa" style={{ width: '100%' }} />
+              </div>
+              {showAccount && showCard && form.institutionName.trim() && accountPreview.iconKey !== cardPreview.iconKey && (
+                <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.45rem', fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)', alignItems: 'center' }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+                    <AccountIcon account={accountPreview} size={16} /> Conta
+                  </span>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+                    <AccountIcon account={cardPreview} size={16} /> Cartão
+                  </span>
+                </div>
+              )}
             </div>
             {showAccount && (
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
@@ -348,6 +376,8 @@ export function Accounts() {
     addManualAccounts,
     updateManualAccount,
     deleteManualAccount,
+    setAccountIcon,
+    connectors,
     loading,
     pending,
     lastUpdated,
@@ -371,6 +401,8 @@ export function Accounts() {
   const [parsedBill, setParsedBill] = useState(null);
   const [parsingPdf, setParsingPdf] = useState(false);
   const [savingBill, setSavingBill] = useState(false);
+  const [iconAccount, setIconAccount] = useState(null);
+  const [savingIcon, setSavingIcon] = useState(false);
   const pdfInputRef = useRef(null);
   const pdfTargetRef = useRef(null);
 
@@ -858,20 +890,12 @@ export function Accounts() {
               <Card key={acc.id} className="col-4">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem', gap: '0.5rem' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: 1, minWidth: 0 }}>
-                    <div style={{
-                      width: 40,
-                      height: 40,
-                      borderRadius: 'var(--radius-md)',
-                      backgroundColor: acc.bankData?.primaryColor || 'var(--primary)',
-                      color: '#fff',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontWeight: 700,
-                      flexShrink: 0
-                    }}>
-                      <Building2 size={20} />
-                    </div>
+                    <AccountIcon
+                      account={acc}
+                      size={40}
+                      onClick={() => setIconAccount(acc)}
+                      title="Alterar ícone"
+                    />
                     <div style={{ flex: 1, minWidth: 0 }}>
                       {renderNameEditor(acc)}
                       <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>
@@ -916,12 +940,20 @@ export function Accounts() {
           {creditCards.map((acc) => (
             <Card key={acc.id} className="col-4">
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem', gap: '0.5rem' }}>
-                <div style={{ flex: 1, minWidth: 0, marginRight: '0.5rem' }}>
-                  <div style={{ marginBottom: '0.2rem' }}>{renderNameEditor(acc)}</div>
-                  <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>
-                    {acc.creditData?.institutionName || 'Cartão'}
-                    {acc.number ? ` • Final ${acc.number}` : ''}
-                  </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: 1, minWidth: 0, marginRight: '0.5rem' }}>
+                  <AccountIcon
+                    account={acc}
+                    size={40}
+                    onClick={() => setIconAccount(acc)}
+                    title="Alterar ícone"
+                  />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ marginBottom: '0.2rem' }}>{renderNameEditor(acc)}</div>
+                    <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>
+                      {acc.creditData?.institutionName || 'Cartão'}
+                      {acc.number ? ` • Final ${acc.number}` : ''}
+                    </span>
+                  </div>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.35rem', flexShrink: 0 }}>
                   {acc.isManual ? <ManualBadge /> : <Badge variant="neutral">Fatura Aberta</Badge>}
@@ -959,6 +991,32 @@ export function Accounts() {
           onClose={() => { setParsedBill(null); setPdfAccount(null); }}
           onConfirm={applyParsedBill}
           saving={savingBill}
+        />
+      )}
+      {iconAccount && (
+        <IconPicker
+          account={accounts.find((a) => a.id === iconAccount.id) || iconAccount}
+          connectors={connectors}
+          saving={savingIcon}
+          onClose={() => { if (!savingIcon) setIconAccount(null); }}
+          onSelectKey={async (key) => {
+            setSavingIcon(true);
+            try {
+              await setAccountIcon(iconAccount.id, { key });
+              setIconAccount(null);
+            } finally {
+              setSavingIcon(false);
+            }
+          }}
+          onUpload={async (file) => {
+            setSavingIcon(true);
+            try {
+              await setAccountIcon(iconAccount.id, { file });
+              setIconAccount(null);
+            } finally {
+              setSavingIcon(false);
+            }
+          }}
         />
       )}
     </div>

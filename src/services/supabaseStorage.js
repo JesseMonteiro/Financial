@@ -1,5 +1,11 @@
 import { supabase } from './supabaseClient.js';
 import { useAuthStore } from '../stores/authStore.js';
+import {
+  ICON_BUCKET,
+  ICON_SIGNED_TTL_SEC,
+  extFromImageFile,
+  validateIconFile,
+} from '../utils/accountIcons.js';
 
 export async function getCurrentUserId() {
   const cached = useAuthStore.getState().user?.id;
@@ -399,6 +405,120 @@ export async function saveCustomAccountNames(names) {
     console.error('Error saving custom account names:', error);
     throw error;
   }
+}
+
+// --- Custom account icons ---
+const LOCAL_ICONS_KEY = 'financehub_custom_account_icons';
+
+function readLocalCustomAccountIcons() {
+  try {
+    const raw = localStorage.getItem(LOCAL_ICONS_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function persistLocalCustomAccountIcons(icons) {
+  try {
+    localStorage.setItem(LOCAL_ICONS_KEY, JSON.stringify(icons && typeof icons === 'object' ? icons : {}));
+  } catch (_) { /* ignore quota */ }
+}
+
+async function signIconOverlays(overlays) {
+  const next = {};
+  const entries = Object.entries(overlays || {});
+  await Promise.all(entries.map(async ([id, value]) => {
+    const overlay = value && typeof value === 'object' ? { ...value } : {};
+    if (overlay.path) {
+      const { data } = await supabase.storage
+        .from(ICON_BUCKET)
+        .createSignedUrl(overlay.path, ICON_SIGNED_TTL_SEC);
+      overlay.url = data?.signedUrl || overlay.url || null;
+    }
+    next[id] = overlay;
+  }));
+  return next;
+}
+
+export async function getCustomAccountIcons() {
+  const userId = await getCurrentUserId();
+  if (!userId) return readLocalCustomAccountIcons();
+
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('custom_account_icons')
+    .eq('id', userId)
+    .single();
+
+  if (error) {
+    console.error('Error fetching custom account icons:', error);
+    return readLocalCustomAccountIcons();
+  }
+
+  const fromDb = data?.custom_account_icons && typeof data.custom_account_icons === 'object'
+    ? data.custom_account_icons
+    : {};
+  const fromLocal = readLocalCustomAccountIcons();
+  if (Object.keys(fromDb).length === 0 && Object.keys(fromLocal).length > 0) {
+    await saveCustomAccountIcons(fromLocal);
+    return signIconOverlays(fromLocal);
+  }
+  persistLocalCustomAccountIcons(fromDb);
+  return signIconOverlays(fromDb);
+}
+
+export async function saveCustomAccountIcons(icons) {
+  const safe = icons && typeof icons === 'object' ? icons : {};
+  const persisted = {};
+  for (const [id, value] of Object.entries(safe)) {
+    if (!value || typeof value !== 'object') continue;
+    persisted[id] = {};
+    if (value.key) persisted[id].key = value.key;
+    if (value.path) persisted[id].path = value.path;
+  }
+  persistLocalCustomAccountIcons(persisted);
+
+  const userId = await getCurrentUserId();
+  if (!userId) return persisted;
+  const { error } = await supabase
+    .from('profiles')
+    .update({ custom_account_icons: persisted })
+    .eq('id', userId);
+
+  if (error) {
+    console.error('Error saving custom account icons:', error);
+    throw error;
+  }
+  return signIconOverlays(persisted);
+}
+
+export async function uploadAccountIconFile(accountId, file) {
+  const invalid = validateIconFile(file);
+  if (invalid) throw new Error(invalid);
+  const userId = await getCurrentUserId();
+  if (!userId) throw new Error('Faça login para enviar um ícone.');
+  const ext = extFromImageFile(file);
+  const path = `${userId}/${accountId}.${ext}`;
+  const { error } = await supabase.storage.from(ICON_BUCKET).upload(path, file, {
+    upsert: true,
+    contentType: file.type || 'image/png',
+    cacheControl: '3600',
+  });
+  if (error) {
+    console.error('Error uploading account icon:', error);
+    throw error;
+  }
+  const { data } = await supabase.storage.from(ICON_BUCKET).createSignedUrl(path, ICON_SIGNED_TTL_SEC);
+  return { path, url: data?.signedUrl || null };
+}
+
+export async function deleteAccountIconFile(path) {
+  if (!path) return;
+  const { error } = await supabase.storage.from(ICON_BUCKET).remove([path]);
+  if (error) console.warn('Error deleting account icon:', error.message);
 }
 
 // --- Monthly salaries (Momento Financeiro) ---

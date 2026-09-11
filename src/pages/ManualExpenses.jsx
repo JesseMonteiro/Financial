@@ -12,6 +12,7 @@ import { formatCurrency, formatDate } from '../utils/formatters';
 import { translateCategory } from '../utils/categories';
 import { getCategoryColor } from '../utils/colors';
 import { isInitialEmpty } from '../utils/loading';
+import { AccountIcon, accountById } from '../components/AccountIcon';
 import {
   Plus,
   Trash2,
@@ -523,7 +524,11 @@ export function ManualExpenses() {
               <label className="label" style={{ display: 'block', marginBottom: '0.4rem', fontSize: 'var(--font-size-xs)', fontWeight: 600 }}>
                 Conta ou cartão
               </label>
-              <select
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                {form.accountId && form.accountId !== 'manual' && (
+                  <AccountIcon account={accountById(accounts, form.accountId) || extraLinkedAccount} size={22} />
+                )}
+                <select
                 value={form.accountId || 'manual'}
                 onChange={(e) => setFormField('accountId')(e.target.value)}
                 className="input"
@@ -543,6 +548,7 @@ export function ManualExpenses() {
                   </option>
                 ))}
               </select>
+              </div>
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '0.5rem' }}>
