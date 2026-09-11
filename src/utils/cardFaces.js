@@ -121,7 +121,11 @@ export function mergeLocalCardFaces(accounts, localAccounts) {
       cardFaceUrl: acc.cardFaceUrl || local?.cardFaceUrl || fromKey?.cardFaceUrl || null,
       cardFacePath: acc.cardFacePath || local?.cardFacePath || fromKey?.cardFacePath || null,
       number: acc.number || local?.number || '',
-      iconKey: acc.iconKey || local?.iconKey || fromKey?.iconKey || null,
+      iconUrl: local?.iconUrl || acc.iconUrl || null,
+      iconUrls: (local?.iconUrls?.length ? local.iconUrls : acc.iconUrls) || null,
+      iconKey: local?.iconKey || acc.iconKey || fromKey?.iconKey || null,
+      iconColor: local?.iconColor || acc.iconColor || null,
+      iconSource: local?.iconSource || acc.iconSource || null,
     };
   });
 }

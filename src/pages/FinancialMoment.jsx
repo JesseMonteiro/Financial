@@ -424,7 +424,7 @@ export function FinancialMoment() {
                 </span>
                 <div className="list-row-meta" style={{ gap: '0.4rem' }}>
                   <Badge variant="neutral" style={{ fontSize: '9px', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                    <AccountIcon account={accountById(accounts, t.accountId)} size={12} />
+                    <AccountIcon account={accountById(accounts, t.accountId)} size={20} />
                     {t.accountName}
                   </Badge>
                   <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>

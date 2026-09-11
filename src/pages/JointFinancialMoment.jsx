@@ -63,7 +63,7 @@ export function JointFinancialMoment() {
     pending,
     error,
   } = useJointStore();
-  const { accounts: myAccounts, loadAccounts, connectors, itemsById } = useAccountStore();
+  const { accounts: myAccounts, loadAccounts, connectors, itemsById, customAccountIcons } = useAccountStore();
   const isMobile = useIsMobile();
 
   const [selectedMonth, setSelectedMonth] = useState('');
@@ -87,11 +87,12 @@ export function JointFinancialMoment() {
   const accounts = useMemo(
     () => shareCardFacesByProduct(
       decorateAccountsWithIcons(mergeLocalCardFaces(jointAccounts, myAccounts), {
+        customIcons: customAccountIcons || {},
         connectors: connectors || [],
         itemsById: itemsById || {},
       })
     ),
-    [jointAccounts, myAccounts, connectors, itemsById]
+    [jointAccounts, myAccounts, customAccountIcons, connectors, itemsById]
   );
   const creditCards = useMemo(
     () => (accounts || []).filter((a) => a.type === 'CREDIT'),
@@ -512,7 +513,7 @@ export function JointFinancialMoment() {
                   <Badge variant="neutral" style={{ fontSize: '9px', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                     <AccountIcon
                       account={accountById(accounts, t.accountId) || decorateAccountWithIcon({ name: t.accountName, type: 'BANK' })}
-                      size={12}
+                      size={20}
                     />
                     {t.accountName}
                   </Badge>

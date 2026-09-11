@@ -257,9 +257,12 @@ export function resolveAccountIcon(account, ctx = {}) {
   const connectors = ctx.connectors || [];
   const custom = iconOverlayFor(customIcons, account?.id);
 
-  if (custom?.url) {
-    const urls = [custom.url, ...(custom.key && CATALOG_BY_ID[custom.key] ? catalogEntryUrls(CATALOG_BY_ID[custom.key], connectors) : [])];
-    return { url: custom.url, urls: uniqueUrls(urls), key: custom.key || null, source: 'upload', color: null };
+  if (custom?.url || custom?.path) {
+    const url = custom.url || account?.iconUrl || null;
+    if (url) {
+      const urls = [url, ...(custom.key && CATALOG_BY_ID[custom.key] ? catalogEntryUrls(CATALOG_BY_ID[custom.key], connectors) : [])];
+      return { url, urls: uniqueUrls(urls), key: custom.key || null, source: 'upload', color: account?.iconColor || null };
+    }
   }
   if (custom?.key && CATALOG_BY_ID[custom.key]) {
     const entry = CATALOG_BY_ID[custom.key];
@@ -346,27 +349,28 @@ export function collectFacesByCatalogKey(iconMaps = []) {
 
 export function decorateAccountWithIcon(account, ctx = {}) {
   const item = account?.itemId ? itemsMap(ctx.itemsById)[account.itemId] : null;
-  const icon = resolveAccountIcon(account, ctx);
   const overlay = iconOverlayFor(ctx.customIcons, account?.id);
+  const icon = resolveAccountIcon(account, ctx);
+  const hasCustom = Boolean(overlay && (overlay.url || overlay.path || overlay.key));
   const productKey = overlay?.key || icon.key || account?.iconKey || null;
   const family = (productKey && ctx.facesByKey?.[productKey]) || null;
   const overlayFacePath = overlay?.facePath || overlay?.face_path || null;
   const overlayFaceUrl = overlay?.faceUrl || overlay?.face_url || null;
+  const preferResolved = hasCustom || !account?.iconUrl;
   return {
     ...account,
     connectorName: account.connectorName || item?.connector?.name || account._connector || null,
     connectorId: account.connectorId || item?.connector?.id || account._connectorId || null,
     connectorImageUrl: item?.connector?.imageUrl || account.connectorImageUrl || null,
-    iconUrl: icon.url || account.iconUrl || null,
-    iconUrls: uniqueUrls([
-      ...(icon.urls || []),
-      icon.url,
-      account.iconUrl,
-      ...(account.iconUrls || []),
-    ]),
-    iconKey: icon.key || account.iconKey || null,
-    iconSource: icon.source || account.iconSource || null,
-    iconColor: icon.color || account.iconColor || account.bankData?.primaryColor || null,
+    iconUrl: preferResolved ? (icon.url || account.iconUrl || null) : account.iconUrl,
+    iconUrls: uniqueUrls(preferResolved
+      ? [...(icon.urls || []), icon.url, account.iconUrl, ...(account.iconUrls || [])]
+      : [account.iconUrl, ...(account.iconUrls || []), ...(icon.urls || []), icon.url]),
+    iconKey: preferResolved ? (icon.key || account.iconKey || null) : (account.iconKey || icon.key || null),
+    iconSource: preferResolved ? (icon.source || account.iconSource || null) : (account.iconSource || icon.source || null),
+    iconColor: preferResolved
+      ? (icon.color || account.iconColor || account.bankData?.primaryColor || null)
+      : (account.iconColor || icon.color || account.bankData?.primaryColor || null),
     cardFaceUrl: overlayFaceUrl || family?.faceUrl || account.cardFaceUrl || null,
     cardFacePath: overlayFacePath || family?.facePath || account.cardFacePath || null,
   };
