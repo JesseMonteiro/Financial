@@ -22,7 +22,7 @@ function normalizeManual(row) {
   return {
     ...camel,
     isManual: true,
-    accountId: 'manual',
+    accountId: camel.accountId || row.account_id || 'manual',
     ownerUserId: camel.ownerUserId || camel.userId,
     ownerLabel: camel.ownerLabel,
     isPaid: Boolean(camel.isPaid),

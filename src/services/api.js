@@ -438,6 +438,15 @@ export async function fetchJointMomentData({ force = false } = {}) {
   );
 }
 
+export async function parseCreditBillPdf({ base64, mimeType = 'application/pdf' }) {
+  const res = await api.post(
+    '/parse-bill',
+    { base64, mimeType },
+    { timeout: 90_000 }
+  );
+  return res.data;
+}
+
 export async function checkServerHealth() {
   try {
     const res = await api.get('/health');

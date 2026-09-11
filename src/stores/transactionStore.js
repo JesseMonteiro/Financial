@@ -42,7 +42,7 @@ function buildManualTx(txData, { id, txDate, parentId, index, occurrences, userI
     date: txDate.toISOString(),
     type: 'DEBIT',
     status: 'POSTED',
-    accountId: 'manual',
+    accountId: txData.accountId || 'manual',
     isManual: true,
     isRecurring,
     isContinuous,
@@ -328,7 +328,7 @@ export const useTransactionStore = create((set, get) => ({
         date: txDate.toISOString(),
         type: 'DEBIT',
         status: 'POSTED',
-        accountId: 'manual',
+        accountId: txData.accountId || tx.accountId || 'manual',
         isManual: true,
         isRecurring,
         isContinuous,
@@ -390,5 +390,73 @@ export const useTransactionStore = create((set, get) => ({
       }
       return true;
     });
-  }
+  },
+
+  /**
+   * Replace non-recurring manual purchases on an account for a bill cycle.
+   * Used after PDF import. Recurring series are left untouched.
+   */
+  replaceManualPurchasesForAccount: async (accountId, newTxs, { dueDate, closingDate } = {}) => {
+    if (!accountId) return;
+    const { transactions } = get();
+    const due = dueDate ? String(dueDate).slice(0, 10) : null;
+    const close = closingDate ? String(closingDate).slice(0, 10) : null;
+    const dueYm = due ? due.slice(0, 7) : null;
+    const prevYm = dueYm
+      ? (() => {
+          const [y, m] = dueYm.split('-').map(Number);
+          return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`;
+        })()
+      : null;
+
+    const toRemove = transactions.filter((t) => {
+      if (!t.isManual || t.accountId !== accountId) return false;
+      if (t.isRecurring || t.isContinuous) return false;
+      const d = String(t.date || '').slice(0, 10);
+      const fromPdf = t.merchant?.name === 'Fatura PDF';
+      if (close && due) return d >= close && d <= due;
+      if (dueYm) return d.startsWith(dueYm) || (prevYm && d.startsWith(prevYm));
+      // Sem janela de fatura: só substitui lançamentos já vindos de PDF.
+      return fromPdf;
+    });
+
+    const incoming = (newTxs || []).map((t) => ({
+      ...t,
+      accountId,
+      isManual: true,
+    }));
+    const removeIds = toRemove.map((t) => t.id);
+    const removeSet = new Set(removeIds);
+    const snapshot = transactions;
+    const pendingIds = [...removeIds, ...incoming.map((t) => t.id)];
+
+    set((state) => ({
+      transactions: [
+        ...state.transactions.filter((t) => !removeSet.has(t.id)),
+        ...incoming,
+      ],
+      pending: addPending(state.pending, pendingIds),
+    }));
+
+    try {
+      if (removeIds.length) await deleteStoredManualTransactions(removeIds);
+      if (incoming.length) await saveStoredManualTransactions(incoming);
+    } catch (err) {
+      set({ transactions: snapshot });
+      throw err;
+    } finally {
+      set((state) => ({ pending: removePending(state.pending, pendingIds) }));
+    }
+  },
+
+  /** Drop in-memory manuals linked to deleted local accounts. */
+  dropManualsForAccounts: (accountIds = []) => {
+    const ids = new Set((accountIds || []).filter(Boolean));
+    if (!ids.size) return;
+    set((state) => ({
+      transactions: state.transactions.filter(
+        (t) => !(t.isManual && ids.has(t.accountId))
+      ),
+    }));
+  },
 }));

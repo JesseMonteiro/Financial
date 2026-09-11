@@ -61,6 +61,23 @@ export const defaultProfile = {
   guidePath: 'docs/connectors/README.md',
 };
 
+/** Local cards: CREDIT `balance` is the independently edited `bill_amount`. */
+/** @type {CreditConnectorProfile} */
+export const manualProfile = {
+  id: 'manual',
+  label: 'Conta manual',
+  match: ({ account }) => Boolean(account?.isManual),
+  forecastToDueOffset: 0,
+  balanceMeaning: 'open_bill',
+  openTotalSource: 'balance',
+  chargeSumMode: 'signed_net',
+  includeProjectedInOfficialTotal: false,
+  liftOfficialToCycleCharges: false,
+  remapStalePending: 'never',
+  paymentOftenOnNextCycle: false,
+  guidePath: 'docs/connectors/README.md',
+};
+
 /** @type {CreditConnectorProfile[]} */
 export const CONNECTOR_PROFILES = [
   {
@@ -228,6 +245,7 @@ export const CONNECTOR_PROFILES = [
  * @returns {CreditConnectorProfile}
  */
 export function resolveConnectorProfile(ctx = {}) {
+  if (ctx.account?.isManual) return manualProfile;
   for (const p of CONNECTOR_PROFILES) {
     if (p.match?.(ctx)) return p;
   }

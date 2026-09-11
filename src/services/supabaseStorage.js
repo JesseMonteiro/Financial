@@ -186,11 +186,25 @@ export async function getStoredManualTransactions() {
     console.error('Error fetching manual transactions:', error);
     return [];
   }
-  return data.map(row => ({
-    ...toCamelCase(row),
-    isManual: true,
-    accountId: 'manual'
-  }));
+  return data.map(row => {
+    const camel = toCamelCase(row);
+    const accountId = camel.accountId || row.account_id || 'manual';
+    const merchant = camel.merchant || { name: 'Manual' };
+    const creditCardMetadata = camel.creditCardMetadata
+      || (merchant.installmentNumber && merchant.totalInstallments
+        ? {
+            installmentNumber: merchant.installmentNumber,
+            totalInstallments: merchant.totalInstallments,
+          }
+        : undefined);
+    return {
+      ...camel,
+      isManual: true,
+      accountId,
+      merchant,
+      creditCardMetadata,
+    };
+  });
 }
 
 function ownerIdFromTx(tx) {
@@ -198,14 +212,26 @@ function ownerIdFromTx(tx) {
 }
 
 function toSnakeManualTx(tx, ownerId) {
-  const snakeTx = toSnakeCase(tx);
-  snakeTx.user_id = ownerId;
-  delete snakeTx.is_manual;
-  delete snakeTx.account_id;
-  delete snakeTx.owner_user_id;
-  delete snakeTx.owner_label;
-  if (snakeTx.is_paid == null) snakeTx.is_paid = false;
-  return snakeTx;
+  const accountId = tx.accountId || tx.account_id || null;
+  return {
+    id: tx.id,
+    user_id: ownerId,
+    description: tx.description || '',
+    original_description: tx.originalDescription ?? tx.original_description ?? tx.description ?? '',
+    amount: tx.amount,
+    category: tx.category || 'Other',
+    date: tx.date,
+    type: tx.type || 'DEBIT',
+    status: tx.status || 'POSTED',
+    is_recurring: Boolean(tx.isRecurring ?? tx.is_recurring),
+    is_continuous: Boolean(tx.isContinuous ?? tx.is_continuous),
+    parent_id: tx.parentId ?? tx.parent_id ?? null,
+    frequency: tx.frequency || null,
+    merchant: tx.merchant || { name: 'Manual' },
+    is_paid: tx.isPaid ?? tx.is_paid ?? false,
+    paid_at: tx.paidAt ?? tx.paid_at ?? null,
+    account_id: accountId && accountId !== 'manual' ? accountId : (accountId === 'manual' ? 'manual' : null),
+  };
 }
 
 async function resolveManualOwners(txs, fallbackUserId) {
@@ -491,6 +517,107 @@ export async function savePluggyCredentials(clientId, clientSecret) {
     
   if (error) {
     console.error('Error saving pluggy credentials:', error);
+    throw error;
+  }
+}
+
+// --- Manual accounts / cards ---
+export async function getStoredManualAccounts() {
+  const userId = await getCurrentUserId();
+  if (!userId) return [];
+  const { data, error } = await supabase
+    .from('manual_accounts')
+    .select('*')
+    .eq('user_id', userId);
+  if (error) {
+    console.error('Error fetching manual accounts:', error);
+    throw error;
+  }
+  return data || [];
+}
+
+export async function saveStoredManualAccounts(accounts) {
+  const list = (Array.isArray(accounts) ? accounts : [accounts]).filter(Boolean);
+  if (!list.length) return;
+  const userId = await getCurrentUserId();
+  if (!userId) return;
+
+  const rows = list.map((acc) => {
+    const type = acc.type === 'CREDIT' ? 'CREDIT' : 'BANK';
+    const row = {
+      id: acc.id,
+      user_id: acc.userId || acc.user_id || userId,
+      type,
+      name: acc.name,
+      institution_name: acc.institutionName
+        ?? acc.institution_name
+        ?? acc.bankData?.institutionName
+        ?? acc.creditData?.institutionName
+        ?? '',
+      number: acc.number || null,
+      balance: type === 'BANK' ? Number(acc.balance) || 0 : 0,
+      bill_amount: type === 'CREDIT'
+        ? (acc.billAmount == null && acc.bill_amount == null
+          ? Number(acc.balance) || 0
+          : Number(acc.billAmount ?? acc.bill_amount) || 0)
+        : null,
+      bill_due_day: type === 'CREDIT' && (acc.billDueDay != null || acc.bill_due_day != null)
+        ? Number(acc.billDueDay ?? acc.bill_due_day)
+        : null,
+      credit_limit: type === 'CREDIT'
+        ? (Number(acc.creditLimit ?? acc.credit_limit ?? acc.creditData?.creditLimit) || null)
+        : null,
+      pair_id: acc.pairId ?? acc.pair_id ?? null,
+      updated_at: new Date().toISOString(),
+    };
+    if (acc.createdAt || acc.created_at) {
+      row.created_at = acc.createdAt || acc.created_at;
+    }
+    return row;
+  });
+
+  const { error } = await supabase
+    .from('manual_accounts')
+    .upsert(rows, { onConflict: 'id' });
+  if (error) {
+    console.error('Error saving manual accounts:', error);
+    throw error;
+  }
+}
+
+export async function saveStoredManualAccount(account) {
+  if (!account) return;
+  await saveStoredManualAccounts([account]);
+}
+
+export async function deleteStoredManualAccounts(ids) {
+  const list = [...new Set((Array.isArray(ids) ? ids : [ids]).filter(Boolean))];
+  if (!list.length) return;
+  const userId = await getCurrentUserId();
+  if (!userId) return;
+  const { error } = await supabase
+    .from('manual_accounts')
+    .delete()
+    .eq('user_id', userId)
+    .in('id', list);
+  if (error) {
+    console.error('Error deleting manual accounts:', error);
+    throw error;
+  }
+}
+
+export async function deleteStoredManualTransactionsForAccounts(accountIds) {
+  const list = [...new Set((Array.isArray(accountIds) ? accountIds : [accountIds]).filter(Boolean))];
+  if (!list.length) return;
+  const userId = await getCurrentUserId();
+  if (!userId) return;
+  const { error } = await supabase
+    .from('manual_transactions')
+    .delete()
+    .eq('user_id', userId)
+    .in('account_id', list);
+  if (error) {
+    console.error('Error deleting manual transactions for accounts:', error);
     throw error;
   }
 }

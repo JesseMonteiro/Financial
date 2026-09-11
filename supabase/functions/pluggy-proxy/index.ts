@@ -556,6 +556,95 @@ Categorias: Alimentação, Transporte, Moradia, Lazer, Saúde, Educação, Outro
   };
 }
 
+const BILL_PARSE_INSTRUCTION = `Você extrai dados de faturas de cartão de crédito brasileiras (PDF).
+Retorne APENAS JSON:
+{"totalAmount":number,"dueDate":"YYYY-MM-DD"|null,"closingDate":"YYYY-MM-DD"|null,"cardLastDigits":string|null,"institutionName":string|null,"purchases":[{"date":"YYYY-MM-DD","description":string,"amount":number,"installment":number|null,"totalInstallments":number|null,"category":"Food"|"Groceries"|"Rent"|"Utilities"|"Transport"|"Entertainment"|"Health"|"Education"|"Other"}]}
+Ignore pagamentos de fatura. amount positivo em BRL. installment só se houver parcela (3/12).`;
+
+const CATEGORY_ALIASES: Record<string, string> = {
+  food: 'Food', alimentacao: 'Food', alimentação: 'Food',
+  groceries: 'Groceries', supermercado: 'Groceries', mercado: 'Groceries',
+  rent: 'Rent', moradia: 'Rent', aluguel: 'Rent',
+  utilities: 'Utilities', contas: 'Utilities',
+  transport: 'Transport', transporte: 'Transport',
+  entertainment: 'Entertainment', lazer: 'Entertainment',
+  health: 'Health', saude: 'Health', saúde: 'Health',
+  education: 'Education', educacao: 'Education', educação: 'Education',
+  other: 'Other', outros: 'Other',
+};
+
+function normalizeParsedBill(raw: Record<string, unknown>) {
+  const purchases = Array.isArray(raw?.purchases) ? raw.purchases as Record<string, unknown>[] : [];
+  return {
+    totalAmount: Number(raw?.totalAmount) || 0,
+    dueDate: raw?.dueDate ? String(raw.dueDate).slice(0, 10) : null,
+    closingDate: raw?.closingDate ? String(raw.closingDate).slice(0, 10) : null,
+    cardLastDigits: raw?.cardLastDigits ? String(raw.cardLastDigits).replace(/\D/g, '').slice(-4) : null,
+    institutionName: raw?.institutionName ? String(raw.institutionName) : null,
+    purchases: purchases.map((p) => {
+      const catKey = String(p?.category || 'Other').trim().toLowerCase();
+      return {
+        date: p?.date ? String(p.date).slice(0, 10) : null,
+        description: String(p?.description || 'Compra').trim(),
+        amount: Math.abs(Number(p?.amount) || 0),
+        installment: p?.installment != null ? Number(p.installment) || null : null,
+        totalInstallments: p?.totalInstallments != null ? Number(p.totalInstallments) || null : null,
+        category: CATEGORY_ALIASES[catKey] || 'Other',
+      };
+    }).filter((p) => p.amount > 0 || p.description),
+  };
+}
+
+async function handleParseBill(body: unknown): Promise<Response> {
+  const payload = (body || {}) as { base64?: string; mimeType?: string };
+  const base64 = payload.base64;
+  if (!base64 || typeof base64 !== 'string') {
+    return errorResponse('PDF em base64 é obrigatório', 400);
+  }
+  const maxChars = Math.ceil(8 * 1024 * 1024 * 4 / 3) + 1024;
+  if (base64.length > maxChars) {
+    return errorResponse('PDF muito grande (limite 8 MB)', 413);
+  }
+
+  const apiKey = Deno.env.get('GEMINI_API_KEY');
+  if (!apiKey) return errorResponse('Assistente de fatura indisponível no momento.', 503);
+
+  const mimeType = payload.mimeType || 'application/pdf';
+  const models = ['gemini-2.5-flash', 'gemini-2.0-flash'];
+  let lastError = '';
+  for (const model of models) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: BILL_PARSE_INSTRUCTION }] },
+        contents: [{
+          role: 'user',
+          parts: [
+            { inlineData: { mimeType, data: base64 } },
+            { text: 'Extraia os dados desta fatura de cartão de crédito. Retorne apenas o JSON pedido.' },
+          ],
+        }],
+        generationConfig: { temperature: 0.1, responseMimeType: 'application/json' },
+      }),
+    });
+    if (!res.ok) {
+      lastError = await res.text();
+      console.error(`[parse-bill] Gemini error (${model}):`, lastError);
+      continue;
+    }
+    const data = await res.json();
+    const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '{}';
+    try {
+      return jsonResponse(normalizeParsedBill(JSON.parse(raw)));
+    } catch {
+      return errorResponse('A IA não retornou um JSON válido da fatura.', 500);
+    }
+  }
+  return errorResponse('Falha ao ler a fatura com IA.', 500);
+}
+
 function parseIntentLocally(text: string): { intent: string; data?: Record<string, unknown>; message?: string } | null {
   const lower = text.toLowerCase().normalize('NFD').replace(/\p{M}/gu, '');
 
@@ -1253,6 +1342,12 @@ async function handleJoint(
       .in('user_id', memberIds);
     if (manualError) return errorResponse(manualError.message, 500);
 
+    const { data: manualAccounts, error: manualAccError } = await service
+      .from('manual_accounts')
+      .select('*')
+      .in('user_id', memberIds);
+    if (manualAccError) return errorResponse(manualAccError.message, 500);
+
     const { data: receivables, error: recvError } = await service
       .from('receivables')
       .select('*')
@@ -1260,6 +1355,66 @@ async function handleJoint(
     if (recvError) return errorResponse(recvError.message, 500);
 
     const labelById = Object.fromEntries(members.map((m) => [m.id, m.displayName]));
+
+    for (const row of (manualAccounts || []) as Record<string, unknown>[]) {
+      const id = String(row.id || '');
+      if (!id || seenAccountIds.has(id)) continue;
+      seenAccountIds.add(id);
+      const type = row.type === 'CREDIT' ? 'CREDIT' : 'BANK';
+      const institution = String(row.institution_name || 'Manual');
+      const billAmount = Number(row.bill_amount) || 0;
+      const bankBalance = Number(row.balance) || 0;
+      const dueDayRaw = row.bill_due_day == null || row.bill_due_day === ''
+        ? null
+        : Number(row.bill_due_day);
+      const dueDay = Number.isFinite(dueDayRaw) ? dueDayRaw : null;
+      const creditLimit = Number(row.credit_limit) || 0;
+      const ownerId = String(row.user_id || '');
+      const ownerLabel = labelById[ownerId] || 'Usuário';
+      const hydrated = {
+        id,
+        type,
+        name: String(row.name || (type === 'CREDIT' ? 'Cartão manual' : 'Conta manual')),
+        number: String(row.number || ''),
+        balance: type === 'CREDIT' ? billAmount : bankBalance,
+        isManual: true,
+        pairId: row.pair_id || null,
+        billAmount: type === 'CREDIT' ? billAmount : null,
+        billDueDay: type === 'CREDIT' ? dueDay : null,
+        ownerUserId: ownerId,
+        ownerLabel,
+        bankData: type === 'BANK' ? { institutionName: institution } : undefined,
+        creditData: type === 'CREDIT'
+          ? {
+              institutionName: institution,
+              creditLimit,
+              availableCreditLimit: creditLimit > 0 ? Math.max(0, creditLimit - billAmount) : 0,
+            }
+          : undefined,
+      };
+      accounts.push(hydrated);
+      if (type === 'CREDIT') {
+        const now = new Date();
+        let year = now.getFullYear();
+        let month = now.getMonth();
+        const day = Math.min(31, Math.max(1, dueDay || 10));
+        if (now.getDate() > day) {
+          month += 1;
+          if (month > 11) { month = 0; year += 1; }
+        }
+        const last = new Date(year, month + 1, 0).getDate();
+        const dueDate = `${year}-${String(month + 1).padStart(2, '0')}-${String(Math.min(day, last)).padStart(2, '0')}`;
+        billsByAccount[id] = [{
+          id: `manual-bill-${id}-${dueDate.slice(0, 7)}`,
+          accountId: id,
+          dueDate,
+          totalAmount: billAmount,
+          isManual: true,
+          ownerUserId: ownerId,
+          ownerLabel,
+        }];
+      }
+    }
 
     return jsonResponse({
       link,
@@ -1272,7 +1427,7 @@ async function handleJoint(
         ownerUserId: row.user_id,
         ownerLabel: labelById[row.user_id as string] || 'Usuário',
         isManual: true,
-        accountId: 'manual',
+        accountId: (row as { account_id?: string }).account_id || 'manual',
       })),
       receivables: (receivables || []).map((row) => ({
         ...row,
@@ -1367,6 +1522,10 @@ Deno.serve(async (req: Request) => {
   // Joint account routes (no Pluggy credentials required for invite/status)
   if (resource === 'joint') {
     return await handleJoint(supabaseClient, user.id, method, actionOrId, body);
+  }
+
+  if ((resource === 'parse-bill' || resource === 'parsebill') && method === 'POST') {
+    return await handleParseBill(body);
   }
 
   const { data: profile } = await supabaseClient

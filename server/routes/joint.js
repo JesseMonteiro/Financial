@@ -3,6 +3,7 @@ import { checkAuth } from '../middleware/auth.js';
 import { getServiceRoleClient } from '../services/supabaseClient.js';
 import { createPluggyClient } from '../services/pluggyClient.js';
 import { cacheMiddleware, clearUserCache } from '../middleware/cache.js';
+import { hydrateManualAccount, syntheticManualBill } from '../../src/utils/manualAccounts.js';
 
 const router = Router();
 
@@ -230,6 +231,12 @@ router.get('/moment-data', checkAuth, async (req, res) => {
       .in('user_id', memberIds);
     if (manualError) throw manualError;
 
+    const { data: manualAccounts, error: manualAccError } = await service
+      .from('manual_accounts')
+      .select('*')
+      .in('user_id', memberIds);
+    if (manualAccError) throw manualAccError;
+
     const { data: receivables, error: recvError } = await service
       .from('receivables')
       .select('*')
@@ -237,6 +244,21 @@ router.get('/moment-data', checkAuth, async (req, res) => {
     if (recvError) throw recvError;
 
     const labelById = Object.fromEntries(members.map((m) => [m.id, m.displayName]));
+
+    for (const row of manualAccounts || []) {
+      if (seenAccountIds.has(row.id)) continue;
+      seenAccountIds.add(row.id);
+      const hydrated = hydrateManualAccount(row);
+      hydrated.ownerUserId = row.user_id;
+      hydrated.ownerLabel = labelById[row.user_id] || 'Usuário';
+      accounts.push(hydrated);
+      if (hydrated.type === 'CREDIT') {
+        const bill = syntheticManualBill(hydrated);
+        if (bill) {
+          billsByAccount[hydrated.id] = tagOwner([bill], row.user_id, hydrated.ownerLabel);
+        }
+      }
+    }
 
     res.json({
       link,
@@ -249,7 +271,7 @@ router.get('/moment-data', checkAuth, async (req, res) => {
         ownerUserId: row.user_id,
         ownerLabel: labelById[row.user_id] || 'Usuário',
         isManual: true,
-        accountId: 'manual',
+        accountId: row.account_id || 'manual',
       })),
       receivables: (receivables || []).map((row) => ({
         ...row,

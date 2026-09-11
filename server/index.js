@@ -13,6 +13,7 @@ import itemsRoutes from './routes/items.js';
 import webhooksRoutes from './routes/webhooks.js';
 import chatbotRoutes from './routes/chatbot.js';
 import jointRoutes from './routes/joint.js';
+import parseBillRoutes from './routes/parseBill.js';
 import { clearCache } from './middleware/cache.js';
 
 dotenv.config();
@@ -21,6 +22,7 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 app.use(cors());
+app.use('/api/parse-bill', express.json({ limit: '12mb' }));
 app.use(express.json());
 
 // Logging Middleware
@@ -42,6 +44,7 @@ app.use('/api/items', itemsRoutes);
 app.use('/api/webhooks', webhooksRoutes);
 app.use('/api/chatbot', chatbotRoutes);
 app.use('/api/joint', jointRoutes);
+app.use('/api/parse-bill', parseBillRoutes);
 
 // Cache flush endpoint
 app.post('/api/cache/clear', (req, res) => {

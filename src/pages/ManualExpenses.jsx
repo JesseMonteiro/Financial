@@ -1,5 +1,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useTransactionStore } from '../stores/transactionStore';
+import { useAccountStore } from '../stores/accountStore';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
@@ -98,7 +100,9 @@ function AmountEditRow({ value, onChange, onSave, onCancel, hint, busy = false }
   );
 }
 
-function ExpenseFormFields({
+export const MANUAL_CATEGORY_OPTIONS = CATEGORY_OPTIONS;
+
+export function ExpenseFormFields({
   description,
   setDescription,
   amount,
@@ -253,7 +257,7 @@ function ExpenseFormFields({
   );
 }
 
-function blankFormState() {
+function blankFormState(accountId = 'manual') {
   return {
     description: '',
     amount: '',
@@ -263,6 +267,7 @@ function blankFormState() {
     isContinuous: false,
     frequency: 'monthly',
     occurrences: '12',
+    accountId: accountId || 'manual',
   };
 }
 
@@ -279,14 +284,24 @@ export function ManualExpenses() {
     pending,
     lastUpdated,
   } = useTransactionStore();
+  const { accounts, loadAccounts } = useAccountStore();
+  const [searchParams] = useSearchParams();
+  const prefillAccountId = searchParams.get('accountId') || 'manual';
 
-  const [form, setForm] = useState(blankFormState);
+  const [form, setForm] = useState(() => blankFormState(prefillAccountId));
   const [showForm, setShowForm] = useState(false);
   /** @type {[null|string, Function]} sample installment id when editing a group */
   const [editingId, setEditingId] = useState(null);
   const [expandedGroups, setExpandedGroups] = useState({});
   const [savingForm, setSavingForm] = useState(false);
   const [savingAmount, setSavingAmount] = useState(false);
+  const manualAccounts = useMemo(() => accounts.filter((a) => a.isManual), [accounts]);
+  const extraLinkedAccount = useMemo(() => {
+    const id = form.accountId;
+    if (!id || id === 'manual') return null;
+    if (manualAccounts.some((a) => a.id === id)) return null;
+    return accounts.find((a) => a.id === id) || null;
+  }, [accounts, form.accountId, manualAccounts]);
 
   /** Inline amount edit for a single installment only */
   /** @type {[null|{ id: string, groupKey: string, draft: string }, Function]} */
@@ -294,7 +309,18 @@ export function ManualExpenses() {
 
   useEffect(() => {
     loadTransactions();
+    loadAccounts();
   }, []);
+
+  useEffect(() => {
+    if (!prefillAccountId || prefillAccountId === 'manual') return;
+    const isKnownManual = accounts.some((a) => a.isManual && a.id === prefillAccountId);
+    setShowForm(true);
+    setForm((prev) => ({
+      ...prev,
+      accountId: isKnownManual ? prefillAccountId : 'manual',
+    }));
+  }, [prefillAccountId, accounts]);
 
   const manualTxs = useMemo(() => transactions.filter((t) => t.isManual === true), [transactions]);
 
@@ -345,13 +371,13 @@ export function ManualExpenses() {
   const closeForm = () => {
     setShowForm(false);
     setEditingId(null);
-    setForm(blankFormState());
+    setForm(blankFormState(prefillAccountId));
   };
 
   const openAddForm = () => {
     setEditingAmount(null);
     setEditingId(null);
-    setForm(blankFormState());
+    setForm(blankFormState(prefillAccountId));
     setShowForm(true);
   };
 
@@ -371,6 +397,7 @@ export function ManualExpenses() {
       occurrences: String(
         group.isContinuous ? 24 : Math.max(group.installmentsCount, 1)
       ),
+      accountId: sample.accountId || 'manual',
     });
     setShowForm(true);
   };
@@ -419,6 +446,7 @@ export function ManualExpenses() {
       isContinuous: form.isRecurring && form.isContinuous,
       frequency: form.frequency,
       occurrences: parseInt(form.occurrences, 10) || 12,
+      accountId: form.accountId || 'manual',
     };
 
     setSavingForm(true);
@@ -490,6 +518,32 @@ export function ManualExpenses() {
               occurrences={form.occurrences}
               setOccurrences={setFormField('occurrences')}
             />
+
+            <div>
+              <label className="label" style={{ display: 'block', marginBottom: '0.4rem', fontSize: 'var(--font-size-xs)', fontWeight: 600 }}>
+                Conta ou cartão
+              </label>
+              <select
+                value={form.accountId || 'manual'}
+                onChange={(e) => setFormField('accountId')(e.target.value)}
+                className="input"
+                style={{ width: '100%' }}
+              >
+                <option value="manual">Sem conta</option>
+                {extraLinkedAccount && (
+                  <option value={extraLinkedAccount.id}>
+                    {extraLinkedAccount.name}
+                    {extraLinkedAccount.type === 'CREDIT' ? ' · Cartão' : ' · Conta'}
+                  </option>
+                )}
+                {manualAccounts.map((acc) => (
+                  <option key={acc.id} value={acc.id}>
+                    {acc.name}
+                    {acc.type === 'CREDIT' ? ' · Cartão' : ' · Conta'}
+                  </option>
+                ))}
+              </select>
+            </div>
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '0.5rem' }}>
               <Button type="button" variant="secondary" onClick={closeForm} disabled={savingForm}>

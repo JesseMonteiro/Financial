@@ -88,6 +88,124 @@ export async function transcribeAudioCommand({ base64, mimeType = 'audio/ogg' })
   return (result.response.text() || '').trim().replace(/^["'«»]|["'«»]$/g, '').trim();
 }
 
+const BILL_PARSE_INSTRUCTION = `
+Você extrai dados de faturas de cartão de crédito brasileiras (PDF).
+Retorne APENAS JSON neste formato:
+{
+  "totalAmount": number,
+  "dueDate": "YYYY-MM-DD" | null,
+  "closingDate": "YYYY-MM-DD" | null,
+  "cardLastDigits": string | null,
+  "institutionName": string | null,
+  "purchases": [
+    {
+      "date": "YYYY-MM-DD",
+      "description": string,
+      "amount": number,
+      "installment": number | null,
+      "totalInstallments": number | null,
+      "category": "Food" | "Groceries" | "Rent" | "Utilities" | "Transport" | "Entertainment" | "Health" | "Education" | "Other"
+    }
+  ]
+}
+Regras:
+- totalAmount é o valor total da fatura em BRL (número positivo).
+- purchases: lançamentos de compras/serviços. Ignore pagamentos de fatura, IOF destacado se já estiver no valor da compra, e linhas de saldo anterior.
+- amount de cada compra é positivo em BRL.
+- installment/totalInstallments só quando houver parcela (ex: 3/12 → installment 3, totalInstallments 12).
+- category mapeada para os valores em inglês listados.
+- Se um campo não existir, use null ou lista vazia.
+`;
+
+const CATEGORY_ALIASES = {
+  food: 'Food',
+  alimentacao: 'Food',
+  alimentação: 'Food',
+  groceries: 'Groceries',
+  supermercado: 'Groceries',
+  mercado: 'Groceries',
+  rent: 'Rent',
+  moradia: 'Rent',
+  aluguel: 'Rent',
+  utilities: 'Utilities',
+  contas: 'Utilities',
+  transport: 'Transport',
+  transporte: 'Transport',
+  entertainment: 'Entertainment',
+  lazer: 'Entertainment',
+  health: 'Health',
+  saude: 'Health',
+  saúde: 'Health',
+  education: 'Education',
+  educacao: 'Education',
+  educação: 'Education',
+  other: 'Other',
+  outros: 'Other',
+};
+
+function normalizeParsedBill(raw) {
+  const purchases = Array.isArray(raw?.purchases) ? raw.purchases : [];
+  return {
+    totalAmount: Number(raw?.totalAmount) || 0,
+    dueDate: raw?.dueDate ? String(raw.dueDate).slice(0, 10) : null,
+    closingDate: raw?.closingDate ? String(raw.closingDate).slice(0, 10) : null,
+    cardLastDigits: raw?.cardLastDigits ? String(raw.cardLastDigits).replace(/\D/g, '').slice(-4) : null,
+    institutionName: raw?.institutionName ? String(raw.institutionName) : null,
+    purchases: purchases.map((p) => {
+      const catKey = String(p?.category || 'Other').trim().toLowerCase();
+      return {
+        date: p?.date ? String(p.date).slice(0, 10) : null,
+        description: String(p?.description || 'Compra').trim(),
+        amount: Math.abs(Number(p?.amount) || 0),
+        installment: p?.installment != null ? Number(p.installment) || null : null,
+        totalInstallments: p?.totalInstallments != null ? Number(p.totalInstallments) || null : null,
+        category: CATEGORY_ALIASES[catKey] || 'Other',
+      };
+    }).filter((p) => p.amount > 0 || p.description),
+  };
+}
+
+/**
+ * Extrai total, vencimento e compras de um PDF de fatura via Gemini multimodal.
+ * @param {{ base64: string, mimeType?: string }} params
+ */
+export async function parseCreditBillPdf({ base64, mimeType = 'application/pdf' }) {
+  if (!genAI) {
+    throw new Error('Serviço Gemini não inicializado. Verifique a GEMINI_API_KEY no arquivo .env.');
+  }
+  if (!base64) {
+    throw new Error('PDF vazio.');
+  }
+
+  const model = genAI.getGenerativeModel({
+    model: 'gemini-2.5-flash',
+    systemInstruction: BILL_PARSE_INSTRUCTION,
+  });
+  const result = await model.generateContent({
+    contents: [{
+      role: 'user',
+      parts: [
+        { inlineData: { mimeType: mimeType || 'application/pdf', data: base64 } },
+        { text: 'Extraia os dados desta fatura de cartão de crédito. Retorne apenas o JSON pedido.' },
+      ],
+    }],
+    generationConfig: {
+      responseMimeType: 'application/json',
+      temperature: 0.1,
+    },
+  });
+
+  const text = (result.response.text() || '').trim();
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch (err) {
+    console.error('[Gemini Service] JSON inválido na fatura:', text.slice(0, 400));
+    throw new Error('A IA não retornou um JSON válido da fatura.');
+  }
+  return normalizeParsedBill(parsed);
+}
+
 /**
  * Envia o comando de voz ou texto em linguagem natural ao Gemini e retorna a estrutura JSON correspondente.
  * @param {string} messageText 

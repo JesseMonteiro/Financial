@@ -299,8 +299,8 @@ export function CreditCards() {
           {isPageLoading
             ? 'Carregando faturas e limites…'
             : selectedCardId === 'all'
-              ? `Soma consolidada de ${creditCards.length} cartões conectados • Sincronização em tempo real via Pluggy.ai`
-              : `${activeCard?.name || 'Cartão'} • Final ${activeCard?.number || '****'} • Titular: ${activeCard?.owner || '—'}`
+              ? `Soma consolidada de ${creditCards.length} cartões`
+              : `${activeCard?.name || 'Cartão'}${activeCard?.isManual ? ' · Manual' : ''} • Final ${activeCard?.number || '****'} • Titular: ${activeCard?.owner || '—'}`
           }
         </p>
       </div>
@@ -376,7 +376,7 @@ export function CreditCards() {
                 <CreditCardIcon size={20} style={{ color: isSelected ? 'var(--primary)' : 'var(--text-muted)' }} />
                 <div>
                   <span style={{ fontSize: 'var(--font-size-xs)', fontWeight: 700, display: 'block', color: isSelected ? 'var(--primary)' : 'var(--text-primary)' }}>
-                    {card.name}
+                    {card.name}{card.isManual ? ' · Manual' : ''}
                   </span>
                   <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
                     Final {card.number || '****'} • Fatura: {formatCurrency(debtLabel)}

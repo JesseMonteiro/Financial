@@ -7,6 +7,8 @@ export {
   getStoredReceivables, saveStoredReceivable, deleteStoredReceivable,
   getStoredManualTransactions, saveStoredManualTransaction, saveStoredManualTransactions,
   deleteStoredManualTransaction, deleteStoredManualTransactions,
+  getStoredManualAccounts, saveStoredManualAccount, saveStoredManualAccounts,
+  deleteStoredManualAccounts, deleteStoredManualTransactionsForAccounts,
   getProfileSettings, updateProfileSettings,
   getCustomAccountNames, saveCustomAccountNames,
   getMonthlySalaries, saveMonthlySalaries,
