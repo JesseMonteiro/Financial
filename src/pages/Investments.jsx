@@ -206,6 +206,7 @@ export function Investments() {
   const jointAccounts = useJointStore((s) => s.investmentAccounts);
   const jointInvLoading = useJointStore((s) => s.investmentsLoading);
   const jointInvAt = useJointStore((s) => s.investmentsLoadedAt);
+  const jointInvError = useJointStore((s) => s.investmentsError);
   const isMobile = useIsMobile();
   const [scope, setScope] = useState('personal');
 
@@ -229,7 +230,7 @@ export function Investments() {
 
   const personalLoading = isInitialEmpty(investments, invLoading, invAt)
     || isInitialEmpty(accounts, accLoading, accAt);
-  const jointLoading = isJoint && isInitialEmpty(jointInvestments, jointInvLoading, jointInvAt);
+  const jointLoading = isJoint && isInitialEmpty(jointInvestments, jointInvLoading, jointInvAt, jointInvError);
   const showSkeleton = isJoint ? jointLoading : personalLoading;
 
   if (!hasJoint && personalLoading) {
@@ -282,7 +283,9 @@ export function Investments() {
           listTitle={isJoint ? 'Carteira conjunta' : 'Sua Carteira'}
           emptyMessage={
             isJoint
-              ? 'Nenhum investimento ativo encontrado nas contas conectadas de vocês dois.'
+              ? (jointInvError
+                ? 'Não foi possível carregar a carteira conjunta. Atualize a página e tente de novo.'
+                : 'Nenhum investimento ativo encontrado nas contas conectadas de vocês dois.')
               : 'Nenhum investimento ativo encontrado nas suas contas conectadas.'
           }
           isMobile={isMobile}

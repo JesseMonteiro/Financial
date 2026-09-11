@@ -61,6 +61,7 @@ export const useJointStore = create((set, get) => ({
   momentLoading: false,
   investmentsLoading: false,
   error: null,
+  investmentsError: null,
   lastLoadedAt: null,
   investmentsLoadedAt: null,
   pending: {},
@@ -105,6 +106,7 @@ export const useJointStore = create((set, get) => ({
       investmentAccounts: [],
       lastLoadedAt: null,
       investmentsLoadedAt: null,
+      investmentsError: null,
     });
     return result;
   },
@@ -120,8 +122,8 @@ export const useJointStore = create((set, get) => ({
     }
 
     const silent = investments.length > 0;
-    if (!silent) set({ investmentsLoading: true, error: null });
-    else set({ error: null });
+    if (!silent) set({ investmentsLoading: true, investmentsError: null });
+    else set({ investmentsError: null });
 
     try {
       const data = await fetchJointInvestments({ force });
@@ -132,11 +134,16 @@ export const useJointStore = create((set, get) => ({
         investments: mergeInvestmentsWithReserved(data.investments || [], accounts),
         investmentAccounts: accounts,
         investmentsLoading: false,
+        investmentsError: null,
         investmentsLoadedAt: new Date(),
       });
       return data;
     } catch (err) {
-      set({ investmentsLoading: false, error: err.message });
+      set({
+        investmentsLoading: false,
+        investmentsError: err.message,
+        investmentsLoadedAt: new Date(),
+      });
       throw err;
     }
   },
