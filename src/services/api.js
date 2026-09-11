@@ -177,17 +177,14 @@ export async function fetchCategories({ force = false } = {}) {
 
 export async function fetchConnectors({ force = false } = {}) {
   const scope = await cacheScope();
-  const key = cacheKey(scope, ['connectors']);
+  const key = cacheKey(scope, ['connectors', 'BR']);
   return cachedFetch(
     key,
     async () => {
-      try {
-        const res = await api.get('/connectors');
-        const data = res.data;
-        return data?.results || data || [];
-      } catch (err) {
-        return [];
-      }
+      const res = await api.get('/connectors', { params: { countries: 'BR' } });
+      const data = res.data;
+      const list = data?.results || data || [];
+      return Array.isArray(list) ? list : [];
     },
     { force }
   );

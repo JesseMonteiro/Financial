@@ -5,7 +5,7 @@ import { SavingScope } from './ui/Spinner';
 import { AccountIcon } from './AccountIcon';
 import {
   ACCOUNT_ICON_CATALOG,
-  catalogEntryUrl,
+  catalogEntryUrls,
   normalizeIconText,
   validateIconFile,
 } from '../utils/accountIcons';
@@ -63,7 +63,6 @@ export function IconPicker({
       {entries.map((entry) => {
         const selected = account?.iconKey === entry.id && account?.iconSource !== 'upload';
         const preview = {
-          iconUrl: catalogEntryUrl(entry, connectors),
           iconColor: entry.color,
           type: entry.kind === 'card' ? 'CREDIT' : 'BANK',
         };
@@ -93,7 +92,7 @@ export function IconPicker({
               minHeight: 88,
             }}
           >
-            <AccountIcon account={preview} size={36} />
+            <AccountIcon account={preview} src={catalogEntryUrls(entry, connectors)} size={36} />
             <span
               style={{
                 fontSize: 11,

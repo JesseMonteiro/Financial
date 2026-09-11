@@ -19,16 +19,24 @@ export function AccountIcon({
   className = '',
   style,
 }) {
-  const [broken, setBroken] = React.useState(false);
-  const url = src || account?.iconUrl || null;
-  const showImg = Boolean(url) && !broken;
+  const [srcIndex, setSrcIndex] = React.useState(0);
+  const candidateKey = Array.isArray(src)
+    ? src.filter(Boolean).join('\n')
+    : String(src || account?.iconUrl || '');
+  const candidates = React.useMemo(
+    () => (candidateKey ? candidateKey.split('\n').filter(Boolean) : []),
+    [candidateKey],
+  );
+  const url = candidates[srcIndex] || null;
+  const showImg = Boolean(url);
   const kind = type || account?.type || 'BANK';
   const bg = account?.iconColor || account?.bankData?.primaryColor || 'var(--primary)';
   const radius = Math.max(6, Math.round(size * 0.22));
+  const isRasterMark = Boolean(url) && !String(url).startsWith('data:');
 
   React.useEffect(() => {
-    setBroken(false);
-  }, [url]);
+    setSrcIndex(0);
+  }, [candidateKey]);
 
   const body = (
     <span
@@ -37,7 +45,7 @@ export function AccountIcon({
         width: size,
         height: size,
         borderRadius: radius,
-        backgroundColor: showImg ? 'var(--bg-tertiary)' : bg,
+        backgroundColor: showImg && isRasterMark ? '#fff' : showImg ? 'var(--bg-tertiary)' : bg,
         color: '#fff',
         display: 'inline-flex',
         alignItems: 'center',
@@ -54,8 +62,14 @@ export function AccountIcon({
           alt=""
           width={size}
           height={size}
-          onError={() => setBroken(true)}
-          style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+          referrerPolicy="no-referrer"
+          onError={() => setSrcIndex((i) => (i + 1 < candidates.length ? i + 1 : candidates.length))}
+          style={{
+            width: isRasterMark ? '82%' : '100%',
+            height: isRasterMark ? '82%' : '100%',
+            objectFit: 'contain',
+            display: 'block',
+          }}
         />
       ) : (
         <FallbackGlyph type={kind} size={size} />

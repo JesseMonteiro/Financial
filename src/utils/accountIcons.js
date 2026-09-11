@@ -8,12 +8,23 @@
  *   4. Catalog bank match (manual accounts)
  *   5. Pluggy connectors list matched by institution name
  *   6. Lucide fallback (no url)
+ *
+ * Catalog tiles use baked Pluggy CDN logos (not letter marks). Cards inherit
+ * the parent bank logo. Live connector.imageUrl still wins when available.
  */
 
 export const ICON_BUCKET = 'account-icons';
 export const ICON_SIGNED_TTL_SEC = 60 * 60 * 24 * 7;
 export const ICON_MAX_BYTES = 1024 * 1024;
 export const ICON_MIME = ['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml'];
+
+export function pluggyConnectorIconUrl(fileId) {
+  return `https://cdn.pluggy.ai/assets/connector-icons/${fileId}.svg`;
+}
+
+export function brandFaviconUrl(domain) {
+  return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=128`;
+}
 
 function markSvg({ bg, fg = '#fff', letter }) {
   const safe = String(letter || '?').slice(0, 3);
@@ -33,7 +44,7 @@ function escapeXml(s) {
     .replace(/"/g, '&quot;');
 }
 
-/** @typedef {{ id: string, label: string, kind: 'bank'|'card', aliases: string[], color: string, letter: string, parent?: string, pluggyNames?: string[] }} CatalogEntry */
+/** @typedef {{ id: string, label: string, kind: 'bank'|'card', aliases: string[], color: string, letter: string, parent?: string, pluggyNames?: string[], imageUrl?: string, domain?: string }} CatalogEntry */
 
 /** @type {CatalogEntry[]} */
 export const ACCOUNT_ICON_CATALOG = [
@@ -50,29 +61,29 @@ export const ACCOUNT_ICON_CATALOG = [
   { id: 'c6-carbon', label: 'C6 Carbon', kind: 'card', parent: 'c6', aliases: ['c6 carbon', 'carbon'], color: '#111111', letter: 'C6', pluggyNames: ['c6'] },
   { id: 'bradesco-elo', label: 'Bradescard', kind: 'card', parent: 'bradesco', aliases: ['bradescard', 'bradesco elo'], color: '#CC092F', letter: 'BR', pluggyNames: ['bradesco'] },
 
-  { id: 'itau', label: 'Itaú', kind: 'bank', aliases: ['itau', 'itaú', 'banco itau', 'banco itaú'], color: '#EC7000', letter: 'I', pluggyNames: ['itau', 'itaú'] },
-  { id: 'santander', label: 'Santander', kind: 'bank', aliases: ['santander', 'banco santander'], color: '#EC0000', letter: 'S', pluggyNames: ['santander'] },
-  { id: 'nubank', label: 'Nubank', kind: 'bank', aliases: ['nubank', 'nu pagamentos', 'nu bank'], color: '#820AD1', letter: 'N', pluggyNames: ['nubank'] },
-  { id: 'inter', label: 'Inter', kind: 'bank', aliases: ['inter', 'banco inter'], color: '#FF7A00', letter: 'I', pluggyNames: ['inter'] },
-  { id: 'bradesco', label: 'Bradesco', kind: 'bank', aliases: ['bradesco', 'banco bradesco'], color: '#CC092F', letter: 'B', pluggyNames: ['bradesco'] },
-  { id: 'banco-do-brasil', label: 'Banco do Brasil', kind: 'bank', aliases: ['banco do brasil', 'banco brasil'], color: '#003641', letter: 'BB', pluggyNames: ['banco do brasil'] },
-  { id: 'caixa', label: 'Caixa', kind: 'bank', aliases: ['caixa', 'caixa economica', 'caixa econômica'], color: '#0066B3', letter: 'CX', pluggyNames: ['caixa'] },
-  { id: 'c6', label: 'C6 Bank', kind: 'bank', aliases: ['c6', 'c6 bank'], color: '#000000', letter: 'C6', pluggyNames: ['c6'] },
-  { id: 'mercado-pago', label: 'Mercado Pago', kind: 'bank', aliases: ['mercado pago', 'mercadopago', 'mercado livre'], color: '#00B1EA', letter: 'MP', pluggyNames: ['mercado pago'] },
-  { id: 'picpay', label: 'PicPay', kind: 'bank', aliases: ['picpay'], color: '#21C25E', letter: 'PP', pluggyNames: ['picpay'] },
-  { id: 'xp', label: 'XP', kind: 'bank', aliases: ['xp', 'xp investimentos'], color: '#111111', letter: 'XP', pluggyNames: ['xp'] },
-  { id: 'btg', label: 'BTG Pactual', kind: 'bank', aliases: ['btg', 'btg pactual'], color: '#001E62', letter: 'BTG', pluggyNames: ['btg'] },
-  { id: 'carrefour', label: 'Carrefour', kind: 'bank', aliases: ['carrefour', 'cartao carrefour'], color: '#004E9B', letter: 'CF', pluggyNames: ['carrefour'] },
-  { id: 'original', label: 'Original', kind: 'bank', aliases: ['original', 'banco original'], color: '#00A859', letter: 'O', pluggyNames: ['original'] },
-  { id: 'next', label: 'Next', kind: 'bank', aliases: ['next', 'banco next'], color: '#00D4AA', letter: 'NX', pluggyNames: ['next'] },
-  { id: 'neon', label: 'Neon', kind: 'bank', aliases: ['neon'], color: '#00E1E1', letter: 'NE', pluggyNames: ['neon'] },
-  { id: 'pagbank', label: 'PagBank', kind: 'bank', aliases: ['pagbank', 'pagseguro'], color: '#00DCB6', letter: 'PB', pluggyNames: ['pagbank', 'pagseguro'] },
-  { id: 'sicoob', label: 'Sicoob', kind: 'bank', aliases: ['sicoob'], color: '#003641', letter: 'SC', pluggyNames: ['sicoob'] },
-  { id: 'sicredi', label: 'Sicredi', kind: 'bank', aliases: ['sicredi'], color: '#3AAA35', letter: 'SI', pluggyNames: ['sicredi'] },
-  { id: 'porto-seguro', label: 'Porto Seguro', kind: 'bank', aliases: ['porto seguro', 'porto bank'], color: '#004B8D', letter: 'PS', pluggyNames: ['porto'] },
-  { id: 'magalu', label: 'Magalu', kind: 'bank', aliases: ['magalu', 'magazine luiza', 'luizalabs'], color: '#0086FF', letter: 'ML', pluggyNames: ['magalu', 'magazine'] },
-  { id: 'will', label: 'Will Bank', kind: 'bank', aliases: ['will', 'will bank'], color: '#6C2BD9', letter: 'W', pluggyNames: ['will'] },
-  { id: 'amazon', label: 'Amazon', kind: 'bank', aliases: ['amazon', 'amazon brasil'], color: '#FF9900', letter: 'A', pluggyNames: ['amazon'] },
+  { id: 'itau', label: 'Itaú', kind: 'bank', aliases: ['itau', 'itaú', 'banco itau', 'banco itaú'], color: '#EC7000', letter: 'I', pluggyNames: ['itau', 'itaú'], imageUrl: pluggyConnectorIconUrl(201), domain: 'itau.com.br' },
+  { id: 'santander', label: 'Santander', kind: 'bank', aliases: ['santander', 'banco santander'], color: '#EC0000', letter: 'S', pluggyNames: ['santander'], imageUrl: pluggyConnectorIconUrl(208), domain: 'santander.com.br' },
+  { id: 'nubank', label: 'Nubank', kind: 'bank', aliases: ['nubank', 'nu pagamentos', 'nu bank'], color: '#820AD1', letter: 'N', pluggyNames: ['nubank'], imageUrl: pluggyConnectorIconUrl(212), domain: 'nubank.com.br' },
+  { id: 'inter', label: 'Inter', kind: 'bank', aliases: ['inter', 'banco inter'], color: '#FF7A00', letter: 'I', pluggyNames: ['inter'], imageUrl: pluggyConnectorIconUrl(205), domain: 'bancointer.com.br' },
+  { id: 'bradesco', label: 'Bradesco', kind: 'bank', aliases: ['bradesco', 'banco bradesco'], color: '#CC092F', letter: 'B', pluggyNames: ['bradesco'], imageUrl: pluggyConnectorIconUrl(203), domain: 'bradesco.com.br' },
+  { id: 'banco-do-brasil', label: 'Banco do Brasil', kind: 'bank', aliases: ['banco do brasil', 'banco brasil'], color: '#003641', letter: 'BB', pluggyNames: ['banco do brasil'], imageUrl: pluggyConnectorIconUrl(211), domain: 'bb.com.br' },
+  { id: 'caixa', label: 'Caixa', kind: 'bank', aliases: ['caixa', 'caixa economica', 'caixa econômica'], color: '#0066B3', letter: 'CX', pluggyNames: ['caixa'], imageUrl: pluggyConnectorIconUrl(219), domain: 'caixa.gov.br' },
+  { id: 'c6', label: 'C6 Bank', kind: 'bank', aliases: ['c6', 'c6 bank'], color: '#000000', letter: 'C6', pluggyNames: ['c6'], imageUrl: pluggyConnectorIconUrl(226), domain: 'c6bank.com.br' },
+  { id: 'mercado-pago', label: 'Mercado Pago', kind: 'bank', aliases: ['mercado pago', 'mercadopago', 'mercado livre'], color: '#00B1EA', letter: 'MP', pluggyNames: ['mercado pago'], imageUrl: pluggyConnectorIconUrl(206), domain: 'mercadopago.com.br' },
+  { id: 'picpay', label: 'PicPay', kind: 'bank', aliases: ['picpay'], color: '#21C25E', letter: 'PP', pluggyNames: ['picpay'], imageUrl: pluggyConnectorIconUrl(651), domain: 'picpay.com.br' },
+  { id: 'xp', label: 'XP', kind: 'bank', aliases: ['xp', 'xp investimentos'], color: '#111111', letter: 'XP', pluggyNames: ['xp'], imageUrl: pluggyConnectorIconUrl(202), domain: 'xpi.com.br' },
+  { id: 'btg', label: 'BTG Pactual', kind: 'bank', aliases: ['btg', 'btg pactual'], color: '#001E62', letter: 'BTG', pluggyNames: ['btg'], imageUrl: pluggyConnectorIconUrl(214), domain: 'btgpactual.com.br' },
+  { id: 'carrefour', label: 'Carrefour', kind: 'bank', aliases: ['carrefour', 'cartao carrefour'], color: '#004E9B', letter: 'CF', pluggyNames: ['carrefour'], domain: 'carrefour.com.br' },
+  { id: 'original', label: 'Original', kind: 'bank', aliases: ['original', 'banco original'], color: '#00A859', letter: 'O', pluggyNames: ['original'], domain: 'original.com.br' },
+  { id: 'next', label: 'Next', kind: 'bank', aliases: ['next', 'banco next'], color: '#00D4AA', letter: 'NX', pluggyNames: ['next'], imageUrl: pluggyConnectorIconUrl(656), domain: 'next.me' },
+  { id: 'neon', label: 'Neon', kind: 'bank', aliases: ['neon'], color: '#00E1E1', letter: 'NE', pluggyNames: ['neon'], imageUrl: pluggyConnectorIconUrl(689), domain: 'neon.com.br' },
+  { id: 'pagbank', label: 'PagBank', kind: 'bank', aliases: ['pagbank', 'pagseguro'], color: '#00DCB6', letter: 'PB', pluggyNames: ['pagbank', 'pagseguro'], imageUrl: pluggyConnectorIconUrl(292), domain: 'pagbank.com.br' },
+  { id: 'sicoob', label: 'Sicoob', kind: 'bank', aliases: ['sicoob'], color: '#003641', letter: 'SC', pluggyNames: ['sicoob'], domain: 'sicoob.com.br' },
+  { id: 'sicredi', label: 'Sicredi', kind: 'bank', aliases: ['sicredi'], color: '#3AAA35', letter: 'SI', pluggyNames: ['sicredi'], imageUrl: pluggyConnectorIconUrl(661), domain: 'sicredi.com.br' },
+  { id: 'porto-seguro', label: 'Porto Seguro', kind: 'bank', aliases: ['porto seguro', 'porto bank'], color: '#004B8D', letter: 'PS', pluggyNames: ['porto'], domain: 'portoseguro.com.br' },
+  { id: 'magalu', label: 'Magalu', kind: 'bank', aliases: ['magalu', 'magazine luiza', 'luizalabs'], color: '#0086FF', letter: 'ML', pluggyNames: ['magalu', 'magazine'], domain: 'magazineluiza.com.br' },
+  { id: 'will', label: 'Will Bank', kind: 'bank', aliases: ['will', 'will bank'], color: '#6C2BD9', letter: 'W', pluggyNames: ['will'], domain: 'willbank.com.br' },
+  { id: 'amazon', label: 'Amazon', kind: 'bank', aliases: ['amazon', 'amazon brasil'], color: '#FF9900', letter: 'A', pluggyNames: ['amazon'], domain: 'amazon.com.br' },
   { id: 'meupluggy', label: 'MeuPluggy', kind: 'bank', aliases: ['meupluggy', 'meu pluggy'], color: '#6366F1', letter: 'MP', pluggyNames: ['meupluggy'] },
 ];
 
@@ -160,18 +171,58 @@ export function matchConnector(blob, connectors = []) {
   return best;
 }
 
-export function catalogEntryUrl(entry, connectors = []) {
-  if (!entry) return null;
-  if (entry.kind === 'bank') {
-    const names = (entry.pluggyNames || [entry.label]).map(normalizeIconText);
+function uniqueUrls(urls) {
+  const seen = new Set();
+  const out = [];
+  for (const url of urls) {
+    if (!url || seen.has(url)) continue;
+    seen.add(url);
+    out.push(url);
+  }
+  return out;
+}
+
+/**
+ * Preference order for a catalog tile / saved catalog key:
+ * live Pluggy connector → baked CDN logo → parent bank logo → favicon → letter mark.
+ */
+export function catalogEntryUrls(entry, connectors = []) {
+  if (!entry) return [];
+  const parent = entry.parent ? CATALOG_BY_ID[entry.parent] : null;
+  const urls = [];
+
+  const matchNames = [
+    ...(entry.pluggyNames || []),
+    entry.label,
+    ...(parent?.pluggyNames || []),
+    parent?.label,
+  ]
+    .filter(Boolean)
+    .map(normalizeIconText);
+
+  if (Array.isArray(connectors) && connectors.length && matchNames.length) {
     for (const connector of connectors) {
       const cname = normalizeIconText(connector?.name);
-      if (cname && names.some((n) => n && (cname.includes(n) || n.includes(cname))) && connector.imageUrl) {
-        return connector.imageUrl;
+      if (
+        cname &&
+        connector.imageUrl &&
+        matchNames.some((n) => n && (cname.includes(n) || n.includes(cname)))
+      ) {
+        urls.push(connector.imageUrl);
       }
     }
   }
-  return catalogMarkUrl(entry);
+
+  if (entry.imageUrl) urls.push(entry.imageUrl);
+  if (parent?.imageUrl) urls.push(parent.imageUrl);
+  if (entry.domain) urls.push(brandFaviconUrl(entry.domain));
+  if (parent?.domain) urls.push(brandFaviconUrl(parent.domain));
+  urls.push(catalogMarkUrl(entry));
+  return uniqueUrls(urls);
+}
+
+export function catalogEntryUrl(entry, connectors = []) {
+  return catalogEntryUrls(entry, connectors)[0] || null;
 }
 
 export function suggestIconKey(accountLike = {}) {
