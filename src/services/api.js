@@ -435,6 +435,19 @@ export async function fetchJointMomentData({ force = false } = {}) {
   );
 }
 
+export async function fetchJointInvestments({ force = false } = {}) {
+  const scope = await cacheScope();
+  const key = cacheKey(scope, ['joint', 'investments']);
+  return cachedFetch(
+    key,
+    async () => {
+      const res = await api.get('/joint/investments', { timeout: 90_000 });
+      return res.data;
+    },
+    { force }
+  );
+}
+
 export async function parseCreditBillPdf({ base64, mimeType = 'application/pdf' }) {
   const res = await api.post(
     '/parse-bill',

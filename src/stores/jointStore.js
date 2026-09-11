@@ -5,7 +5,10 @@ import {
   acceptJointInvite,
   unlinkJoint,
   fetchJointMomentData,
+  fetchJointInvestments,
 } from '../services/api';
+import { CACHE_TTL_MS, isFreshTimestamp } from '../services/clientCache';
+import { mergeInvestmentsWithReserved } from '../utils/reservedBalances';
 
 function toCamelCase(obj) {
   if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return obj;
@@ -52,10 +55,14 @@ export const useJointStore = create((set, get) => ({
   billsByAccount: {},
   manuals: [],
   receivables: [],
+  investments: [],
+  investmentAccounts: [],
   statusLoading: false,
   momentLoading: false,
+  investmentsLoading: false,
   error: null,
   lastLoadedAt: null,
+  investmentsLoadedAt: null,
   pending: {},
 
   isActive: () => get().link?.status === 'active',
@@ -94,9 +101,44 @@ export const useJointStore = create((set, get) => ({
       billsByAccount: {},
       manuals: [],
       receivables: [],
+      investments: [],
+      investmentAccounts: [],
       lastLoadedAt: null,
+      investmentsLoadedAt: null,
     });
     return result;
+  },
+
+  loadInvestments: async ({ force = false } = {}) => {
+    const { investments, investmentsLoadedAt } = get();
+    if (
+      !force &&
+      investments.length > 0 &&
+      isFreshTimestamp(investmentsLoadedAt, CACHE_TTL_MS)
+    ) {
+      return;
+    }
+
+    const silent = investments.length > 0;
+    if (!silent) set({ investmentsLoading: true, error: null });
+    else set({ error: null });
+
+    try {
+      const data = await fetchJointInvestments({ force });
+      const accounts = data.accounts || [];
+      set({
+        link: data.link || get().link,
+        members: data.members?.length ? data.members : get().members,
+        investments: mergeInvestmentsWithReserved(data.investments || [], accounts),
+        investmentAccounts: accounts,
+        investmentsLoading: false,
+        investmentsLoadedAt: new Date(),
+      });
+      return data;
+    } catch (err) {
+      set({ investmentsLoading: false, error: err.message });
+      throw err;
+    }
   },
 
   loadMomentData: async ({ force = false } = {}) => {

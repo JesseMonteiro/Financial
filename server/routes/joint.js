@@ -13,6 +13,12 @@ function asItemIdList(value) {
   return value.filter((id) => typeof id === 'string' && id.length > 0);
 }
 
+function httpError(status, message) {
+  const err = new Error(message);
+  err.status = status;
+  return err;
+}
+
 async function fetchAccountsForItems(client, itemIds) {
   const results = await Promise.all(
     itemIds.map(async (itemId) => {
@@ -22,6 +28,22 @@ async function fetchAccountsForItems(client, itemIds) {
         return Array.isArray(list) ? list : [];
       } catch (e) {
         console.warn(`[Joint] accounts item ${itemId}:`, e.message);
+        return [];
+      }
+    })
+  );
+  return results.flat();
+}
+
+async function fetchInvestmentsForItems(client, itemIds) {
+  const results = await Promise.all(
+    itemIds.map(async (itemId) => {
+      try {
+        const res = await client.get('/investments', { params: { itemId } });
+        const list = res.data.results || res.data || [];
+        return Array.isArray(list) ? list : [];
+      } catch (e) {
+        console.warn(`[Joint] investments item ${itemId}:`, e.message);
         return [];
       }
     })
@@ -101,6 +123,25 @@ async function loadMemberPluggyBundle(profile) {
   return { accounts, transactions, billsByAccount, itemIds, itemsById };
 }
 
+async function loadMemberInvestmentsBundle(profile) {
+  const itemIds = asItemIdList(profile?.pluggy_item_ids);
+  const clientId = profile?.pluggy_client_id || process.env.PLUGGY_CLIENT_ID || null;
+  const clientSecret = profile?.pluggy_client_secret || process.env.PLUGGY_CLIENT_SECRET || null;
+
+  if (!clientId || !clientSecret || itemIds.length === 0) {
+    return { accounts: [], investments: [], itemIds, itemsById: {} };
+  }
+
+  const client = await createPluggyClient(clientId, clientSecret);
+  const [accounts, investments, itemsById] = await Promise.all([
+    fetchAccountsForItems(client, itemIds),
+    fetchInvestmentsForItems(client, itemIds),
+    fetchItemsByIds(client, itemIds),
+  ]);
+
+  return { accounts, investments, itemIds, itemsById };
+}
+
 async function signIconOverlays(supabase, overlays) {
   const next = {};
   await Promise.all(Object.entries(overlays || {}).map(async ([id, value]) => {
@@ -128,6 +169,41 @@ function tagOwner(list, ownerUserId, ownerLabel) {
     ownerUserId,
     ownerLabel,
   }));
+}
+
+async function requireActiveJointMembers(req) {
+  const { data: link, error: linkError } = await req.supabase.rpc('get_my_joint_link');
+  if (linkError) throw linkError;
+  if (!link || link.status !== 'active' || !link.partner_id) {
+    throw httpError(404, 'Nenhuma conta conjunta ativa');
+  }
+
+  const memberIds = [req.user.id, link.partner_id];
+  let service;
+  try {
+    service = getServiceRoleClient();
+  } catch (e) {
+    console.warn('[Joint] SERVICE_ROLE ausente, usando client do usuário:', e.message);
+    service = req.supabase;
+  }
+
+  const { data: profiles, error: profileError } = await service
+    .from('profiles')
+    .select(
+      'id, display_name, pluggy_item_ids, pluggy_client_id, pluggy_client_secret, monthly_salaries, custom_account_names, custom_account_icons'
+    )
+    .in('id', memberIds);
+
+  if (profileError) throw profileError;
+
+  const profileById = Object.fromEntries((profiles || []).map((p) => [p.id, p]));
+  const members = memberIds.map((id) => ({
+    id,
+    displayName: profileById[id]?.display_name || (id === req.user.id ? 'Você' : 'Parceiro'),
+    monthlySalaries: profileById[id]?.monthly_salaries || {},
+  }));
+
+  return { link, memberIds, service, profileById, members };
 }
 
 // GET /api/joint/status
@@ -194,36 +270,7 @@ router.delete('/unlink', checkAuth, async (req, res) => {
 // Not cached: includes custom account names and salaries that change frequently.
 router.get('/moment-data', checkAuth, async (req, res) => {
   try {
-    const { data: link, error: linkError } = await req.supabase.rpc('get_my_joint_link');
-    if (linkError) throw linkError;
-    if (!link || link.status !== 'active' || !link.partner_id) {
-      return res.status(404).json({ error: 'Nenhuma conta conjunta ativa' });
-    }
-
-    const memberIds = [req.user.id, link.partner_id];
-    let service;
-    try {
-      service = getServiceRoleClient();
-    } catch (e) {
-      console.warn('[Joint] SERVICE_ROLE ausente, usando client do usuário:', e.message);
-      service = req.supabase;
-    }
-
-    const { data: profiles, error: profileError } = await service
-      .from('profiles')
-      .select(
-        'id, display_name, pluggy_item_ids, pluggy_client_id, pluggy_client_secret, monthly_salaries, custom_account_names, custom_account_icons'
-      )
-      .in('id', memberIds);
-
-    if (profileError) throw profileError;
-
-    const profileById = Object.fromEntries((profiles || []).map((p) => [p.id, p]));
-    const members = memberIds.map((id) => ({
-      id,
-      displayName: profileById[id]?.display_name || (id === req.user.id ? 'Você' : 'Parceiro'),
-      monthlySalaries: profileById[id]?.monthly_salaries || {},
-    }));
+    const { link, memberIds, service, profileById, members } = await requireActiveJointMembers(req);
 
     const bundles = await Promise.all(
       memberIds.map(async (id) => {
@@ -338,7 +385,64 @@ router.get('/moment-data', checkAuth, async (req, res) => {
       })),
     });
   } catch (err) {
+    if (typeof err.status === 'number') {
+      return res.status(err.status).json({ error: err.message });
+    }
     console.error('[Joint] moment-data:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/joint/investments — both members' Pluggy investments + accounts (caixinhas)
+router.get('/investments', checkAuth, cacheMiddleware(3600), async (req, res) => {
+  try {
+    const { link, memberIds, service, profileById, members } = await requireActiveJointMembers(req);
+
+    const bundles = await Promise.all(
+      memberIds.map(async (id) => {
+        const profile = profileById[id];
+        const label = members.find((m) => m.id === id)?.displayName || 'Usuário';
+        const bundle = await loadMemberInvestmentsBundle(profile);
+        return { id, label, profile, ...bundle };
+      })
+    );
+
+    const investments = [];
+    const accounts = [];
+    const seenAccountIds = new Set();
+
+    for (const b of bundles) {
+      investments.push(...tagOwner(b.investments, b.id, b.label));
+      const customNames =
+        b.profile?.custom_account_names && typeof b.profile.custom_account_names === 'object'
+          ? b.profile.custom_account_names
+          : {};
+      const customIcons = await signIconOverlays(
+        service,
+        b.profile?.custom_account_icons && typeof b.profile.custom_account_icons === 'object'
+          ? b.profile.custom_account_icons
+          : {}
+      );
+      const iconCtx = { customIcons, itemsById: b.itemsById || {} };
+      for (const acc of b.accounts) {
+        if (seenAccountIds.has(acc.id)) continue;
+        seenAccountIds.add(acc.id);
+        accounts.push(decorateAccountWithIcon({
+          ...acc,
+          originalName: acc.originalName || acc.name,
+          name: customNames[acc.id] || acc.name,
+          ownerUserId: b.id,
+          ownerLabel: b.label,
+        }, iconCtx));
+      }
+    }
+
+    res.json({ link, members, investments, accounts });
+  } catch (err) {
+    if (typeof err.status === 'number') {
+      return res.status(err.status).json({ error: err.message });
+    }
+    console.error('[Joint] investments:', err);
     res.status(500).json({ error: err.message });
   }
 });

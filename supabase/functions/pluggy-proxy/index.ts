@@ -1234,6 +1234,48 @@ async function loadMemberPluggyBundleEdge(profile: {
   return { accounts, transactions, billsByAccount };
 }
 
+async function loadMemberInvestmentsBundleEdge(profile: {
+  pluggy_item_ids?: unknown;
+  pluggy_client_id?: string | null;
+  pluggy_client_secret?: string | null;
+}): Promise<{
+  accounts: Record<string, unknown>[];
+  investments: Record<string, unknown>[];
+}> {
+  const itemIds = asItemIdList(profile?.pluggy_item_ids);
+  const clientId = profile?.pluggy_client_id || Deno.env.get('PLUGGY_CLIENT_ID') || '';
+  const clientSecret = profile?.pluggy_client_secret || Deno.env.get('PLUGGY_CLIENT_SECRET') || '';
+  if (!clientId || !clientSecret || itemIds.length === 0) {
+    return { accounts: [], investments: [] };
+  }
+  const creds = { clientId, clientSecret };
+  const accounts: Record<string, unknown>[] = [];
+  const investments: Record<string, unknown>[] = [];
+  await Promise.all([
+    (async () => {
+      for (const itemId of itemIds) {
+        try {
+          const d = await pluggyJson(creds, '/accounts', { params: { itemId } }) as { results?: Record<string, unknown>[] };
+          accounts.push(...(d.results || []));
+        } catch (e) {
+          console.warn('[joint] accounts', itemId, e);
+        }
+      }
+    })(),
+    (async () => {
+      for (const itemId of itemIds) {
+        try {
+          const d = await pluggyJson(creds, '/investments', { params: { itemId } }) as { results?: Record<string, unknown>[] };
+          investments.push(...(d.results || []));
+        } catch (e) {
+          console.warn('[joint] investments', itemId, e);
+        }
+      }
+    })(),
+  ]);
+  return { accounts, investments };
+}
+
 async function handleJoint(
   supabaseClient: SupabaseClient,
   userId: string,
@@ -1435,6 +1477,65 @@ async function handleJoint(
         ownerLabel: labelById[row.user_id as string] || 'Usuário',
       })),
     });
+  }
+
+  if (method === 'GET' && actionOrId === 'investments') {
+    const { data: link, error: linkError } = await supabaseClient.rpc('get_my_joint_link');
+    if (linkError) return errorResponse(linkError.message, 500);
+    if (!link || link.status !== 'active' || !link.partner_id) {
+      return errorResponse('Nenhuma conta conjunta ativa', 404);
+    }
+
+    const memberIds = [userId, link.partner_id as string];
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+    const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    const service = serviceKey
+      ? createClient(supabaseUrl, serviceKey)
+      : supabaseClient;
+
+    const { data: profiles, error: profileError } = await service
+      .from('profiles')
+      .select('id, display_name, pluggy_item_ids, pluggy_client_id, pluggy_client_secret, monthly_salaries, custom_account_names')
+      .in('id', memberIds);
+    if (profileError) return errorResponse(profileError.message, 500);
+
+    const profileById = Object.fromEntries((profiles || []).map((p) => [p.id, p]));
+    const members = memberIds.map((id) => ({
+      id,
+      displayName: profileById[id]?.display_name || (id === userId ? 'Você' : 'Parceiro'),
+      monthlySalaries: profileById[id]?.monthly_salaries || {},
+    }));
+
+    const investments: Record<string, unknown>[] = [];
+    const accounts: Record<string, unknown>[] = [];
+    const seenAccountIds = new Set<string>();
+
+    for (const id of memberIds) {
+      const label = members.find((m) => m.id === id)?.displayName || 'Usuário';
+      const profile = profileById[id] || {};
+      const bundle = await loadMemberInvestmentsBundleEdge(profile);
+      for (const inv of bundle.investments) {
+        investments.push({ ...inv, ownerUserId: id, ownerLabel: label });
+      }
+      for (const acc of bundle.accounts) {
+        const accId = String(acc.id || '');
+        if (!accId || seenAccountIds.has(accId)) continue;
+        seenAccountIds.add(accId);
+        const displayName = accountDisplayName(profile as TelegramProfile, {
+          id: accId,
+          name: typeof acc.name === 'string' ? acc.name : undefined,
+        });
+        accounts.push({
+          ...acc,
+          originalName: acc.originalName || acc.name,
+          name: displayName,
+          ownerUserId: id,
+          ownerLabel: label,
+        });
+      }
+    }
+
+    return jsonResponse({ link, members, investments, accounts });
   }
 
   return errorResponse(`Route /joint/${actionOrId || ''} not found`, 404);
