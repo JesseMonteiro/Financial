@@ -40,40 +40,11 @@ import {
   installmentTotalOf,
   resolvePurchaseDate,
 } from '../utils/creditBillPeriod';
+import { attrSelector, bindSnapSelect, centerChild } from '../utils/snapCarousel';
 
 function purchaseTimestamp(tx) {
   const timestamp = new Date(resolvePurchaseDate(tx)).getTime();
   return Number.isFinite(timestamp) ? timestamp : Number.NEGATIVE_INFINITY;
-}
-
-function centerChild(container, child, behavior = 'smooth') {
-  if (!container || !child) return false;
-  const cRect = container.getBoundingClientRect();
-  const eRect = child.getBoundingClientRect();
-  const delta = (eRect.left + eRect.width / 2) - (cRect.left + cRect.width / 2);
-  if (Math.abs(delta) < 6) return false;
-  container.scrollTo({ left: container.scrollLeft + delta, behavior });
-  return true;
-}
-
-function nearestAttr(container, attr) {
-  const cRect = container.getBoundingClientRect();
-  const center = cRect.left + cRect.width / 2;
-  let best = null;
-  let bestDist = Infinity;
-  for (const el of container.querySelectorAll(`[${attr}]`)) {
-    const rect = el.getBoundingClientRect();
-    const dist = Math.abs(rect.left + rect.width / 2 - center);
-    if (dist < bestDist) {
-      bestDist = dist;
-      best = el.getAttribute(attr);
-    }
-  }
-  return best;
-}
-
-function attrSelector(attr, value) {
-  return `[${attr}="${CSS.escape(String(value))}"]`;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -269,40 +240,23 @@ export function CreditCards() {
 
   useEffect(() => {
     if (!isMobile) return undefined;
-    const cardStrip = cardStripRef.current;
-    const billStrip = timelineRef.current;
-    const listeners = [];
-
-    const bind = (container, attr, ignoreRef, onSelect) => {
-      if (!container) return;
-      let debounce;
-      const pick = () => {
-        if (ignoreRef.current) return;
-        const id = nearestAttr(container, attr);
-        if (id) onSelect(id);
-      };
-      const onScroll = () => {
-        clearTimeout(debounce);
-        debounce = window.setTimeout(pick, 90);
-      };
-      container.addEventListener('scroll', onScroll, { passive: true });
-      container.addEventListener('scrollend', pick);
-      listeners.push(() => {
-        clearTimeout(debounce);
-        container.removeEventListener('scroll', onScroll);
-        container.removeEventListener('scrollend', pick);
-      });
+    const unbindCard = bindSnapSelect(cardStripRef.current, {
+      attr: 'data-card-id',
+      ignoreRef: ignoreCardScrollRef,
+      onSelect: (id) => {
+        if (id === selectedCardIdRef.current) return;
+        setSelectedCardId(id);
+      },
+    });
+    const unbindBill = bindSnapSelect(timelineRef.current, {
+      attr: 'data-bill-key',
+      ignoreRef: ignoreBillScrollRef,
+      onSelect: (id) => selectBill(id),
+    });
+    return () => {
+      unbindCard();
+      unbindBill();
     };
-
-    bind(cardStrip, 'data-card-id', ignoreCardScrollRef, (id) => {
-      if (id === selectedCardIdRef.current) return;
-      setSelectedCardId(id);
-    });
-    bind(billStrip, 'data-bill-key', ignoreBillScrollRef, (id) => {
-      selectBill(id);
-    });
-
-    return () => listeners.forEach((off) => off());
   }, [isMobile, isPageLoading, creditCards.length, sortedBillKeys.length]);
 
   // Navigation
