@@ -3,8 +3,13 @@ import { Pencil } from 'lucide-react';
 import { AccountIcon } from './AccountIcon';
 import { resolveCardFace } from '../utils/cardFaces';
 
+const STATUS_LABEL = {
+  paid: 'Paga',
+  due: 'A pagar',
+};
+
 /**
- * Physical credit-card tile for the Cartões de Crédito strip only.
+ * Physical credit-card tile used in the Cartões strip and Momento bill carousel.
  */
 export function CreditCardFace({
   account,
@@ -14,6 +19,7 @@ export function CreditCardFace({
   uploading = false,
   onClick,
   onUpload,
+  status,
 }) {
   const face = resolveCardFace(account);
   const [broken, setBroken] = useState(false);
@@ -42,19 +48,21 @@ export function CreditCardFace({
     }
   };
 
+  const interactive = typeof onClick === 'function';
+
   return (
     <div
-      role="button"
-      tabIndex={0}
-      className={`credit-card-face ${selected ? 'is-selected' : ''} ${showPhoto ? 'has-photo' : 'no-photo'} tone-${face.textTone}`}
+      role={interactive ? 'button' : undefined}
+      tabIndex={interactive ? 0 : undefined}
+      className={`credit-card-face ${selected ? 'is-selected' : ''} ${showPhoto ? 'has-photo' : 'no-photo'} ${interactive ? '' : 'is-static'} tone-${face.textTone}`.trim()}
       title={account?.name}
-      onClick={() => onClick?.()}
-      onKeyDown={(e) => {
+      onClick={interactive ? () => onClick() : undefined}
+      onKeyDown={interactive ? (e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
-          onClick?.();
+          onClick();
         }
-      }}
+      } : undefined}
     >
       {showPhoto ? (
         <img
@@ -76,6 +84,11 @@ export function CreditCardFace({
         <span className="credit-card-face__last">Final {lastFour || '****'}</span>
         <span className="credit-card-face__amount">{amountLabel}</span>
       </span>
+      {STATUS_LABEL[status] && (
+        <span className={`credit-card-face__status is-${status}`}>
+          {STATUS_LABEL[status]}
+        </span>
+      )}
       {onUpload && (
         <>
           <input

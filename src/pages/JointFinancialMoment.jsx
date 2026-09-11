@@ -30,6 +30,7 @@ import {
   Settings,
 } from 'lucide-react';
 import { AccountIcon, accountById } from '../components/AccountIcon';
+import { MomentBillStrip } from '../components/MomentBillStrip';
 
 function toCamelManualFromApi(row) {
   return row;
@@ -464,32 +465,7 @@ export function JointFinancialMoment() {
         </p>
       ) : isMobile ? (
         <>
-          <div className="chip-scroll moment-bill-strip">
-            {activeMonthData.activeBills.map((b, i) => (
-              <div
-                key={b.cardId || i}
-                className={`moment-bill-chip ${b.isPaid ? 'is-paid' : 'is-pending'}`}
-              >
-                <div className="moment-bill-chip__name">
-                  <AccountIcon account={accountById(accounts, b.cardId)} size={16} type="CREDIT" />
-                  {b.cardName}
-                </div>
-                <div className="moment-bill-chip__amount">- {formatCurrency(b.amount)}</div>
-                <div className="moment-bill-chip__meta">
-                  {b.ownerLabel && <Badge variant="neutral" style={{ fontSize: '9px' }}>{b.ownerLabel}</Badge>}
-                  <span>Vence {b.dueDate ? formatDate(b.dueDate) : '—'}</span>
-                  {b.isPaid ? (
-                    <Badge variant="success" style={{ fontSize: '9px' }}>Paga</Badge>
-                  ) : (
-                    <Badge variant="warning" style={{ fontSize: '9px' }}>Pendente</Badge>
-                  )}
-                  {b.isFallback && (
-                    <Badge variant="neutral" style={{ fontSize: '9px' }}>Estimada</Badge>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
+          <MomentBillStrip bills={activeMonthData.activeBills} accounts={accounts} />
           <div className="moment-bill-total" style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '0.35rem', fontSize: 'var(--font-size-xs)', fontWeight: 700 }}>
             <span>Total Faturas</span>
             <span style={{ color: 'var(--danger)' }}>{formatCurrency(activeMonthData.creditCardsTotal)}</span>

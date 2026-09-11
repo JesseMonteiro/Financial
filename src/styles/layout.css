@@ -199,9 +199,17 @@ body {
   color: #fff;
 }
 
+.credit-card-face.is-static {
+  cursor: default;
+}
+
 .credit-card-face:hover,
 .credit-card-all-chip:hover {
   transform: translateY(-1px);
+}
+
+.credit-card-face.is-static:hover {
+  transform: none;
 }
 
 .credit-card-face.is-selected {
@@ -382,6 +390,30 @@ body {
 .credit-card-face:hover .credit-card-face__edit,
 .credit-card-face:focus-within .credit-card-face__edit {
   opacity: 1;
+}
+
+.credit-card-face__status {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  line-height: 1.2;
+  padding: 0.22rem 0.5rem;
+  border-radius: 99px;
+  text-shadow: none;
+}
+
+.credit-card-face__status.is-paid {
+  background: rgba(16, 185, 129, 0.94);
+  color: #fff;
+}
+
+.credit-card-face__status.is-due {
+  background: rgba(245, 158, 11, 0.95);
+  color: #1a1a1a;
 }
 
 .credit-bill-strip {
@@ -596,8 +628,7 @@ body {
 
   .credit-card-strip.chip-scroll::after,
   .credit-bill-strip.chip-scroll::after,
-  .moment-month-strip.chip-scroll::after,
-  .moment-bill-strip.chip-scroll::after {
+  .moment-month-strip.chip-scroll::after {
     display: none;
   }
 
@@ -829,8 +860,7 @@ body {
     margin-bottom: 0.5rem;
   }
 
-  .moment-month-strip,
-  .moment-bill-strip {
+  .moment-month-strip {
     scroll-snap-type: x mandatory;
     padding: 0.25rem 12% 0.5rem;
     gap: 0.7rem;
@@ -839,57 +869,19 @@ body {
     touch-action: pan-x;
   }
 
-  .moment-month-strip::-webkit-scrollbar,
-  .moment-bill-strip::-webkit-scrollbar {
+  .moment-month-strip::-webkit-scrollbar {
     display: none;
   }
 
-  .moment-month-chip,
-  .moment-bill-chip {
+  .moment-month-chip {
     flex: 0 0 76%;
     min-width: 0;
     scroll-snap-align: center;
     scroll-snap-stop: always;
   }
 
-  .moment-bill-chip {
-    padding: 0.85rem 1rem;
-    border-radius: var(--radius-lg);
-    border: 1.5px solid var(--border-color);
-    background: var(--bg-tertiary);
-    box-shadow: var(--shadow-sm);
-  }
-
-  .moment-bill-chip.is-paid {
-    border-color: var(--success);
-  }
-
-  .moment-bill-chip.is-pending {
-    border-color: var(--warning);
-  }
-
-  .moment-bill-chip__name {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-    font-size: var(--font-size-sm);
-    font-weight: 700;
-  }
-
-  .moment-bill-chip__amount {
-    font-size: var(--font-size-lg);
-    font-weight: 800;
-    color: var(--danger);
-    margin: 0.45rem 0 0.25rem;
-  }
-
-  .moment-bill-chip__meta {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.35rem;
-    align-items: center;
-    font-size: 10px;
-    color: var(--text-muted);
+  .moment-bills-card .credit-card-strip {
+    margin-inline: calc(-1 * var(--space-4));
   }
 
   .moment-bill-total,
