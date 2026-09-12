@@ -26,9 +26,11 @@
  *   Nubank posts cancelling pairs (Saldo em atraso + Crédito de atraso).
  *   absolute = Σ |amount| (legacy; inflates bills that include credits).
  * @property {boolean} [reconcileOpenWithBalance]
- *   When true (or balance looks like total outstanding), open total may be
- *   raised to outstanding − future PENDING − past unpaid PENDING if Pluggy
- *   omitted charges that still affect balance (Mercado Pago additional cards).
+ *   When true, open total may be raised to
+ *   outstanding − future PENDING − past unpaid PENDING − unposted
+ *   installment parcels (due > open) if Pluggy omitted charges that still
+ *   affect balance (Mercado Pago additional cards). Without subtracting
+ *   unposted future N/M, the open bill collapses to total outstanding.
  * @property {boolean} [liftOfficialToCycleCharges]
  *   When true, an official Pluggy `totalAmount` that is short of the due-month
  *   cycle charges is lifted to the cycle sum (Amazon/Bradescard closed bills).

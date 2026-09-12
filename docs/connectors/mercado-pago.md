@@ -21,6 +21,6 @@
 ## Armadilhas
 
 - Consolidar “todos os cartões” misturando open-key pelo **mínimo** entre contas — preferir totais **por cartão** na UI consolidada.
-- **Cartões adicionais**: Pluggy pode omitir lançamentos de adicionais em `/transactions` enquanto `account.balance` já os inclui. Com `reconcileOpenWithBalance`, a fatura aberta = `balance − PENDING(futuro) − PENDING(passado não pago)` quando isso for maior que a soma dos itens listados.
+- **Cartões adicionais**: Pluggy pode omitir lançamentos de adicionais em `/transactions` enquanto `account.balance` já os inclui. Com `reconcileOpenWithBalance`, a fatura aberta = `balance − PENDING(futuro) − PENDING(passado não pago) − parcelas N/M ainda não postadas com due > aberta` quando isso for maior que a soma dos itens listados. Sem descontar as parcelas futuras omitidas, a aberta colapsa para a dívida total (ex.: R$ 1.175,34 em vez de R$ 197,34).
 - **Compra em dólar**: `amount` vem em USD e o valor na fatura está em `amountInAccountCurrency` (BRL). Sempre usar `txBillingAmount` / `signedTxAmount` — ex.: CURSOR `amount: 20` + `currencyCode: USD` + `amountInAccountCurrency: 107.02`.
 - Parcelas longas (`18/18`): o conector manda todas as parcelas futuras como `PENDING` com `billForecastDate` distintos — não somar na aberta; só a parcela do ciclo atual.

@@ -397,6 +397,88 @@ export function resolveOfficialBillTotal(official, cycleItems = [], {
 }
 
 /**
+ * Remaining installment parcels that belong AFTER the open due month and are
+ * not yet present as real PENDING/POSTED rows. Mercado Pago often drops future
+ * N/M from `/transactions` while still counting them in `account.balance` —
+ * without this, reconcileOpenWithBalance treats the whole outstanding as open.
+ *
+ * Series keys include amount-to-R$0,10, so parcela 1 (57,76) and 2 (57,72) of
+ * the same purchase can split; collapse those twins before counting remainders.
+ */
+export function sumUnpostedInstallmentsAfterOpen(
+  transactions = [],
+  openDueKey,
+  officialBills = [],
+  forecastToDueOffset = 0,
+) {
+  if (!openDueKey || !transactions.length) return 0;
+  const billMap = billMapFromList(officialBills);
+  const series = new Map();
+  for (const t of transactions) {
+    if (t.isProjected || isBillPayment(t)) continue;
+    if (isInstallmentPurchaseTotalGhost(t, transactions)) continue;
+    const total = installmentTotalOf(t);
+    const num = installmentNumberOf(t);
+    if (!total || !num) continue;
+    const key = installmentSeriesKey(t);
+    if (!key) continue;
+    const due = getDueMonthKey(t, billMap, forecastToDueOffset);
+    if (!due || due === 'Outros') continue;
+    let entry = series.get(key);
+    if (!entry) {
+      entry = { total, maxNum: 0, maxDue: due, sample: t };
+      series.set(key, entry);
+    }
+    if (num >= entry.maxNum) {
+      entry.maxNum = num;
+      entry.maxDue = due;
+      entry.sample = t;
+    }
+  }
+
+  // Merge amount-drifted twins (same merchant prefix + M, |Δamount| ≤ R$ 0,50)
+  const collapsed = [];
+  for (const entry of series.values()) {
+    const twin = collapsed.find((o) => {
+      if (o.total !== entry.total) return false;
+      if ((o.sample.accountId || '') !== (entry.sample.accountId || '')) return false;
+      const od = normalizeInstallmentDesc(o.sample.description);
+      const ed = normalizeInstallmentDesc(entry.sample.description);
+      const prefix = od.slice(0, 14);
+      if (prefix.length < 8) return false;
+      if (!(ed.startsWith(prefix) || od.startsWith(ed.slice(0, 14)))) return false;
+      const oa = Math.abs(txBillingAmount(o.sample));
+      const ea = Math.abs(txBillingAmount(entry.sample));
+      return Math.abs(oa - ea) <= 0.5;
+    });
+    if (!twin) {
+      collapsed.push({ ...entry });
+    } else if (entry.maxNum > twin.maxNum) {
+      twin.maxNum = entry.maxNum;
+      twin.maxDue = entry.maxDue;
+      twin.sample = entry.sample;
+    }
+  }
+
+  let sum = 0;
+  for (const entry of collapsed) {
+    const { total, maxNum, maxDue, sample } = entry;
+    const seriesKey = installmentSeriesKey(sample);
+    const amt = Math.abs(txBillingAmount(sample));
+    for (let n = 1; n <= total; n++) {
+      if (seriesKey && hasInstallmentNumber(transactions, seriesKey, n)) continue;
+      if (hasSimilarInstallment(transactions, sample, n)) continue;
+      const futureDue = ymAdd(maxDue, n - maxNum);
+      if (!futureDue || futureDue === 'Outros') continue;
+      // Open-cycle parcel stays in cycleSum; only months after open are debt leftover.
+      if (futureDue <= openDueKey) continue;
+      sum += amt;
+    }
+  }
+  return Math.round(sum * 100) / 100;
+}
+
+/**
  * Open-bill total for ONE due cycle.
  * Never use account.balance alone when it equals total outstanding (limit − available).
  * `cycleItems` are already scoped to this due month — include projected parcels
@@ -405,6 +487,7 @@ export function resolveOfficialBillTotal(official, cycleItems = [], {
  * When Pluggy omits some open-cycle charges that still sit in `account.balance`
  * (common on Mercado Pago with additional cards), reconcile:
  *   open ≈ outstanding − PENDING(due > open) − PENDING(due < open)
+ *           − unposted installment parcels with due > open
  */
 export function resolveOpenBillTotal(account, cycleItems = [], profile, opts = {}) {
   const chargeSumMode = profile?.chargeSumMode || 'signed_net';
@@ -443,7 +526,17 @@ export function resolveOpenBillTotal(account, cycleItems = [], profile, opts = {
       if (due > openDueKey) futurePending += amt;
       else if (due < openDueKey) pastUnpaidPending += amt;
     }
-    const impliedOpen = outstandingAmt - futurePending - pastUnpaidPending;
+    const scopedTxs = account?.id
+      ? transactions.filter((t) => !t.accountId || t.accountId === account.id)
+      : transactions;
+    const unpostedFuture = sumUnpostedInstallmentsAfterOpen(
+      scopedTxs,
+      openDueKey,
+      officialBills,
+      forecastToDueOffset,
+    );
+    const impliedOpen =
+      outstandingAmt - futurePending - pastUnpaidPending - unpostedFuture;
     if (impliedOpen > cycleSum + 0.05) {
       return Math.round(impliedOpen * 100) / 100;
     }
