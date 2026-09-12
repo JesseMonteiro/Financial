@@ -281,12 +281,80 @@ export function dueMonthFromInstallmentSeries(tx, transactions = [], billMap = {
 
 /** True if a real (or projected) tx already represents series installment n. */
 export function hasInstallmentNumber(transactions, seriesKey, n) {
+  return countInstallmentNumber(transactions, seriesKey, n) > 0;
+}
+
+/** How many rows already represent series installment n (same series key). */
+export function countInstallmentNumber(transactions, seriesKey, n) {
+  if (!seriesKey || !n) return 0;
+  let count = 0;
   for (const t of transactions) {
     if (isBillPayment(t)) continue;
     if (installmentSeriesKey(t) !== seriesKey) continue;
-    if (installmentNumberOf(t) === n) return true;
+    if (Number(installmentNumberOf(t)) === Number(n)) count += 1;
   }
-  return false;
+  return count;
+}
+
+/**
+ * Two identical Inter purchases (same merchant + M + amount) share one series key.
+ * Prefer predecessor-based projection (`count` of N−1 on the previous due month)
+ * over this max-frequency heuristic — overlapping same-amount buys (Nuuvem 16,66)
+ * inflate max frequency and over-project.
+ *
+ * Kept for diagnostics / callers that need a rough parallel estimate.
+ */
+export function parallelPurchaseCount(transactions, seriesKey) {
+  if (!seriesKey) return 1;
+  const byN = new Map();
+  for (const t of transactions) {
+    if (isBillPayment(t) || t.isProjected) continue;
+    if (installmentSeriesKey(t) !== seriesKey) continue;
+    const n = Number(installmentNumberOf(t));
+    if (!n) continue;
+    byN.set(n, (byN.get(n) || 0) + 1);
+  }
+  let max = 1;
+  for (const c of byN.values()) if (c > max) max = c;
+  return max;
+}
+
+/** Rough YYYY-MM for twin progress when official due is unknown. */
+function roughDueYm(tx) {
+  const fc = tx?.creditCardMetadata?.billForecastDate || tx?.billForecastDate;
+  if (fc) {
+    const ym = String(fc).slice(0, 7);
+    if (/^\d{4}-\d{2}$/.test(ym)) return ym;
+  }
+  const d = tx?.date ? String(tx.date).slice(0, 7) : '';
+  return /^\d{4}-\d{2}$/.test(d) ? d : '';
+}
+
+/** Latest installment progress for a series key (for cross-key twin checks). */
+function seriesProgressEntry(transactions, seriesKey, total) {
+  if (!seriesKey) return null;
+  let maxNum = 0;
+  let maxDue = '';
+  let sample = null;
+  for (const t of transactions) {
+    if (isBillPayment(t) || t.isProjected) continue;
+    if (installmentSeriesKey(t) !== seriesKey) continue;
+    const n = Number(installmentNumberOf(t)) || 0;
+    const due = roughDueYm(t);
+    if (n > maxNum || (n === maxNum && due > maxDue)) {
+      maxNum = n;
+      maxDue = due;
+      sample = t;
+    }
+  }
+  if (!sample) return null;
+  return {
+    total: Number(total) || Number(installmentTotalOf(sample)) || 0,
+    maxNum,
+    maxDue,
+    sample,
+    seriesKey,
+  };
 }
 
 /**
@@ -299,30 +367,64 @@ export function hasInstallmentNumber(transactions, seriesKey, n) {
  * (Carrefour 9,99 vs Ferreira Costa 10,48 as 5/10).
  * Fixed ±R$ 0,20 still merged distinct Amazon 4× buys (10,62 vs 10,51) and
  * blocked projecting the open 3/4 (~R$ 10,59) — use ~1% relative cap instead.
+ *
+ * Cross-key matches must also pass amount-drift twin checks — otherwise a
+ * finished Redepharma 50,00 7/10 blocks projecting an active 49,91 7/10
+ * (Lucas Inter Oct/2026 undercount).
  */
 export function hasSimilarInstallment(transactions, sample, n) {
+  return countSimilarInstallment(transactions, sample, n) > 0;
+}
+
+/**
+ * Count cross-purchase / truncated-desc rows that look like installment n of sample.
+ * Same series key is excluded (use countInstallmentNumber).
+ */
+export function countSimilarInstallment(transactions, sample, n) {
   const total = Number(installmentTotalOf(sample));
-  if (!total || !n) return false;
+  if (!total || !n) return 0;
   const sampleAmt = Math.abs(txBillingAmount(sample));
-  if (sampleAmt <= 0) return false;
+  if (sampleAmt <= 0) return 0;
   const acct = sample?.accountId || '';
   const sampleDesc = normalizeInstallmentDesc(sample?.description);
   const prefix = sampleDesc.slice(0, 14);
   const tol = Math.max(0.05, Math.min(0.2, sampleAmt * 0.01));
+  const sampleKey = installmentSeriesKey(sample);
+  const sampleEntry = seriesProgressEntry(transactions, sampleKey, total);
+  let count = 0;
   for (const t of transactions) {
     if (isBillPayment(t)) continue;
     if (acct && t.accountId && t.accountId !== acct) continue;
     if (Number(installmentNumberOf(t)) !== Number(n)) continue;
     if (Number(installmentTotalOf(t)) !== total) continue;
+    const tKey = installmentSeriesKey(t);
+    if (sampleKey && tKey && sampleKey === tKey) continue;
     const desc = normalizeInstallmentDesc(t.description);
     const prefixOk =
       prefix.length >= 8 &&
       (desc.startsWith(prefix) || sampleDesc.startsWith(desc.slice(0, 14)));
     if (!prefixOk) continue;
     const amt = Math.abs(txBillingAmount(t));
-    if (amt > 0 && Math.abs(amt - sampleAmt) <= tol) return true;
+    if (!(amt > 0 && Math.abs(amt - sampleAmt) <= tol)) continue;
+    if (sampleKey && tKey && sampleKey !== tKey) {
+      const tEntry = seriesProgressEntry(transactions, tKey, total);
+      if (
+        sampleEntry &&
+        tEntry &&
+        !installmentSeriesAreAmountDriftTwins(sampleEntry, tEntry)
+      ) {
+        continue;
+      }
+    }
+    count += 1;
   }
-  return false;
+  return count;
+}
+
+/** How many of installment n are already represented for this sample/series. */
+export function countPresentInstallments(transactions, sample, seriesKey, n) {
+  const exact = seriesKey ? countInstallmentNumber(transactions, seriesKey, n) : 0;
+  return exact + countSimilarInstallment(transactions, sample, n);
 }
 
 /**
@@ -499,15 +601,21 @@ export function collapseDriftedInstallmentSeries(seriesEntries = []) {
  * Same M is required so 10,62 4× is not blocked by an unrelated 10,63 5×.
  */
 export function monthHasSimilarCharge(items = [], sample) {
-  if (!sample || !items.length) return false;
+  return countMonthSimilarCharges(items, sample) > 0;
+}
+
+/** Count similar merchant/M/amount rows already in a due-month bucket. */
+export function countMonthSimilarCharges(items = [], sample) {
+  if (!sample || !items.length) return 0;
   const sampleAmt = Math.abs(txBillingAmount(sample));
-  if (sampleAmt <= 0) return false;
+  if (sampleAmt <= 0) return 0;
   const sampleTotal = Number(installmentTotalOf(sample)) || 0;
   const sampleDesc = normalizeInstallmentDesc(sample.description);
   const prefix = sampleDesc.slice(0, 14);
-  if (prefix.length < 8) return false;
+  if (prefix.length < 8) return 0;
   const acct = sample.accountId || '';
   const tol = Math.max(0.05, sampleAmt * 0.015);
+  let count = 0;
   for (const t of items) {
     if (isBillPayment(t)) continue;
     if (acct && t.accountId && t.accountId !== acct) continue;
@@ -515,9 +623,9 @@ export function monthHasSimilarCharge(items = [], sample) {
     const desc = normalizeInstallmentDesc(t.description);
     if (!(desc.startsWith(prefix) || sampleDesc.startsWith(desc.slice(0, 14)))) continue;
     const amt = Math.abs(txBillingAmount(t));
-    if (amt > 0 && Math.abs(amt - sampleAmt) <= tol) return true;
+    if (amt > 0 && Math.abs(amt - sampleAmt) <= tol) count += 1;
   }
-  return false;
+  return count;
 }
 
 /**
@@ -568,14 +676,25 @@ export function sumUnpostedInstallmentsAfterOpen(
     const { total, maxNum, maxDue, sample } = entry;
     const seriesKey = entry.seriesKey || installmentSeriesKey(sample);
     const amt = Math.abs(txBillingAmount(sample));
-    for (let n = 1; n <= total; n++) {
-      if (seriesKey && hasInstallmentNumber(transactions, seriesKey, n)) continue;
-      if (hasSimilarInstallment(transactions, sample, n)) continue;
+    // Purchases still at maxNum on maxDue each need parcels maxNum+1…total after open.
+    const frontier = countPresentInstallments(
+      transactions.filter((t) => {
+        if (t.isProjected || isBillPayment(t)) return false;
+        const due = getDueMonthKey(t, billMap, forecastToDueOffset);
+        return due === maxDue;
+      }),
+      sample,
+      seriesKey,
+      maxNum,
+    );
+    const cohort = Math.max(1, frontier);
+    for (let n = maxNum + 1; n <= total; n++) {
       const futureDue = ymAdd(maxDue, n - maxNum);
       if (!futureDue || futureDue === 'Outros') continue;
-      // Open-cycle parcel stays in cycleSum; only months after open are debt leftover.
       if (futureDue <= openDueKey) continue;
-      sum += amt;
+      const present = countPresentInstallments(transactions, sample, seriesKey, n);
+      const missing = Math.max(0, cohort - present);
+      if (missing > 0) sum += amt * missing;
     }
   }
   return Math.round(sum * 100) / 100;
@@ -1263,9 +1382,9 @@ export function buildCreditCardBills({
     // Project missing N/M: future parcels after maxNum AND gaps below maxNum
     // (Pluggy often skips mid-series rows; e.g. 4/12 then 7/12 without 5–6).
     // Place relative to the highest known installment's due month.
+    // Parallel identical purchases (Lucas Inter: two Óticas Rocha 70,00 10×) share
+    // one series key — slots = (N−1 on previous due month) − (N already on target).
     for (let n = 1; n <= total; n++) {
-      if (seriesKey && hasInstallmentNumber(transactions, seriesKey, n)) continue;
-      if (hasSimilarInstallment(transactions, sample, n)) continue;
       // Prefer the natural schedule from maxDue. Only slide when that month is
       // before open AND has no settled official bill (gap). Sliding across a
       // paid statement resurrects phantoms (Jesse Amazon Oct/2026 +R$ 35,33).
@@ -1279,6 +1398,33 @@ export function buildCreditCardBills({
         if (!futureDue || futureDue === 'Outros' || futureDue < openFor) continue;
       }
       if (!futureDue || futureDue === 'Outros' || futureDue < openFor) continue;
+
+      let sources = 0;
+      if (n <= 1) {
+        if (countPresentInstallments(transactions, sample, seriesKey, 1) > 0) continue;
+        sources = 1;
+      } else {
+        const prevDue = ymAdd(futureDue, -1);
+        if (prevDue && prevDue !== 'Outros' && map[prevDue]) {
+          sources = countPresentInstallments(
+            map[prevDue].items,
+            sample,
+            seriesKey,
+            n - 1,
+          );
+        }
+        // Settled months / antecipações leave no N−1 on prev due (DUO Gourmet,
+        // Shopping Inter). Fall back to one slot from the series frontier.
+        if (sources <= 0) {
+          if (countPresentInstallments(transactions, sample, seriesKey, n) > 0) {
+            continue;
+          }
+          if (countSimilarInstallment(transactions, sample, n) > 0) continue;
+          sources = 1;
+        }
+      }
+      if (sources <= 0) continue;
+
       if (!map[futureDue]) {
         map[futureDue] = {
           dueMonthKey: futureDue,
@@ -1287,30 +1433,39 @@ export function buildCreditCardBills({
           dueDate: inferDueDateForMonth(futureDue, officialBills),
         };
       }
-      if (hasInstallmentNumber(map[futureDue].items, seriesKey, n)) continue;
-      if (hasSimilarInstallment(map[futureDue].items, sample, n)) continue;
-      // Twin series at N vs N+1 (amount-key drift) — month already has the parcel.
-      if (monthHasSimilarCharge(map[futureDue].items, sample)) continue;
+      const already = countPresentInstallments(
+        map[futureDue].items,
+        sample,
+        seriesKey,
+        n,
+      );
+      // Stale lower-N remaps with the same amount (Nuuvem 4/6 on open) occupy a
+      // slot so we do not also project N+1 on top (amount-neutral block).
+      const similar = countMonthSimilarCharges(map[futureDue].items, sample);
+      const slots = sources - Math.max(already, similar);
+      if (slots <= 0) continue;
       const baseDesc = normalizeInstallmentDesc(sample.description);
-      map[futureDue].items.push({
-        ...sample,
-        id: `proj_${sample.id}_${n}`,
-        description: `${baseDesc} (Parcela ${n}/${total})`,
-        creditCardMetadata: {
-          ...(sample.creditCardMetadata || {}),
-          installmentNumber: n,
-          totalInstallments: total,
-          // Projected parcels are not tied to the sample's official bill
+      for (let i = 0; i < slots; i++) {
+        map[futureDue].items.push({
+          ...sample,
+          id: `proj_${sample.id}_${n}_${i}`,
+          description: `${baseDesc} (Parcela ${n}/${total})`,
+          creditCardMetadata: {
+            ...(sample.creditCardMetadata || {}),
+            installmentNumber: n,
+            totalInstallments: total,
+            // Projected parcels are not tied to the sample's official bill
+            billId: undefined,
+            billForecastDate: futureDue,
+          },
           billId: undefined,
-          billForecastDate: futureDue,
-        },
-        billId: undefined,
-        currentInstallment: n,
-        totalInstallmentsCount: total,
-        isProjected: true,
-        status: 'PENDING',
-        date: `${inferDueDateForMonth(futureDue, officialBills)}T00:00:00.000Z`,
-      });
+          currentInstallment: n,
+          totalInstallmentsCount: total,
+          isProjected: true,
+          status: 'PENDING',
+          date: `${inferDueDateForMonth(futureDue, officialBills)}T00:00:00.000Z`,
+        });
+      }
     }
   }
 
