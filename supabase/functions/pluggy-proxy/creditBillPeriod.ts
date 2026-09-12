@@ -47,6 +47,33 @@ export function projectionAnchorDue(maxDue, openFor) {
   return maxDue;
 }
 
+/** Official bill for a due month (optionally scoped to one credit account). */
+export function officialBillForDueMonth(dueYm, officialBills = [], accountId = null) {
+  if (!dueYm || dueYm === 'Outros') return null;
+  return (
+    officialBills.find(
+      (b) =>
+        ymFromIso(b.dueDate) === dueYm &&
+        (!accountId || !b.accountId || b.accountId === accountId)
+    ) || null
+  );
+}
+
+/**
+ * True when `dueYm` already has a settled official statement. Used to avoid
+ * slideProjectionToOpen resurrecting parcels that belonged on a paid bill
+ * (Jesse Amazon Oct/2026: 1/2@Aug → phantom 2/2 on Oct while Sep was paid).
+ */
+export function dueMonthHasSettledOfficial(
+  dueYm,
+  officialBills = [],
+  opts = {},
+) {
+  const bill = officialBillForDueMonth(dueYm, officialBills, opts.accountId ?? null);
+  if (!bill) return false;
+  return isBillSettled(bill, opts);
+}
+
 export function ymFromIso(iso) {
   if (!iso) return null;
   return String(iso).slice(0, 7);
@@ -1138,15 +1165,37 @@ export function buildCreditCardBills({
     // parcels already billed (Rede Pharma 4/4) onto the open bill.
     const slide = Boolean(profile?.slideProjectionToOpen) && !openHasOfficial;
     const anchorDue = slide ? projectionAnchorDue(maxDue, openFor) : maxDue;
+    const settleOpts = {
+      transactions,
+      officialBills,
+      forecastToDueOffset: offsetForAccount(
+        accountId,
+        transactions,
+        officialBills,
+        offsetCache,
+        creditCards,
+      ),
+      accountId,
+    };
     // Project missing N/M: future parcels after maxNum AND gaps below maxNum
     // (Pluggy often skips mid-series rows; e.g. 4/12 then 7/12 without 5–6).
     // Place relative to the highest known installment's due month.
     for (let n = 1; n <= total; n++) {
       if (hasInstallmentNumber(transactions, seriesKey, n)) continue;
       if (hasSimilarInstallment(transactions, sample, n)) continue;
-      const futureDue = ymAdd(anchorDue, n - maxNum);
-      // Do not project into already-closed cycles
-      if (futureDue < openFor) continue;
+      // Prefer the natural schedule from maxDue. Only slide when that month is
+      // before open AND has no settled official bill (gap). Sliding across a
+      // paid statement resurrects phantoms (Jesse Amazon Oct/2026 +R$ 35,33).
+      let futureDue = ymAdd(maxDue, n - maxNum);
+      if (futureDue && futureDue !== 'Outros' && futureDue < openFor) {
+        if (dueMonthHasSettledOfficial(futureDue, officialBills, settleOpts)) {
+          continue;
+        }
+        if (!slide) continue;
+        futureDue = ymAdd(anchorDue, n - maxNum);
+        if (!futureDue || futureDue === 'Outros' || futureDue < openFor) continue;
+      }
+      if (!futureDue || futureDue === 'Outros' || futureDue < openFor) continue;
       if (!map[futureDue]) {
         map[futureDue] = {
           dueMonthKey: futureDue,
