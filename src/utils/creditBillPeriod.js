@@ -297,15 +297,18 @@ export function hasInstallmentNumber(transactions, seriesKey, n) {
  * R$ 0,10 missed that and projected phantom 11/12 onto the open bill.
  * Amount-only ±R$ 0,50 was matching unrelated ~R$ 10 parcels
  * (Carrefour 9,99 vs Ferreira Costa 10,48 as 5/10).
+ * Fixed ±R$ 0,20 still merged distinct Amazon 4× buys (10,62 vs 10,51) and
+ * blocked projecting the open 3/4 (~R$ 10,59) — use ~1% relative cap instead.
  */
 export function hasSimilarInstallment(transactions, sample, n) {
   const total = Number(installmentTotalOf(sample));
   if (!total || !n) return false;
   const sampleAmt = Math.abs(txBillingAmount(sample));
+  if (sampleAmt <= 0) return false;
   const acct = sample?.accountId || '';
   const sampleDesc = normalizeInstallmentDesc(sample?.description);
   const prefix = sampleDesc.slice(0, 14);
-  const sampleCents = Math.round(sampleAmt * 100);
+  const tol = Math.max(0.05, Math.min(0.2, sampleAmt * 0.01));
   for (const t of transactions) {
     if (isBillPayment(t)) continue;
     if (acct && t.accountId && t.accountId !== acct) continue;
@@ -317,7 +320,7 @@ export function hasSimilarInstallment(transactions, sample, n) {
       (desc.startsWith(prefix) || sampleDesc.startsWith(desc.slice(0, 14)));
     if (!prefixOk) continue;
     const amt = Math.abs(txBillingAmount(t));
-    if (Math.abs(Math.round(amt * 100) - sampleCents) <= 20) return true;
+    if (amt > 0 && Math.abs(amt - sampleAmt) <= tol) return true;
   }
   return false;
 }
@@ -424,6 +427,100 @@ export function resolveOfficialBillTotal(official, cycleItems = [], {
 }
 
 /**
+ * True when two series entries look like the same purchase split by Pluggy
+ * amount-key drift (121,50 vs 121,42), not two distinct ~same-value buys.
+ *
+ * Rejects "new early series on the advanced series' latest month" — e.g. Amazon
+ * 10,51 4/4 due Aug vs 10,62 1/4 due Aug (Lucas Oct/2026): collapsing those
+ * dropped the open-cycle 3/4 (~R$ 10,59) and under-shot the PDF.
+ */
+export function installmentSeriesAreAmountDriftTwins(a, b) {
+  if (!a || !b || a.total !== b.total) return false;
+  if ((a.sample?.accountId || '') !== (b.sample?.accountId || '')) return false;
+  const ad = normalizeInstallmentDesc(a.sample?.description);
+  const bd = normalizeInstallmentDesc(b.sample?.description);
+  const prefix = ad.slice(0, 14);
+  if (prefix.length < 8) return false;
+  if (!(bd.startsWith(prefix) || ad.startsWith(bd.slice(0, 14)))) return false;
+  const aa = Math.abs(txBillingAmount(a.sample));
+  const ba = Math.abs(txBillingAmount(b.sample));
+  if (aa <= 0 || ba <= 0) return false;
+  // ~1.5% or 5 cents — covers 121,50↔121,42 and 10,07↔9,99 without ±R$ 0,50
+  // swallowing unrelated ~R$ 10 Amazon parcels a few cents apart.
+  if (Math.abs(aa - ba) > Math.max(0.05, Math.min(aa, ba) * 0.015)) return false;
+  if (a.maxNum === b.maxNum) return true;
+  const ahead = a.maxNum >= b.maxNum ? a : b;
+  const behind = a.maxNum >= b.maxNum ? b : a;
+  if ((behind.maxDue || '') > (ahead.maxDue || '')) return false;
+  // Early parcel of a new buy landing on the month where another series already
+  // advanced far (often completed) is a different purchase, not cent-drift.
+  if (
+    behind.maxNum <= 2 &&
+    ahead.maxNum >= Math.max(3, (Number(ahead.total) || 0) - 1) &&
+    behind.maxDue &&
+    ahead.maxDue &&
+    behind.maxDue >= ahead.maxDue
+  ) {
+    return false;
+  }
+  return ahead.maxNum - behind.maxNum <= 2;
+}
+
+/**
+ * Merge installment series that Pluggy split via cent-drift on the amount key
+ * (e.g. 121,50 vs 121,42 of the same 21× Amazon purchase; 10,07 vs 9,99 Carrefour).
+ * Keeps the more advanced entry (highest maxNum, then later maxDue).
+ */
+export function collapseDriftedInstallmentSeries(seriesEntries = []) {
+  const collapsed = [];
+  for (const entry of seriesEntries) {
+    if (!entry) continue;
+    const twin = collapsed.find((o) => installmentSeriesAreAmountDriftTwins(o, entry));
+    if (!twin) {
+      collapsed.push({ ...entry });
+    } else if (
+      entry.maxNum > twin.maxNum ||
+      (entry.maxNum === twin.maxNum && (entry.maxDue || '') > (twin.maxDue || ''))
+    ) {
+      twin.maxNum = entry.maxNum;
+      twin.maxDue = entry.maxDue;
+      twin.sample = entry.sample;
+      if (entry.accountId != null) twin.accountId = entry.accountId;
+      if (entry.seriesKey != null) twin.seriesKey = entry.seriesKey;
+    }
+  }
+  return collapsed;
+}
+
+/**
+ * Bucket already has a real/projected charge with the same merchant prefix,
+ * same installment total M, and amount within ~1.5% — blocks twin-series
+ * phantoms (projecting 10/21 when 9/21 at 121,42 already sits on the open month).
+ * Same M is required so 10,62 4× is not blocked by an unrelated 10,63 5×.
+ */
+export function monthHasSimilarCharge(items = [], sample) {
+  if (!sample || !items.length) return false;
+  const sampleAmt = Math.abs(txBillingAmount(sample));
+  if (sampleAmt <= 0) return false;
+  const sampleTotal = Number(installmentTotalOf(sample)) || 0;
+  const sampleDesc = normalizeInstallmentDesc(sample.description);
+  const prefix = sampleDesc.slice(0, 14);
+  if (prefix.length < 8) return false;
+  const acct = sample.accountId || '';
+  const tol = Math.max(0.05, sampleAmt * 0.015);
+  for (const t of items) {
+    if (isBillPayment(t)) continue;
+    if (acct && t.accountId && t.accountId !== acct) continue;
+    if (sampleTotal && Number(installmentTotalOf(t)) !== sampleTotal) continue;
+    const desc = normalizeInstallmentDesc(t.description);
+    if (!(desc.startsWith(prefix) || sampleDesc.startsWith(desc.slice(0, 14)))) continue;
+    const amt = Math.abs(txBillingAmount(t));
+    if (amt > 0 && Math.abs(amt - sampleAmt) <= tol) return true;
+  }
+  return false;
+}
+
+/**
  * Remaining installment parcels that belong AFTER the open due month and are
  * not yet present as real PENDING/POSTED rows. Mercado Pago often drops future
  * N/M from `/transactions` while still counting them in `account.balance` —
@@ -453,44 +550,23 @@ export function sumUnpostedInstallmentsAfterOpen(
     if (!due || due === 'Outros') continue;
     let entry = series.get(key);
     if (!entry) {
-      entry = { total, maxNum: 0, maxDue: due, sample: t };
+      entry = { total, maxNum: 0, maxDue: due, sample: t, seriesKey: key };
       series.set(key, entry);
     }
     if (num >= entry.maxNum) {
       entry.maxNum = num;
       entry.maxDue = due;
       entry.sample = t;
+      entry.seriesKey = key;
     }
   }
 
-  // Merge amount-drifted twins (same merchant prefix + M, |Δamount| ≤ R$ 0,50)
-  const collapsed = [];
-  for (const entry of series.values()) {
-    const twin = collapsed.find((o) => {
-      if (o.total !== entry.total) return false;
-      if ((o.sample.accountId || '') !== (entry.sample.accountId || '')) return false;
-      const od = normalizeInstallmentDesc(o.sample.description);
-      const ed = normalizeInstallmentDesc(entry.sample.description);
-      const prefix = od.slice(0, 14);
-      if (prefix.length < 8) return false;
-      if (!(ed.startsWith(prefix) || od.startsWith(ed.slice(0, 14)))) return false;
-      const oa = Math.abs(txBillingAmount(o.sample));
-      const ea = Math.abs(txBillingAmount(entry.sample));
-      return Math.abs(oa - ea) <= 0.5;
-    });
-    if (!twin) {
-      collapsed.push({ ...entry });
-    } else if (entry.maxNum > twin.maxNum) {
-      twin.maxNum = entry.maxNum;
-      twin.maxDue = entry.maxDue;
-      twin.sample = entry.sample;
-    }
-  }
+  const collapsed = collapseDriftedInstallmentSeries([...series.values()]);
 
   let sum = 0;
   for (const entry of collapsed) {
     const { total, maxNum, maxDue, sample } = entry;
-    const seriesKey = installmentSeriesKey(sample);
+    const seriesKey = entry.seriesKey || installmentSeriesKey(sample);
     const amt = Math.abs(txBillingAmount(sample));
     for (let n = 1; n <= total; n++) {
       if (seriesKey && hasInstallmentNumber(transactions, seriesKey, n)) continue;
@@ -1140,6 +1216,7 @@ export function buildCreditCardBills({
         maxDue: due,
         sample: t,
         accountId: t.accountId,
+        seriesKey: key,
       };
       series.set(key, entry);
     }
@@ -1147,11 +1224,17 @@ export function buildCreditCardBills({
       entry.maxNum = num;
       entry.maxDue = due;
       entry.sample = t;
+      entry.seriesKey = key;
     }
   }
 
-  for (const [seriesKey, entry] of series) {
+  // Amount-key drift (121,50 vs 121,42) splits one purchase into two series;
+  // projecting both dumps an extra N+1 onto the open bill (Lucas Amazon Oct/2026).
+  const seriesList = collapseDriftedInstallmentSeries([...series.values()]);
+
+  for (const entry of seriesList) {
     const { total, maxNum, maxDue, sample, accountId } = entry;
+    const seriesKey = entry.seriesKey || installmentSeriesKey(sample);
     const openFor = openByAccount[accountId] || openDueKey;
     const openHasOfficial = officialBills.some(
       (b) =>
@@ -1181,7 +1264,7 @@ export function buildCreditCardBills({
     // (Pluggy often skips mid-series rows; e.g. 4/12 then 7/12 without 5–6).
     // Place relative to the highest known installment's due month.
     for (let n = 1; n <= total; n++) {
-      if (hasInstallmentNumber(transactions, seriesKey, n)) continue;
+      if (seriesKey && hasInstallmentNumber(transactions, seriesKey, n)) continue;
       if (hasSimilarInstallment(transactions, sample, n)) continue;
       // Prefer the natural schedule from maxDue. Only slide when that month is
       // before open AND has no settled official bill (gap). Sliding across a
@@ -1206,6 +1289,8 @@ export function buildCreditCardBills({
       }
       if (hasInstallmentNumber(map[futureDue].items, seriesKey, n)) continue;
       if (hasSimilarInstallment(map[futureDue].items, sample, n)) continue;
+      // Twin series at N vs N+1 (amount-key drift) — month already has the parcel.
+      if (monthHasSimilarCharge(map[futureDue].items, sample)) continue;
       const baseDesc = normalizeInstallmentDesc(sample.description);
       map[futureDue].items.push({
         ...sample,
