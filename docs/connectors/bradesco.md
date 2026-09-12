@@ -30,3 +30,4 @@
 - `hasSimilarInstallment` casar só por valor ±R$ 0,50 (sem prefixo do lojista) → parcelas ~R$ 10 de compras diferentes (Carrefour vs Ferreira Costa) se bloqueiam e somem da aberta. Mesmo com prefixo, ±R$ 0,20 une Amazon 4× distintas (10,62 vs 10,51) e impede a 3/4 da aberta — tolerância relativa ~1% (teto R$ 0,20).
 - Usar `account.balance` como fatura aberta → infla com o parcelado futuro (limite − disponível).
 - Somar `Math.abs` → estornos (CREDIT) viram débito extra.
+- Projetar o restante inteiro de um `1/N` que ainda é **PENDING** (nunca POSTED): o app do Bradesco só estende esses planos até a aberta + 1 fatura. `capUnpostedSeriesHorizon` corta o resto (Jesse nov/2026: 1/3 de R$ 53,36 na aberta gerava +R$ 53,36 em nov; luvincome 1/7 e marilene 1/5 na fatura fechada geravam +R$ 32,72 em dez → **203,33 vs 149,90** e **162,87 vs 76,89**). Séries com histórico POSTED continuam projetadas até o fim.

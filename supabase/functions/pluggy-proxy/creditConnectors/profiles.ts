@@ -44,6 +44,10 @@
  *   dumps already-billed last parcels onto the open bill. Never resurrect a
  *   parcel whose natural due month already has a settled official bill
  *   (Jesse Amazon Oct/2026: phantoms 10.62+12.40+12.23).
+ * @property {boolean} [capUnpostedSeriesHorizon]
+ *   When true, never-POSTed installment series are only projected through the
+ *   open bill (if the frontier is already there) or open+1 (if it sits on a
+ *   closed cycle). Matches Bradesco/Amazon upcoming-bill chips.
  * @property {RemapStalePendingMode} remapStalePending
  *   after_cycle_end = only remap PENDING without billId when purchase date is
  *   after last official close (Carrefour-safe). always = old Nubank-only remap.
@@ -174,7 +178,8 @@ export const CONNECTOR_PROFILES = [
     openTotalSource: 'cycle_charges',
     chargeSumMode: 'signed_net',
     remapStalePending: 'after_cycle_end',
-    // Future official bills already include remaining parcels in totalAmount
+    // Future official bills already include remaining parcels in totalAmount.
+    // Empty future stubs (no cycle charges) are dropped via ignoreUnbackedOfficial.
     includeProjectedInOfficialTotal: false,
     // Open/draft official totalAmount can omit charges that already carry billId
     // (Jesse Oct/2026: 729.86 vs cycle 800.28 — missing BRISANET*INTERNET 70.42).
@@ -226,6 +231,7 @@ export const CONNECTOR_PROFILES = [
     // Pluggy 1532.54 vs fatura 1602.24) while the cycle txs already have the rest.
     liftOfficialToCycleCharges: true,
     slideProjectionToOpen: true,
+    capUnpostedSeriesHorizon: true,
     remapStalePending: 'after_cycle_end',
     paymentOftenOnNextCycle: true,
     guidePath: 'docs/connectors/bradesco.md',

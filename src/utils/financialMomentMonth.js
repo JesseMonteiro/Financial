@@ -46,11 +46,14 @@ export function cardBillAmountForMonth({
 
   if (matchingBill) {
     const profile = resolveConnectorProfile({ account: card });
+    const openKey = creditBillPeriod?.openDueKey || '';
     const amount = resolveOfficialBillTotal(matchingBill, scoped, {
       chargeSumMode: profile.chargeSumMode || 'signed_net',
       liftOfficialToCycleCharges: Boolean(profile.liftOfficialToCycleCharges),
       includeProjectedInOfficialTotal: profile.includeProjectedInOfficialTotal !== false,
+      ignoreUnbackedOfficial: Boolean(openKey) && ym > openKey,
     });
+    if (amount <= 0.05 && openKey && ym > openKey) return null;
     return {
       amount,
       dueDate: matchingBill.dueDate,

@@ -47,6 +47,21 @@ export function projectionAnchorDue(maxDue, openFor) {
   return maxDue;
 }
 
+/**
+ * Last due month a never-POSTed installment series may be projected into.
+ *
+ * Bradesco/Amazon "próximas faturas" only extend unposted plans through the
+ * open bill + one future cycle. A 1/3 still PENDING on the open bill is not
+ * assigned 2/3 yet (Jesse Amazon Nov/2026: +R$ 53,36). A 1/7 PENDING on the
+ * last closed bill shows 2/7 on open and 3/7 on the next month, not 4/7+
+ * (Jesse Amazon Dec/2026: LUVINCOME 21,23 + MARILENEB 11,49).
+ */
+export function pendingOnlyProjectionHorizon(maxDue, openFor) {
+  if (!openFor || openFor === 'Outros') return openFor;
+  if (!maxDue || maxDue === 'Outros') return ymAdd(openFor, 1);
+  return maxDue >= openFor ? openFor : ymAdd(openFor, 1);
+}
+
 /** Official bill for a due month (optionally scoped to one credit account). */
 export function officialBillForDueMonth(dueYm, officialBills = [], accountId = null) {
   if (!dueYm || dueYm === 'Outros') return null;
@@ -523,22 +538,26 @@ export function sumProjectedCharges(items = [], { chargeSumMode = 'signed_net' }
  * When the connector opts in, lift to cycle charges if those are higher —
  * closed Amazon statements can still publish a short `totalAmount` while
  * POSTED/PENDING txs already match the bank PDF.
+ * `ignoreUnbackedOfficial` drops leftover future `totalAmount` when the cycle
+ * has no posted/pending/projected charges (Jesse Inter Nov/2026: 50.67, 0 txs).
  */
 export function resolveOfficialBillTotal(official, cycleItems = [], {
   chargeSumMode = 'signed_net',
   liftOfficialToCycleCharges = false,
   includeProjectedInOfficialTotal = true,
+  ignoreUnbackedOfficial = false,
 } = {}) {
   const officialAmt = Number(official?.totalAmount) || 0;
+  const cycleSum = sumCycleCharges(cycleItems, {
+    includeProjected: true,
+    chargeSumMode,
+  });
+  if (ignoreUnbackedOfficial && cycleSum <= 0.05) return 0;
   const projectedAmt = includeProjectedInOfficialTotal
     ? sumProjectedCharges(cycleItems, { chargeSumMode })
     : 0;
   const combined = Math.round((officialAmt + projectedAmt) * 100) / 100;
   if (!liftOfficialToCycleCharges) return combined;
-  const cycleSum = sumCycleCharges(cycleItems, {
-    includeProjected: true,
-    chargeSumMode,
-  });
   return cycleSum > combined + 0.05 ? cycleSum : combined;
 }
 
@@ -597,15 +616,18 @@ export function collapseDriftedInstallmentSeries(seriesEntries = []) {
     const twin = collapsed.find((o) => installmentSeriesAreAmountDriftTwins(o, entry));
     if (!twin) {
       collapsed.push({ ...entry });
-    } else if (
-      entry.maxNum > twin.maxNum ||
-      (entry.maxNum === twin.maxNum && (entry.maxDue || '') > (twin.maxDue || ''))
-    ) {
-      twin.maxNum = entry.maxNum;
-      twin.maxDue = entry.maxDue;
-      twin.sample = entry.sample;
-      if (entry.accountId != null) twin.accountId = entry.accountId;
-      if (entry.seriesKey != null) twin.seriesKey = entry.seriesKey;
+    } else {
+      if (
+        entry.maxNum > twin.maxNum ||
+        (entry.maxNum === twin.maxNum && (entry.maxDue || '') > (twin.maxDue || ''))
+      ) {
+        twin.maxNum = entry.maxNum;
+        twin.maxDue = entry.maxDue;
+        twin.sample = entry.sample;
+        if (entry.accountId != null) twin.accountId = entry.accountId;
+        if (entry.seriesKey != null) twin.seriesKey = entry.seriesKey;
+      }
+      if (entry.hasPosted) twin.hasPosted = true;
     }
   }
   return collapsed;
@@ -1356,9 +1378,11 @@ export function buildCreditCardBills({
         sample: t,
         accountId: t.accountId,
         seriesKey: key,
+        hasPosted: false,
       };
       series.set(key, entry);
     }
+    if (String(t.status || '').toUpperCase() === 'POSTED') entry.hasPosted = true;
     if (num >= entry.maxNum) {
       entry.maxNum = num;
       entry.maxDue = due;
@@ -1418,6 +1442,11 @@ export function buildCreditCardBills({
         if (!futureDue || futureDue === 'Outros' || futureDue < openFor) continue;
       }
       if (!futureDue || futureDue === 'Outros' || futureDue < openFor) continue;
+
+      if (profile?.capUnpostedSeriesHorizon && !entry.hasPosted) {
+        const horizon = pendingOnlyProjectionHorizon(maxDue, openFor);
+        if (horizon && futureDue > horizon) continue;
+      }
 
       let sources = 0;
       if (n <= 1) {
@@ -1530,6 +1559,7 @@ export function buildCreditCardBills({
           chargeSumMode,
           liftOfficialToCycleCharges: Boolean(profile?.liftOfficialToCycleCharges),
           includeProjectedInOfficialTotal: profile?.includeProjectedInOfficialTotal !== false,
+          ignoreUnbackedOfficial: dueYm > cardOpenKey,
         });
         hasOfficial = true;
         dueDate = String(official.dueDate).slice(0, 10);
@@ -1589,6 +1619,9 @@ export function buildCreditCardBills({
       type = 'PAST';
     }
 
+    const hasCharges = (bucket.items || []).some((t) => !isBillPayment(t));
+    if (type === 'FUTURE' && totalAmount <= 0.05 && !hasCharges) continue;
+
     bills[dueYm] = {
       dueMonthKey: dueYm,
       monthKey: dueYm,
@@ -1604,7 +1637,7 @@ export function buildCreditCardBills({
   return {
     forecastToDueOffset: globalOffset,
     openDueKey,
-    sortedDueKeys,
+    sortedDueKeys: Object.keys(bills).filter((k) => k !== 'Outros').sort(),
     bills,
   };
 }
