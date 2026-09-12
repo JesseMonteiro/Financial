@@ -197,6 +197,12 @@ export function txBillingAmount(tx) {
  * (R$ 5,70 vs R$ 40,56) stay separate.
  * accountId is included so consolidated multi-card views do not merge series.
  */
+export function installmentPurchaseDate(tx) {
+  const pd = tx?.creditCardMetadata?.purchaseDate || tx?.purchaseDate;
+  const iso = pd ? String(pd).slice(0, 10) : '';
+  return /^\d{4}-\d{2}-\d{2}$/.test(iso) ? iso : '';
+}
+
 export function installmentSeriesKey(tx) {
   const meta = tx?.creditCardMetadata || {};
   const acct = tx?.accountId || '';
@@ -205,7 +211,12 @@ export function installmentSeriesKey(tx) {
   if (!total) return null;
   // Tenths of a real — absorbs ±R$ 0.05 drift without merging unrelated amounts
   const amt = Math.round(Math.abs(txBillingAmount(tx)) * 10);
-  return `${acct}|${normalizeInstallmentDesc(tx.description)}|${total}|${amt}`;
+  // Inter (and similar) omit purchaseId but send purchaseDate. Overlapping
+  // same-merchant same-amount buys (Lucas Nuuvem 16,66 6×) share one key
+  // without it, so only one parcel lands on the open bill.
+  const purchased = installmentPurchaseDate(tx);
+  const pdPart = purchased ? `|pd:${purchased}` : '';
+  return `${acct}|${normalizeInstallmentDesc(tx.description)}|${total}|${amt}${pdPart}`;
 }
 
 export function normalizeInstallmentDesc(description) {
@@ -406,6 +417,9 @@ export function countSimilarInstallment(transactions, sample, n) {
     if (!prefixOk) continue;
     const amt = Math.abs(txBillingAmount(t));
     if (!(amt > 0 && Math.abs(amt - sampleAmt) <= tol)) continue;
+    const pdS = installmentPurchaseDate(sample);
+    const pdT = installmentPurchaseDate(t);
+    if (pdS && pdT && pdS !== pdT) continue;
     if (sampleKey && tKey && sampleKey !== tKey) {
       const tEntry = seriesProgressEntry(transactions, tKey, total);
       if (
@@ -539,6 +553,9 @@ export function resolveOfficialBillTotal(official, cycleItems = [], {
 export function installmentSeriesAreAmountDriftTwins(a, b) {
   if (!a || !b || a.total !== b.total) return false;
   if ((a.sample?.accountId || '') !== (b.sample?.accountId || '')) return false;
+  const pdA = installmentPurchaseDate(a.sample);
+  const pdB = installmentPurchaseDate(b.sample);
+  if (pdA && pdB && pdA !== pdB) return false;
   const ad = normalizeInstallmentDesc(a.sample?.description);
   const bd = normalizeInstallmentDesc(b.sample?.description);
   const prefix = ad.slice(0, 14);
@@ -620,6 +637,9 @@ export function countMonthSimilarCharges(items = [], sample) {
     if (isBillPayment(t)) continue;
     if (acct && t.accountId && t.accountId !== acct) continue;
     if (sampleTotal && Number(installmentTotalOf(t)) !== sampleTotal) continue;
+    const pdS = installmentPurchaseDate(sample);
+    const pdT = installmentPurchaseDate(t);
+    if (pdS && pdT && pdS !== pdT) continue;
     const desc = normalizeInstallmentDesc(t.description);
     if (!(desc.startsWith(prefix) || sampleDesc.startsWith(desc.slice(0, 14)))) continue;
     const amt = Math.abs(txBillingAmount(t));
