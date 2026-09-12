@@ -178,16 +178,23 @@ export function CreditCards() {
   }, [creditCards, openTotalByCardId]);
 
   const [selectedBillKey, setSelectedBillKey] = useState(null);
+  const prevCardIdRef = useRef(selectedCardId);
 
+  // Switching cards must always land on that card's open bill (not the previous
+  // card's selection, which often matches a future/last due-month key).
   useEffect(() => {
-    setSelectedBillKey(null);
-  }, [selectedCardId]);
+    if (prevCardIdRef.current === selectedCardId) return;
+    prevCardIdRef.current = selectedCardId;
+    ignoreBillScrollRef.current = true;
+    setSelectedBillKey(currentOpenKey || null);
+  }, [selectedCardId, currentOpenKey]);
 
+  // When open key arrives after data load, or selection is not in this card's bills
   useEffect(() => {
-    if (currentOpenKey && !selectedBillKey) {
-      setSelectedBillKey(currentOpenKey);
-    }
-  }, [currentOpenKey, selectedBillKey]);
+    if (!currentOpenKey) return;
+    if (selectedBillKey && sortedBillKeys.includes(selectedBillKey)) return;
+    setSelectedBillKey(currentOpenKey);
+  }, [currentOpenKey, selectedBillKey, sortedBillKeys]);
 
   const activeSelectedKey = selectedBillKey || currentOpenKey;
   const activeSelectedKeyRef = useRef(activeSelectedKey);
@@ -200,25 +207,31 @@ export function CreditCards() {
     setSelectedCategory('all');
   };
 
-  // Scroll selected bill into view on load or when selected key changes
+  // Re-center whenever the card or selected bill changes (same open month across
+  // cards used to skip this and leave the strip on the last chip).
   useEffect(() => {
-    if (timelineRef.current && activeSelectedKey && !loadingData) {
-      let releaseTimer;
-      const timer = setTimeout(() => {
-        const container = timelineRef.current;
-        const selectedEl = container?.querySelector(attrSelector('data-bill-key', activeSelectedKey));
-        if (!selectedEl) return;
-        ignoreBillScrollRef.current = true;
-        const moved = centerChild(container, selectedEl);
-        releaseTimer = window.setTimeout(() => { ignoreBillScrollRef.current = false; }, moved ? 500 : 80);
-      }, 100);
-      return () => {
-        clearTimeout(timer);
-        clearTimeout(releaseTimer);
-        ignoreBillScrollRef.current = false;
-      };
+    if (!activeSelectedKey || loadingData || !timelineRef.current) {
+      if (!loadingData) ignoreBillScrollRef.current = false;
+      return undefined;
     }
-  }, [activeSelectedKey, loadingData]);
+    ignoreBillScrollRef.current = true;
+    let releaseTimer;
+    const timer = setTimeout(() => {
+      const container = timelineRef.current;
+      const selectedEl = container?.querySelector(attrSelector('data-bill-key', activeSelectedKey));
+      if (!selectedEl) {
+        releaseTimer = window.setTimeout(() => { ignoreBillScrollRef.current = false; }, 80);
+        return;
+      }
+      // Instant jump so snap-select cannot pick a neighbor mid-smooth-scroll
+      const moved = centerChild(container, selectedEl, 'auto');
+      releaseTimer = window.setTimeout(() => { ignoreBillScrollRef.current = false; }, moved ? 120 : 50);
+    }, 50);
+    return () => {
+      clearTimeout(timer);
+      clearTimeout(releaseTimer);
+    };
+  }, [activeSelectedKey, loadingData, selectedCardId, sortedBillKeys.length]);
 
   useEffect(() => {
     if (!isMobile || isPageLoading || !cardStripRef.current) return undefined;
