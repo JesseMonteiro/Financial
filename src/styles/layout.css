@@ -657,7 +657,7 @@ body {
     gap: 0.7rem;
     scrollbar-width: none;
     overscroll-behavior-x: contain;
-    touch-action: pan-x;
+    touch-action: pan-x pan-y;
   }
 
   .credit-card-strip::-webkit-scrollbar {
@@ -856,7 +856,7 @@ body {
     gap: 0.7rem;
     scrollbar-width: none;
     overscroll-behavior-x: contain;
-    touch-action: pan-x;
+    touch-action: pan-x pan-y;
   }
 
   .credit-bill-strip::-webkit-scrollbar {
@@ -904,7 +904,7 @@ body {
     gap: 0.7rem;
     scrollbar-width: none;
     overscroll-behavior-x: contain;
-    touch-action: pan-x;
+    touch-action: pan-x pan-y;
   }
 
   .moment-month-strip::-webkit-scrollbar {
