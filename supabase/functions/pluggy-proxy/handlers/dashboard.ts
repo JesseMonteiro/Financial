@@ -2,14 +2,8 @@
  * Dashboard BFF — same aggregations as the web Dashboard page.
  */
 import { errorResponse, jsonResponse } from "../middleware/http.ts";
+import { pluggyJson, type PluggyClient } from "./pluggy.ts";
 import {
-  getPluggyApiKey,
-  PLUGGY_API,
-  pluggyJson,
-  type PluggyClient,
-} from "./pluggy.ts";
-import {
-  buildBudgetCategories,
   buildIncomeExpenseSeries,
   buildInsights,
   buildNetWorthSeries,
@@ -22,55 +16,15 @@ import {
   translateCategory,
   weeklyRecap,
 } from "../utils/dashboardAnalytics.ts";
-
-async function fetchAccounts(client: PluggyClient): Promise<Record<string, unknown>[]> {
-  const chunks = await Promise.all(client.itemIds.map(async (iid) => {
-    try {
-      const d = await pluggyJson(client, "/accounts", { params: { itemId: iid } }) as {
-        results?: Record<string, unknown>[];
-      };
-      return (d.results || []).map((acc) => ({ ...acc, itemId: acc.itemId || iid }));
-    } catch (e) {
-      console.error("[dashboard] accounts", iid, e);
-      return [] as Record<string, unknown>[];
-    }
-  }));
-  return chunks.flat();
-}
-
-async function fetchAllTransactionsForAccount(
-  client: PluggyClient,
-  accountId: string,
-): Promise<Record<string, unknown>[]> {
-  const results: Record<string, unknown>[] = [];
-  let next: string | null = null;
-  let guard = 0;
-  const apiKey = await getPluggyApiKey(client.clientId, client.clientSecret);
-  do {
-    try {
-      const url = next
-        ? (next.startsWith("http") ? next : `${PLUGGY_API}${next}`)
-        : `${PLUGGY_API}/v2/transactions?accountId=${encodeURIComponent(accountId)}`;
-      const res = await fetch(url, {
-        headers: { "X-API-KEY": apiKey, Accept: "application/json" },
-      });
-      if (!res.ok) break;
-      const data = await res.json() as {
-        results?: Record<string, unknown>[];
-        next?: string | null;
-      };
-      for (const t of data.results || []) {
-        results.push({ ...t, accountId: t.accountId || accountId });
-      }
-      next = data.next || null;
-    } catch (e) {
-      console.error("[dashboard] txs", accountId, e);
-      break;
-    }
-    guard++;
-  } while (next && guard < 30);
-  return results;
-}
+import { mergeInvestmentsWithReserved } from "../utils/reservedBalances.ts";
+import { enrichAccounts, sumOpenBillsTotal } from "../utils/accountValues.ts";
+import { hydrateManualAccount } from "../utils/manualAccounts.ts";
+import {
+  fetchAccountsWithConnectors,
+  fetchAllTransactionsForAccount,
+  loadCreditLedger,
+} from "../utils/creditLedger.ts";
+import { buildBudgetRows } from "../utils/budgetSpent.ts";
 
 async function fetchInvestments(client: PluggyClient): Promise<Record<string, unknown>[]> {
   const all: Record<string, unknown>[] = [];
@@ -125,36 +79,24 @@ export async function handleDashboard(
     return errorResponse("Parâmetro month inválido (YYYY-MM)", 400);
   }
 
-  const [accounts, investments, loans, profileRes, budgetsRes, manualsRes] = await Promise.all([
-    fetchAccounts(client),
-    fetchInvestments(client),
-    fetchLoans(client),
-    client.supabase
-      .from("profiles")
-      .select("display_name, custom_account_names")
-      .eq("id", client.userId)
-      .maybeSingle(),
-    client.supabase.from("budgets").select("*").eq("user_id", client.userId),
-    client.supabase.from("manual_transactions").select("*").eq("user_id", client.userId),
-  ]);
+  const [pluggyAccounts, investmentsRaw, loans, profileRes, budgetsRes, manualsRes, manualAccountsRes] =
+    await Promise.all([
+      fetchAccountsWithConnectors(client),
+      fetchInvestments(client),
+      fetchLoans(client),
+      client.supabase
+        .from("profiles")
+        .select("display_name, custom_account_names")
+        .eq("id", client.userId)
+        .maybeSingle(),
+      client.supabase.from("budgets").select("*").eq("user_id", client.userId),
+      client.supabase.from("manual_transactions").select("*").eq("user_id", client.userId),
+      client.supabase.from("manual_accounts").select("*").eq("user_id", client.userId),
+    ]);
 
-  // Manual accounts
-  const { data: manualAccounts } = await client.supabase
-    .from("manual_accounts")
-    .select("*")
-    .eq("user_id", client.userId);
-
-  for (const row of (manualAccounts || []) as Record<string, unknown>[]) {
-    const id = String(row.id || "");
-    if (!id) continue;
-    const type = row.type === "CREDIT" ? "CREDIT" : "BANK";
-    accounts.push({
-      id,
-      type,
-      name: String(row.name || (type === "CREDIT" ? "Cartão manual" : "Conta manual")),
-      balance: type === "CREDIT" ? Number(row.bill_amount) || 0 : Number(row.balance) || 0,
-      isManual: true,
-    });
+  const accounts = [...pluggyAccounts];
+  for (const row of (manualAccountsRes.data || []) as Record<string, unknown>[]) {
+    accounts.push(hydrateManualAccount(row));
   }
 
   const customNames = (profileRes.data?.custom_account_names &&
@@ -167,12 +109,13 @@ export async function handleDashboard(
     if (id && customNames[id]) a.name = customNames[id];
   }
 
-  const accountIds = accounts.map((a) => String(a.id)).filter(Boolean);
-  const pluggyAccountIds = accountIds.filter((id) => {
-    const acc = accounts.find((a) => String(a.id) === id);
-    return !acc?.isManual;
-  });
+  const creditCards = accounts.filter((a) => String(a.type).toUpperCase() === "CREDIT");
+  const { transactionsByAccount, billsByAccount } = await loadCreditLedger(client, creditCards);
+  const enriched = enrichAccounts(accounts, transactionsByAccount, billsByAccount);
 
+  const investments = mergeInvestmentsWithReserved(investmentsRaw, enriched);
+
+  const pluggyAccountIds = pluggyAccounts.map((a) => String(a.id)).filter(Boolean);
   const txChunks = await Promise.all(
     pluggyAccountIds.map((id) => fetchAllTransactionsForAccount(client, id)),
   );
@@ -193,23 +136,37 @@ export async function handleDashboard(
     String(b.date || "").localeCompare(String(a.date || ""))
   );
 
-  const summary = calculateNetWorth(accounts, investments, loans);
+  const summary = calculateNetWorth(enriched, investments, loans);
   const cashflow = monthCashflow(transactions, ym);
   const mom = monthOverMonth(transactions, ym);
   const recap = weeklyRecap(transactions);
   const insights = buildInsights(transactions, ym);
-  const netWorthSeries = buildNetWorthSeries(transactions, accounts, investments, loans, 6, ym);
+  const netWorthSeries = buildNetWorthSeries(transactions, enriched, investments, loans, 6, ym);
   const incomeExpenseSeries = buildIncomeExpenseSeries(transactions, 6, ym);
   const categoryExpenses = expensesByCategory(transactions, { limit: 7, ym });
 
   const budgets = ((budgetsRes.data || []) as Record<string, unknown>[]).map((b) => ({
+    id: String(b.id || ""),
     category: String(b.category || ""),
     limit: Number(b.limit) || 0,
   }));
-  const budgetCategories = buildBudgetCategories(transactions, budgets, ym);
+  const officialBills = Object.values(billsByAccount).flat();
+  const creditIds = new Set(creditCards.map((c) => String(c.id)));
+  const budgetRows = buildBudgetRows(transactions, budgets, ym, officialBills, creditIds);
+  const budgetCategories = budgetRows
+    .filter((r) => r.spent > 0 || r.hasLimit)
+    .slice(0, 6)
+    .map((r) => ({
+      category: r.category,
+      spent: r.spent,
+      limit: r.hasLimit ? r.limit : Math.max(1000, Math.ceil(r.spent * 1.25)),
+      percent: r.percent,
+      color: null as string | null,
+    }));
 
-  const bankCount = accounts.filter((a) => String(a.type).toUpperCase() === "BANK").length;
-  const creditCount = accounts.filter((a) => String(a.type).toUpperCase() === "CREDIT").length;
+  const bankCount = enriched.filter((a) => String(a.type).toUpperCase() === "BANK").length;
+  const creditCount = creditCards.length;
+  const openBillsTotal = sumOpenBillsTotal(enriched);
 
   const displayName = String(
     profileRes.data?.display_name || "usuário",
@@ -239,6 +196,7 @@ export async function handleDashboard(
       reservedBalance: Number(summary.reservedBalance.toFixed(2)),
       investmentTotal: Number(summary.investmentTotal.toFixed(2)),
       creditDebt: Number(summary.creditDebt.toFixed(2)),
+      openBillsTotal: Number(openBillsTotal.toFixed(2)),
       loansTotal: Number(summary.loansTotal.toFixed(2)),
       totalAssets: Number(summary.totalAssets.toFixed(2)),
       bankCount,

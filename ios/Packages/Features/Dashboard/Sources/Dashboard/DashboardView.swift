@@ -78,6 +78,12 @@ public struct DashboardView: View {
     private func loadedContent(_ snap: DashboardSnapshot) -> some View {
         header(displayName: snap.displayName)
 
+        if !CalculationVersion.matches(snap.calculationVersion) {
+            Text("Versão de cálculo desatualizada (\(snap.calculationVersion ?? "—")). Atualize o app.")
+                .font(.caption)
+                .foregroundStyle(FinancialColors.danger)
+        }
+
         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
             kpiCard(
                 title: "Patrimônio Líquido",
@@ -313,7 +319,7 @@ public struct DashboardView: View {
                             .font(.subheadline)
                             .foregroundStyle(FinancialColors.textSecondary)
                     }
-                    Text("\(snap.summary.creditCount) cartão(ões) · fatura aberta \(snap.summary.creditDebt.formatted())")
+                    Text("\(snap.summary.creditCount) cartão(ões) · fatura aberta \(snap.summary.openBillsTotal.formatted())")
                         .font(.caption)
                         .foregroundStyle(FinancialColors.textMuted)
                     if onAgenda != nil {
@@ -461,7 +467,7 @@ public struct DashboardView: View {
             GlassCard {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
-                        Text("FATURAS / CRÉDITO")
+                        Text("SALDO DEVEDOR")
                             .font(.caption2.weight(.semibold))
                             .foregroundStyle(FinancialColors.textMuted)
                         Spacer()

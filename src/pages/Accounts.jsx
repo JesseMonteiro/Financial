@@ -25,6 +25,7 @@ import { useCreditDataStore } from '../stores/creditDataStore';
 import { formatCurrency, getDataSyncMeta } from '../utils/formatters';
 import { isInitialEmpty } from '../utils/loading';
 import { accountAvailableBalance, sumReservedBalances } from '../utils/reservedBalances';
+import { summarizeCardOpenBill } from '../utils/creditBillPeriod';
 import { Link } from 'react-router-dom';
 import {
   clearApiCache,
@@ -52,6 +53,17 @@ function SyncUpdatedBadge({ updatedAt }) {
 
 function ManualBadge() {
   return <Badge variant="info">Manual</Badge>;
+}
+
+function cardOpenBillAmount(acc, transactionsByAccount = {}, billsByAccount = {}) {
+  if (acc?.isManual) return Math.abs(Number(acc.billAmount ?? acc.balance) || 0);
+  const txs = transactionsByAccount[acc.id] || [];
+  const bills = billsByAccount[acc.id] || [];
+  if (txs.length || bills.length) {
+    return Math.abs(Number(summarizeCardOpenBill(acc, txs, bills).openTotal) || 0);
+  }
+  if (acc.openBillTotal != null) return Math.abs(Number(acc.openBillTotal) || 0);
+  return 0;
 }
 
 /** Open Pluggy Connect in update mode (MFA / invalid credentials). */
@@ -311,7 +323,7 @@ export function Accounts() {
     error: accountsError,
   } = useAccountStore();
   const { addManualTransaction, replaceManualPurchasesForAccount } = useTransactionStore();
-  const { loadForAccounts: loadCreditForAccounts, invalidateAccounts } = useCreditDataStore();
+  const { loadForAccounts: loadCreditForAccounts, invalidateAccounts, transactionsByAccount, billsByAccount } = useCreditDataStore();
   const [editingId, setEditingId] = useState(null);
   const [tempName, setTempName] = useState('');
   const [editingMoneyId, setEditingMoneyId] = useState(null);
@@ -339,6 +351,11 @@ export function Accounts() {
 
   const bankAccounts = accounts.filter((a) => a.type === 'BANK');
   const creditCards = accounts.filter((a) => a.type === 'CREDIT');
+
+  useEffect(() => {
+    const ids = creditCards.filter((c) => !c.isManual).map((c) => c.id);
+    if (ids.length) loadCreditForAccounts(ids);
+  }, [accounts]);
 
   const startEditing = (acc) => {
     setEditingId(acc.id);
@@ -670,7 +687,9 @@ export function Accounts() {
 
   const renderMoney = (acc, label, color) => {
     const isEditing = editingMoneyId === acc.id;
-    const value = acc.type === 'CREDIT' ? Math.abs(acc.billAmount ?? acc.balance ?? 0) : accountAvailableBalance(acc);
+    const value = acc.type === 'CREDIT'
+      ? cardOpenBillAmount(acc, transactionsByAccount, billsByAccount)
+      : accountAvailableBalance(acc);
     if (acc.isManual && isEditing) {
       return (
         <div>

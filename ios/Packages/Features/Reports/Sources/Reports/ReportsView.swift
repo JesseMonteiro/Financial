@@ -5,11 +5,8 @@ import FinancialDomain
 public struct ReportsView: View {
     @State private var viewModel: ReportsViewModel
 
-    public init(
-        transactions: any TransactionsRepository,
-        accounts: any AccountsRepository
-    ) {
-        _viewModel = State(initialValue: ReportsViewModel(transactions: transactions, accounts: accounts))
+    public init(repository: any ReportsRepository) {
+        _viewModel = State(initialValue: ReportsViewModel(reports: repository))
     }
 
     public init() {

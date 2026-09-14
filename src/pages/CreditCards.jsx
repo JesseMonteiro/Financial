@@ -127,7 +127,7 @@ export function CreditCards() {
   const displayCard = activeCard || creditCards[0];
   const creditData = displayCard?.creditData || {};
   const totalDebt = activeCard ? Math.abs(activeCard.balance || 0) : totalDebtAllCards;
-  const creditLimit = activeCard ? (creditData.creditLimit || 79000) : (totalLimitAllCards || 79000);
+  const creditLimit = activeCard ? (creditData.creditLimit || 0) : (totalLimitAllCards || 0);
   const availableLimit = activeCard ? (creditData.availableCreditLimit ?? (creditLimit - totalDebt)) : availableLimitAllCards;
   const pctUsed = creditLimit > 0 ? Math.min(100, Math.round((totalDebt / creditLimit) * 100)) : 0;
 

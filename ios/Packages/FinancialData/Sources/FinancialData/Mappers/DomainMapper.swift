@@ -40,12 +40,17 @@ public enum DomainMapper {
             ?? dto.creditData?.institutionName
             ?? dto.name
         let number = dto.number ?? dto.creditData?.number
-        let reserved = dto.bankData?.reservedTotal ?? 0
+        let reserved = dto.reservedBalance ?? dto.bankData?.reservedTotal ?? 0
         let creditLimit = dto.creditData?.creditLimit.map { money(amount: $0, currencyCode: currency) }
         let available = dto.creditData?.availableCreditLimit.map { money(amount: $0, currencyCode: currency) }
+        let openBill = dto.openBillTotal ?? dto.billAmount
+        let outstanding = dto.outstanding ?? abs(dto.balance)
         let billAmount: Money? = mappedType == .credit
-            ? money(amount: abs(dto.balance), currencyCode: currency)
+            ? money(amount: abs(openBill ?? outstanding), currencyCode: currency)
             : nil
+        let balanceAmount = mappedType == .credit
+            ? outstanding
+            : (dto.availableBalance ?? dto.balance)
         var updatedAt: Date?
         if let raw = dto.updatedAt {
             updatedAt = ISO8601DateFormatter().date(from: raw)
@@ -55,14 +60,14 @@ public enum DomainMapper {
             id: dto.id,
             name: dto.marketingName ?? dto.name,
             type: mappedType,
-            balance: money(amount: dto.balance, currencyCode: currency),
+            balance: money(amount: balanceAmount, currencyCode: currency),
             institutionName: institution,
             connectorId: dto.itemId,
             isHidden: false,
             currencyCode: currency,
             number: number,
             marketingName: dto.marketingName,
-            isManual: false,
+            isManual: dto.isManual ?? false,
             updatedAt: updatedAt,
             billAmount: billAmount,
             creditLimit: creditLimit,
@@ -715,6 +720,7 @@ public enum DomainMapper {
                 reservedBalance: money(dto.summary.reservedBalance),
                 investmentTotal: money(dto.summary.investmentTotal),
                 creditDebt: money(dto.summary.creditDebt),
+                openBillsTotal: money(dto.summary.openBillsTotal ?? 0),
                 loansTotal: money(dto.summary.loansTotal),
                 totalAssets: money(dto.summary.totalAssets),
                 bankCount: dto.summary.bankCount,
@@ -779,7 +785,54 @@ public enum DomainMapper {
                     percent: $0.percent,
                     colorHex: $0.color ?? "#6366f1"
                 )
-            }
+            },
+            calculationVersion: dto.calculationVersion
+        )
+    }
+
+    static func agendaItem(_ dto: AgendaScreenItemDTO) -> AgendaItem {
+        AgendaItem(
+            id: dto.id,
+            title: dto.title,
+            date: InstantDate(isoString: String(dto.date.prefix(10))) ?? InstantDate(from: Date()),
+            amount: dto.amount.map { money($0) },
+            kind: AgendaItemKind(rawValue: dto.kind) ?? .custom,
+            isCompleted: dto.isCompleted ?? false
+        )
+    }
+
+    static func budgetLimit(_ dto: BudgetScreenRowDTO, month: YearMonth) -> BudgetLimit {
+        BudgetLimit(
+            id: dto.id ?? dto.category,
+            category: dto.category,
+            limit: money(dto.limit),
+            spent: money(dto.spent),
+            month: month
+        )
+    }
+
+    static func reports(_ dto: ReportsScreenDTO) -> ReportsSnapshot {
+        ReportsSnapshot(
+            months: dto.months,
+            selectedMonth: YearMonth(key: dto.selectedMonth) ?? YearMonth(from: Date()),
+            income: money(dto.income),
+            expense: money(dto.expense),
+            categories: dto.categories.map { ReportCategory(name: $0.name, amount: money($0.value)) },
+            accounts: dto.accounts.map {
+                ReportAccountRef(id: $0.id, name: $0.name, type: $0.type ?? "BANK")
+            },
+            calculationVersion: dto.calculationVersion
+        )
+    }
+
+    static func subscription(_ dto: SubscriptionScreenItemDTO) -> Subscription {
+        Subscription(
+            id: dto.id,
+            name: dto.name,
+            amount: money(dto.amount),
+            billingDay: dto.billingDay,
+            category: dto.category,
+            isActive: dto.isActive ?? true
         )
     }
 

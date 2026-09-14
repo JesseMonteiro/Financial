@@ -1,41 +1,42 @@
 {
-  "fixtureId": "santander-open-cycle",
-  "connectorProfileId": "santander",
+  "fixtureId": "inter-open-cycle",
+  "connectorProfileId": "inter",
   "calculationVersion": "2026.09.2",
   "transactions": [],
   "officialBills": [
     {
-      "id": "bill-s1",
-      "accountId": "cc-santander",
+      "id": "bill-in1",
+      "accountId": "cc-inter",
       "dueDate": "2026-09-10",
-      "totalAmount": 1450.0,
+      "totalAmount": 890.0,
       "status": "PAID",
       "paidAt": "2026-09-09"
     },
     {
-      "id": "bill-s2",
-      "accountId": "cc-santander",
+      "id": "bill-in2",
+      "accountId": "cc-inter",
       "dueDate": "2026-10-10",
-      "totalAmount": 980.4,
+      "totalAmount": 455.3,
       "status": "OPEN"
     }
   ],
   "expected": {
     "summarizeCardOpenBill": {
       "openDueKey": "2026-10",
-      "openTotal": 980.4,
+      "openTotal": 455.3,
       "lastPaidKey": "2026-09"
     }
   },
   "card": {
-    "id": "cc-santander",
+    "id": "cc-inter",
     "type": "CREDIT",
-    "name": "Santander SX",
-    "balance": 2800.0,
+    "name": "Inter Platinum",
+    "originalName": "Banco Inter",
+    "balance": 1600.0,
     "currencyCode": "BRL",
     "creditData": {
-      "creditLimit": 10000.0,
-      "availableCreditLimit": 7200.0
+      "creditLimit": 12000.0,
+      "availableCreditLimit": 10400.0
     }
   }
 }

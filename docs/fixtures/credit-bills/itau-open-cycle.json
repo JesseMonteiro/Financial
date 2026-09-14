@@ -1,0 +1,41 @@
+{
+  "fixtureId": "itau-open-cycle",
+  "connectorProfileId": "itau",
+  "calculationVersion": "2026.09.2",
+  "transactions": [],
+  "officialBills": [
+    {
+      "id": "bill-it1",
+      "accountId": "cc-itau",
+      "dueDate": "2026-09-12",
+      "totalAmount": 1500.0,
+      "status": "PAID",
+      "paidAt": "2026-09-11"
+    },
+    {
+      "id": "bill-it2",
+      "accountId": "cc-itau",
+      "dueDate": "2026-10-12",
+      "totalAmount": 733.45,
+      "status": "OPEN"
+    }
+  ],
+  "expected": {
+    "summarizeCardOpenBill": {
+      "openDueKey": "2026-10",
+      "openTotal": 733.45,
+      "lastPaidKey": "2026-09"
+    }
+  },
+  "card": {
+    "id": "cc-itau",
+    "type": "CREDIT",
+    "name": "Itaú Click",
+    "balance": 2400.0,
+    "currencyCode": "BRL",
+    "creditData": {
+      "creditLimit": 15000.0,
+      "availableCreditLimit": 12600.0
+    }
+  }
+}

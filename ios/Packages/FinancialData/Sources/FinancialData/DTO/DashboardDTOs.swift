@@ -13,6 +13,7 @@ public struct DashboardDTO: Codable, Sendable {
     public let weeklyRecap: DashboardWeeklyRecapDTO
     public let recentTransactions: [DashboardRecentTransactionDTO]
     public let budgetCategories: [DashboardBudgetCategoryDTO]
+    public let calculationVersion: String?
 }
 
 public struct DashboardSummaryDTO: Codable, Sendable {
@@ -21,6 +22,7 @@ public struct DashboardSummaryDTO: Codable, Sendable {
     public let reservedBalance: Double
     public let investmentTotal: Double
     public let creditDebt: Double
+    public let openBillsTotal: Double?
     public let loansTotal: Double
     public let totalAssets: Double
     public let bankCount: Int

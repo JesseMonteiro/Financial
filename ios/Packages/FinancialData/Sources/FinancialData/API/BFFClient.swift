@@ -235,6 +235,39 @@ public struct BFFClient: Sendable {
         return try await decode(DashboardDTO.self, from: data)
     }
 
+    public func getAgenda(month: YearMonth, force: Bool = false) async throws -> AgendaScreenDTO {
+        let request = APIRequest(
+            path: "agenda",
+            queryItems: [URLQueryItem(name: "month", value: month.key)]
+        )
+        let data = try await cachedRaw("bff:agenda:\(month.key)", force: force, request)
+        return try await decode(AgendaScreenDTO.self, from: data)
+    }
+
+    public func getBudgetScreen(month: YearMonth, force: Bool = false) async throws -> BudgetScreenDTO {
+        let request = APIRequest(
+            path: "budget-screen",
+            queryItems: [URLQueryItem(name: "month", value: month.key)]
+        )
+        let data = try await cachedRaw("bff:budget-screen:\(month.key)", force: force, request)
+        return try await decode(BudgetScreenDTO.self, from: data)
+    }
+
+    public func getReports(months: Int, accountId: String? = nil, force: Bool = false) async throws -> ReportsScreenDTO {
+        var items = [URLQueryItem(name: "months", value: String(months))]
+        if let accountId, !accountId.isEmpty {
+            items.append(URLQueryItem(name: "accountId", value: accountId))
+        }
+        let key = "bff:reports:\(months):\(accountId ?? "all")"
+        let data = try await cachedRaw(key, force: force, APIRequest(path: "reports", queryItems: items))
+        return try await decode(ReportsScreenDTO.self, from: data)
+    }
+
+    public func getSubscriptionsScreen(force: Bool = false) async throws -> SubscriptionsScreenDTO {
+        let data = try await cachedRaw("bff:subscriptions", force: force, APIRequest(path: "subscriptions"))
+        return try await decode(SubscriptionsScreenDTO.self, from: data)
+    }
+
     // MARK: - Financial Moment
 
     public func getFinancialMoment(month: YearMonth, force: Bool = false) async throws -> FinancialMomentDTO {
@@ -292,6 +325,10 @@ public struct BFFClient: Sendable {
             "bff:financial-moment:",
             "bff:dashboard:",
             "bff:joint:",
+            "bff:agenda:",
+            "bff:budget-screen:",
+            "bff:reports:",
+            "bff:subscriptions",
         ])
     }
 
@@ -323,12 +360,12 @@ public struct BFFClient: Sendable {
             method: .post,
             body: ["category": category, "limit": NSDecimalNumber(decimal: limit).doubleValue]
         )
-        await invalidateCaches(matching: ["bff:domain:budgets", "bff:dashboard:"])
+        await invalidateCaches(matching: ["bff:domain:budgets", "bff:dashboard:", "bff:budget-screen:"])
     }
 
     public func deleteBudget(id: String) async throws {
         _ = try await api.sendRaw(APIRequest(path: "v1/domain/budgets/\(id)", method: .delete))
-        await invalidateCaches(matching: ["bff:domain:budgets", "bff:dashboard:"])
+        await invalidateCaches(matching: ["bff:domain:budgets", "bff:dashboard:", "bff:budget-screen:"])
     }
 
     func getGoals(force: Bool = false) async throws -> [DomainGoalRowDTO] {
@@ -388,12 +425,12 @@ public struct BFFClient: Sendable {
         if let linked = receivable.linkedTransactionId { body["linked_transaction_id"] = linked }
         if let forecast = receivable.linkedBillForecastDate { body["linked_bill_forecast_date"] = forecast }
         try await domainWrite(path: "v1/domain/receivables", method: .post, body: body)
-        await invalidateCaches(matching: ["bff:domain:receivables", "bff:financial-moment:", "bff:joint:"])
+        await invalidateCaches(matching: ["bff:domain:receivables", "bff:financial-moment:", "bff:joint:", "bff:agenda:"])
     }
 
     public func deleteReceivable(id: String) async throws {
         _ = try await api.sendRaw(APIRequest(path: "v1/domain/receivables/\(id)", method: .delete))
-        await invalidateCaches(matching: ["bff:domain:receivables", "bff:financial-moment:", "bff:joint:"])
+        await invalidateCaches(matching: ["bff:domain:receivables", "bff:financial-moment:", "bff:joint:", "bff:agenda:"])
     }
 
     func getManualExpenses(month: String? = nil, force: Bool = false) async throws -> [DomainManualRowDTO] {
@@ -442,6 +479,10 @@ public struct BFFClient: Sendable {
             "bff:financial-moment:",
             "bff:dashboard:",
             "bff:joint:",
+            "bff:agenda:",
+            "bff:budget-screen:",
+            "bff:reports:",
+            "bff:subscriptions",
         ])
         return try await unwrapDomain(DomainManualRowDTO.self, from: data)
     }
@@ -453,6 +494,10 @@ public struct BFFClient: Sendable {
             "bff:financial-moment:",
             "bff:dashboard:",
             "bff:joint:",
+            "bff:agenda:",
+            "bff:budget-screen:",
+            "bff:reports:",
+            "bff:subscriptions",
         ])
     }
 

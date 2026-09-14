@@ -74,6 +74,7 @@ final class AppCompositionRoot {
     let jointRepository: any JointFinanceRepository
     let subscriptionsRepository: any SubscriptionsRepository
     let agendaRepository: any AgendaRepository
+    let reportsRepository: any ReportsRepository
     let profileRepository: any ProfileRepository
     let settingsRepository: any SettingsRepository
     let bankConnectionsRepository: any BankConnectionsRepository
@@ -128,6 +129,7 @@ final class AppCompositionRoot {
         self.jointRepository = LiveJointFinanceRepository(bff: bff)
         self.subscriptionsRepository = LiveSubscriptionsRepository(bff: bff)
         self.agendaRepository = LiveAgendaRepository(bff: bff)
+        self.reportsRepository = LiveReportsRepository(bff: bff)
         self.profileRepository = LiveProfileRepository(bff: bff)
         self.settingsRepository = LiveSettingsRepository(bff: bff)
         self.bankConnectionsRepository = LiveBankConnectionsRepository(bff: bff)
@@ -136,11 +138,6 @@ final class AppCompositionRoot {
         self.loadDashboard = LiveLoadDashboard(bff: bff)
         self.syncBankItem = LiveSyncBankItem(bff: bff)
         self.parseBill = LiveParseBill(bff: bff)
-        self.buildFinancialMoment = LiveBuildFinancialMoment(
-            accounts: accountsRepository,
-            transactions: transactionsRepository,
-            bills: billsRepository
-        )
         self.widgetStore = FinancialMomentWidgetStore()
         self.buildFinancialMomentDetail = WidgetPublishingFinancialMomentDetail(
             inner: LiveBuildFinancialMomentDetail(bffClient: bff),
@@ -148,6 +145,7 @@ final class AppCompositionRoot {
             clock: clock,
             enabled: env.featureFlags.widgetsEnabled
         )
+        self.buildFinancialMoment = LiveBuildFinancialMoment(detail: buildFinancialMomentDetail)
         self.manageMonthlySalary = LiveManageMonthlySalary(bffClient: bff)
         self.toggleManualExpensePaid = LiveToggleManualExpensePaid(bffClient: bff)
         self.summarizeOpenBill = StubSummarizeOpenBill()

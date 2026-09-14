@@ -38,7 +38,7 @@ import {
   currentYm,
   isExpenseTx,
 } from '../utils/analytics';
-import { calculateNetWorth } from '../utils/calculations';
+import { calculateNetWorth, sumOpenBillsTotal } from '../utils/calculations';
 import { isInitialEmpty } from '../utils/loading';
 import { Link } from 'react-router-dom';
 
@@ -105,6 +105,7 @@ export function Dashboard() {
 
   const bankCount = accounts.filter((a) => a.type === 'BANK').length;
   const creditCount = accounts.filter((a) => a.type === 'CREDIT').length;
+  const openBillsTotal = useMemo(() => sumOpenBillsTotal(accounts), [accounts]);
   const isInitialLoad =
     isInitialEmpty(accounts, accLoading, accAt) || isInitialEmpty(transactions, txLoading, txAt);
 
@@ -294,7 +295,7 @@ export function Dashboard() {
                 </div>
               )}
               <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>
-                {creditCount} cartão(ões) · fatura aberta {formatCurrency(summary.creditDebt)}
+                {creditCount} cartão(ões) · fatura aberta {formatCurrency(openBillsTotal)}
               </div>
               <Link to="/agenda" style={{ fontSize: 'var(--font-size-xs)', color: 'var(--primary)', fontWeight: 600, textDecoration: 'none' }}>
                 Ver agenda de contas →
@@ -447,7 +448,7 @@ export function Dashboard() {
         <Card className="col-6">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div>
-              <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)', fontWeight: 600 }}>FATURAS / CRÉDITO</span>
+              <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)', fontWeight: 600 }}>SALDO DEVEDOR</span>
               <h3 style={{ fontSize: 'var(--font-size-xl)', fontWeight: 700, margin: '0.35rem 0', color: 'var(--danger)' }}>
                 {formatCurrency(summary.creditDebt)}
               </h3>

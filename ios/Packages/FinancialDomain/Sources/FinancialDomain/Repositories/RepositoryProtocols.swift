@@ -168,6 +168,31 @@ public extension AgendaRepository {
     }
 }
 
+public protocol ReportsRepository: Sendable {
+    func fetchReport(months: Int, accountId: String?, force: Bool) async throws -> ReportsSnapshot
+}
+
+public extension ReportsRepository {
+    func fetchReport(months: Int, accountId: String?) async throws -> ReportsSnapshot {
+        try await fetchReport(months: months, accountId: accountId, force: false)
+    }
+}
+
+public struct StubReportsRepository: ReportsRepository {
+    public init() {}
+    public func fetchReport(months: Int, accountId: String?, force: Bool) async throws -> ReportsSnapshot {
+        _ = (accountId, force)
+        return ReportsSnapshot(
+            months: months,
+            selectedMonth: YearMonth(from: Date()),
+            income: .zero,
+            expense: .zero,
+            categories: [],
+            accounts: []
+        )
+    }
+}
+
 public protocol ProfileRepository: Sendable {
     func fetchProfile() async throws -> UserProfile
     func updateDisplayName(_ name: String) async throws

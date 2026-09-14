@@ -68,6 +68,7 @@ public struct StubLoadDashboard: LoadDashboardUseCase {
                 reservedBalance: .zero,
                 investmentTotal: .zero,
                 creditDebt: .zero,
+                openBillsTotal: .zero,
                 loansTotal: .zero,
                 totalAssets: .zero,
                 bankCount: 0,

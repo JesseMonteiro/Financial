@@ -32,6 +32,10 @@ import { handleCreditCards } from "./handlers/creditCards.ts";
 import { handleFinancialMoment, handleSaveSalary, handleGetCurrentSalary, handleToggleManualExpensePaid } from "./handlers/financialMoment.ts";
 import { handleDashboard } from "./handlers/dashboard.ts";
 import { handleJointFinancialMoment, handleJointMemberSalary } from "./handlers/jointMoment.ts";
+import { handleAgenda } from "./handlers/agenda.ts";
+import { handleBudgetScreen } from "./handlers/budgetScreen.ts";
+import { handleReports } from "./handlers/reports.ts";
+import { handleSubscriptions } from "./handlers/subscriptions.ts";
 
 // ─── Telegram chatbot (per-user context via profiles.telegram_chat_id) ───
 
@@ -1493,6 +1497,18 @@ Deno.serve(async (req: Request) => {
       case 'bills':        return await handleBills(clientConfig, url, actionOrId, subPath);
       case 'credit-cards': return await handleCreditCards(clientConfig);
       case 'dashboard':    return await handleDashboard(clientConfig, url);
+      case 'agenda':
+        if (method !== 'GET') return errorResponse('Method not allowed', 405);
+        return await handleAgenda(clientConfig, url);
+      case 'budget-screen':
+        if (method !== 'GET') return errorResponse('Method not allowed', 405);
+        return await handleBudgetScreen(clientConfig, url);
+      case 'reports':
+        if (method !== 'GET') return errorResponse('Method not allowed', 405);
+        return await handleReports(clientConfig, url);
+      case 'subscriptions':
+        if (method !== 'GET') return errorResponse('Method not allowed', 405);
+        return await handleSubscriptions(clientConfig);
       case 'financial-moment':
         if (actionOrId === 'salary') {
           if (method === 'GET') return await handleGetCurrentSalary(clientConfig, url);

@@ -6,6 +6,7 @@ public struct CreditCardsScreenDTO: Decodable, Sendable {
     public let creditLimitTotal: String
     public let availableLimitTotal: String
     public let periods: [String: CreditBillPeriodDTO]
+    public let calculationVersion: String?
 }
 
 public struct CreditCardSummaryDTO: Decodable, Sendable {

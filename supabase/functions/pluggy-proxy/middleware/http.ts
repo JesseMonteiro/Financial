@@ -1,7 +1,7 @@
 /**
  * HTTP helpers for pluggy-proxy BFF (v1 envelope + legacy).
  */
-export const CALCULATION_VERSION = "2026.09.1";
+export const CALCULATION_VERSION = "2026.09.2";
 
 export const CORS: Record<string, string> = {
   "Access-Control-Allow-Origin": "*", // TODO: tighten for web origins in production
@@ -15,7 +15,10 @@ export function correlationId(req: Request): string {
 }
 
 export function jsonResponse(data: unknown, status = 200, extraHeaders: Record<string, string> = {}): Response {
-  return new Response(JSON.stringify(data), {
+  const body = data && typeof data === "object" && !Array.isArray(data)
+    ? { ...(data as Record<string, unknown>), calculationVersion: CALCULATION_VERSION }
+    : data;
+  return new Response(JSON.stringify(body), {
     status,
     headers: { ...CORS, "Content-Type": "application/json", ...extraHeaders },
   });

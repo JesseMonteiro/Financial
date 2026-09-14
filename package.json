@@ -10,7 +10,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "lint": "oxlint .",
-    "test:fixtures": "node scripts/validate-credit-fixtures.mjs",
+    "test:fixtures": "node scripts/validate-credit-fixtures.mjs && node --experimental-strip-types scripts/run-credit-bill-parity.mjs",
     "test:ios": "cd ios && swift test",
     "ios:secrets": "node scripts/ios-sync-secrets.mjs"
   },

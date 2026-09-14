@@ -1,0 +1,23 @@
+{
+  "fixtureId": "manual-open-cycle",
+  "connectorProfileId": "manual",
+  "calculationVersion": "2026.09.2",
+  "transactions": [],
+  "officialBills": [],
+  "expected": {
+    "summarizeCardOpenBill": {
+      "openDueKey": "2026-09",
+      "openTotal": 350.0,
+      "lastPaidKey": null
+    }
+  },
+  "card": {
+    "id": "cc-manual",
+    "type": "CREDIT",
+    "name": "Cartão manual",
+    "isManual": true,
+    "balance": 350.0,
+    "billAmount": 350.0,
+    "currencyCode": "BRL"
+  }
+}

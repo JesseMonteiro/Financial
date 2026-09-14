@@ -11,6 +11,7 @@ public struct FinancialMomentDTO: Codable, Sendable {
     public let totals: FinancialTotalsDTO
     public let status: MonthStatusDTO
     public let monthsStatus: [String: MonthStatusDTO]?
+    public let calculationVersion: String?
 
     public init(
         selectedMonth: String,
@@ -21,7 +22,8 @@ public struct FinancialMomentDTO: Codable, Sendable {
         manualExpenses: ManualExpensesSummaryDTO,
         totals: FinancialTotalsDTO,
         status: MonthStatusDTO,
-        monthsStatus: [String: MonthStatusDTO]? = nil
+        monthsStatus: [String: MonthStatusDTO]? = nil,
+        calculationVersion: String? = nil
     ) {
         self.selectedMonth = selectedMonth
         self.salary = salary
@@ -32,6 +34,7 @@ public struct FinancialMomentDTO: Codable, Sendable {
         self.totals = totals
         self.status = status
         self.monthsStatus = monthsStatus
+        self.calculationVersion = calculationVersion
     }
 }
 

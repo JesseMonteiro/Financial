@@ -48,6 +48,15 @@ public struct PluggyAccountDTO: Decodable, Sendable {
     public let updatedAt: String?
     public let bankData: PluggyBankDataDTO?
     public let creditData: PluggyCreditDataDTO?
+    public let availableBalance: Decimal?
+    public let reservedBalance: Decimal?
+    public let openBillTotal: Decimal?
+    public let outstanding: Decimal?
+    public let billAmount: Decimal?
+    public let isManual: Bool?
+    public let lastPaidTotal: Decimal?
+    public let openDueKey: String?
+    public let connectorProfileId: String?
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -63,11 +72,22 @@ public struct PluggyAccountDTO: Decodable, Sendable {
         bankData = try c.decodeIfPresent(PluggyBankDataDTO.self, forKey: .bankData)
         creditData = try c.decodeIfPresent(PluggyCreditDataDTO.self, forKey: .creditData)
         balance = Self.decodeDecimal(c, forKey: .balance) ?? 0
+        availableBalance = Self.decodeDecimal(c, forKey: .availableBalance)
+        reservedBalance = Self.decodeDecimal(c, forKey: .reservedBalance)
+        openBillTotal = Self.decodeDecimal(c, forKey: .openBillTotal)
+        outstanding = Self.decodeDecimal(c, forKey: .outstanding)
+        billAmount = Self.decodeDecimal(c, forKey: .billAmount)
+        lastPaidTotal = Self.decodeDecimal(c, forKey: .lastPaidTotal)
+        isManual = try c.decodeIfPresent(Bool.self, forKey: .isManual)
+        openDueKey = try c.decodeIfPresent(String.self, forKey: .openDueKey)
+        connectorProfileId = try c.decodeIfPresent(String.self, forKey: .connectorProfileId)
     }
 
     private enum CodingKeys: String, CodingKey {
         case id, name, type, subtype, balance, currencyCode, marketingName, itemId
         case number, updatedAt, bankData, creditData
+        case availableBalance, reservedBalance, openBillTotal, outstanding, billAmount
+        case isManual, lastPaidTotal, openDueKey, connectorProfileId
     }
 
     private static func decodeDecimal(_ c: KeyedDecodingContainer<CodingKeys>, forKey key: CodingKeys) -> Decimal? {

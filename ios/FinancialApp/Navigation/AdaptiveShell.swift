@@ -212,10 +212,7 @@ struct AdaptiveShell: View {
         case .goals:
             GoalsView(repository: composition.goalsRepository)
         case .reports:
-            ReportsView(
-                transactions: composition.transactionsRepository,
-                accounts: composition.accountsRepository
-            )
+            ReportsView(repository: composition.reportsRepository)
         case .bankConnections:
             BankConnectionsView(repository: composition.bankConnectionsRepository)
         case .settings:

@@ -1,0 +1,41 @@
+{
+  "fixtureId": "bradesco-amazon-open-cycle",
+  "connectorProfileId": "bradesco",
+  "calculationVersion": "2026.09.2",
+  "transactions": [],
+  "officialBills": [
+    {
+      "id": "bill-br1",
+      "accountId": "cc-amazon",
+      "dueDate": "2026-09-05",
+      "totalAmount": 1602.24,
+      "status": "PAID",
+      "paidAt": "2026-09-04"
+    },
+    {
+      "id": "bill-br2",
+      "accountId": "cc-amazon",
+      "dueDate": "2026-10-05",
+      "totalAmount": 512.8,
+      "status": "OPEN"
+    }
+  ],
+  "expected": {
+    "summarizeCardOpenBill": {
+      "openDueKey": "2026-10",
+      "openTotal": 512.8,
+      "lastPaidKey": "2026-09"
+    }
+  },
+  "card": {
+    "id": "cc-amazon",
+    "type": "CREDIT",
+    "name": "Amazon Prime Bradescard",
+    "balance": 2800.0,
+    "currencyCode": "BRL",
+    "creditData": {
+      "creditLimit": 6000.0,
+      "availableCreditLimit": 3200.0
+    }
+  }
+}

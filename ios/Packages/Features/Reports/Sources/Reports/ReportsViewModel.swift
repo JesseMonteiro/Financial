@@ -14,43 +14,30 @@ public final class ReportsViewModel {
         public var title: String { "\(rawValue) meses" }
     }
 
-    public private(set) var state: FeatureLoadState<[Transaction]> = .idle
-    public private(set) var transactions: [Transaction] = []
-    public private(set) var accounts: [Account] = []
+    public private(set) var state: FeatureLoadState<ReportsSnapshot> = .idle
+    public private(set) var snapshot: ReportsSnapshot?
     public var months: Window = .six
     public var accountId: String?
     public var errorMessage: String?
     public var csvURL: URL?
 
-    private let transactionsRepository: (any TransactionsRepository)?
-    private let accountsRepository: (any AccountsRepository)?
+    private let reports: any ReportsRepository
     private var lastLoadedAt: Date?
     private var lastCacheKey: String?
 
-    public init(
-        transactions: (any TransactionsRepository)? = nil,
-        accounts: (any AccountsRepository)? = nil
-    ) {
-        self.transactionsRepository = transactions
-        self.accountsRepository = accounts
+    public init(reports: any ReportsRepository = StubReportsRepository()) {
+        self.reports = reports
     }
 
-    public var expenseTotal: Money {
-        transactions.filter { $0.kind == .debit }.reduce(Money.zero) { $0.adding($1.amount) }
-    }
-
-    public var incomeTotal: Money {
-        transactions.filter { $0.kind == .credit }.reduce(Money.zero) { $0.adding($1.amount) }
-    }
-
+    public var accounts: [ReportAccountRef] { snapshot?.accounts ?? [] }
+    public var incomeTotal: Money { snapshot?.income ?? .zero }
+    public var expenseTotal: Money { snapshot?.expense ?? .zero }
     public var byCategory: [(name: String, amount: Money)] {
-        var map: [String: Decimal] = [:]
-        for tx in transactions where tx.kind == .debit {
-            map[tx.category ?? "Outros", default: 0] += tx.amount.amount
-        }
-        return map
-            .map { (name: $0.key, amount: Money(amount: $0.value)) }
-            .sorted { $0.amount.amount > $1.amount.amount }
+        (snapshot?.categories ?? []).map { (name: $0.name, amount: $0.amount) }
+    }
+
+    public var calculationMismatch: Bool {
+        !CalculationVersion.matches(snapshot?.calculationVersion)
     }
 
     public func load(force: Bool = false) async {
@@ -63,27 +50,16 @@ public final class ReportsViewModel {
         ) { return }
         state.beginLoad(silentIfPossible: true)
         errorMessage = nil
-        guard let transactionsRepository else {
-        state = .empty
-            return
-        }
         do {
-            let current = YearMonth(from: Date())
-            var collected: [Transaction] = []
-            async let accountsTask = accountsRepository?.fetchAccounts(force: force) ?? []
-            for offset in 0..<months.rawValue {
-                let month = current.adding(months: -offset)
-                let loaded = try await transactionsRepository.fetchTransactions(
-                    accountId: accountId,
-                    month: month,
-                    force: force
-                )
-                collected.append(contentsOf: loaded)
-            }
-            accounts = try await accountsTask
-            transactions = collected
-            csvURL = writeCSV(collected)
-            state = transactions.isEmpty ? .empty : .loaded(transactions)
+            let loaded = try await reports.fetchReport(
+                months: months.rawValue,
+                accountId: accountId,
+                force: force
+            )
+            snapshot = loaded
+            csvURL = writeCSV(loaded)
+            let empty = loaded.income.isZero && loaded.expense.isZero && loaded.categories.isEmpty
+            state = empty ? .empty : .loaded(loaded)
             lastLoadedAt = Date()
             lastCacheKey = cacheKey
         } catch {
@@ -96,11 +72,10 @@ public final class ReportsViewModel {
 
     public func retry() async { await load(force: true) }
 
-    private func writeCSV(_ rows: [Transaction]) -> URL? {
-        var lines = ["data,descricao,categoria,tipo,valor"]
-        for tx in rows {
-            let desc = tx.description.replacingOccurrences(of: ",", with: " ")
-            lines.append("\(tx.date.isoString),\(desc),\(tx.category ?? ""),\(tx.kind.rawValue),\(tx.amount.amount)")
+    private func writeCSV(_ snap: ReportsSnapshot) -> URL? {
+        var lines = ["categoria,valor"]
+        for row in snap.categories {
+            lines.append("\(row.name),\(row.amount.amount)")
         }
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("relatorio.csv")
         try? lines.joined(separator: "\n").data(using: .utf8)?.write(to: url)

@@ -1,6 +1,6 @@
 {
   "connectorProfileId": "mercado-pago",
-  "calculationVersion": "2026.09.1",
+  "calculationVersion": "2026.09.2",
   "officialBills": [
     {
       "id": "bill-mp1",

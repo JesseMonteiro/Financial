@@ -13,7 +13,7 @@
 {
   "data": {},
   "meta": {
-    "calculationVersion": "1.0.0",
+    "calculationVersion": "2026.09.2",
     "requestId": "uuid",
     "generatedAt": "ISO-8601"
   },
@@ -28,6 +28,12 @@
 | `GET /health` | `GET /v1/health` |
 | `GET /feature-flags` | `GET /v1/feature-flags` |
 | `GET /accounts` | `GET /v1/accounts` |
+| `GET /dashboard` | `GET /v1/dashboard` |
+| `GET /credit-cards` | `GET /v1/credit-cards` |
+| `GET /agenda` | `GET /v1/agenda` |
+| `GET /budget-screen` | `GET /v1/budget-screen` |
+| `GET /reports` | `GET /v1/reports` |
+| `GET /subscriptions` | `GET /v1/subscriptions` |
 | — | `GET/POST/PATCH/DELETE /v1/domain/*` |
 
 ## Kill switches

@@ -1,0 +1,41 @@
+{
+  "fixtureId": "nubank-open-cycle",
+  "connectorProfileId": "nubank",
+  "calculationVersion": "2026.09.2",
+  "transactions": [],
+  "officialBills": [
+    {
+      "id": "bill-nu1",
+      "accountId": "cc-nubank",
+      "dueDate": "2026-09-08",
+      "totalAmount": 1200.5,
+      "status": "PAID",
+      "paidAt": "2026-09-07"
+    },
+    {
+      "id": "bill-nu2",
+      "accountId": "cc-nubank",
+      "dueDate": "2026-10-08",
+      "totalAmount": 640.1,
+      "status": "OPEN"
+    }
+  ],
+  "expected": {
+    "summarizeCardOpenBill": {
+      "openDueKey": "2026-10",
+      "openTotal": 640.1,
+      "lastPaidKey": "2026-09"
+    }
+  },
+  "card": {
+    "id": "cc-nubank",
+    "type": "CREDIT",
+    "name": "Nubank Roxinho",
+    "balance": 2100.0,
+    "currencyCode": "BRL",
+    "creditData": {
+      "creditLimit": 8000.0,
+      "availableCreditLimit": 5900.0
+    }
+  }
+}

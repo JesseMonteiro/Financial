@@ -16,11 +16,14 @@ import {
   txBillingAmount,
 } from "../creditBillPeriod.ts";
 import {
-  getPluggyApiKey,
-  PLUGGY_API,
-  pluggyJson,
   type PluggyClient,
 } from "./pluggy.ts";
+import {
+  fetchAccountsWithConnectors,
+  loadCreditLedger,
+  loadManualAccounts,
+  loadManualTransactions,
+} from "../utils/creditLedger.ts";
 
 function money(value: unknown): string {
   const n = Number(value);
@@ -88,70 +91,11 @@ function overlayFor(icons: Record<string, FaceOverlay>, id: string): FaceOverlay
 }
 
 async function fetchCreditAccounts(client: PluggyClient): Promise<Record<string, unknown>[]> {
-  const chunks = await Promise.all(client.itemIds.map(async (iid) => {
-    try {
-      const [d, item] = await Promise.all([
-        pluggyJson(client, "/accounts", { params: { itemId: iid } }) as Promise<{
-          results?: Record<string, unknown>[];
-        }>,
-        pluggyJson(client, `/items/${iid}`).catch(() => null) as Promise<{
-          connector?: { name?: string };
-        } | null>,
-      ]);
-      const connectorName = item?.connector?.name ? String(item.connector.name) : "";
-      return (d.results || [])
-        .filter((acc) => String(acc.type).toUpperCase() === "CREDIT")
-        .map((acc) => ({ ...acc, itemId: acc.itemId || iid, _connector: connectorName }));
-    } catch (e) {
-      console.error("[credit-cards] accounts", iid, e);
-      return [] as Record<string, unknown>[];
-    }
-  }));
-  return chunks.flat();
-}
-
-async function fetchBillsForAccount(
-  client: PluggyClient,
-  accountId: string,
-): Promise<Record<string, unknown>[]> {
-  try {
-    const d = await pluggyJson(client, "/bills", { params: { accountId } }) as {
-      results?: Record<string, unknown>[];
-    };
-    return (d.results || []).map((b) => ({ ...b, accountId: b.accountId || accountId }));
-  } catch (e) {
-    console.error("[credit-cards] bills", accountId, e);
-    return [];
-  }
-}
-
-async function fetchAllTransactionsForAccount(
-  client: PluggyClient,
-  accountId: string,
-): Promise<Record<string, unknown>[]> {
-  const results: Record<string, unknown>[] = [];
-  let next: string | null = null;
-  let guard = 0;
-  const apiKey = await getPluggyApiKey(client.clientId, client.clientSecret);
-  do {
-    try {
-      const url = next
-        ? (next.startsWith("http") ? next : `${PLUGGY_API}${next}`)
-        : `${PLUGGY_API}/v2/transactions?accountId=${encodeURIComponent(accountId)}`;
-      const res = await fetch(url, { headers: { "X-API-KEY": apiKey, Accept: "application/json" } });
-      if (!res.ok) break;
-      const data = await res.json() as { results?: Record<string, unknown>[]; next?: string | null };
-      for (const t of data.results || []) {
-        results.push({ ...t, accountId: t.accountId || accountId });
-      }
-      next = data.next || null;
-    } catch (e) {
-      console.error("[credit-cards] txs", accountId, e);
-      break;
-    }
-    guard++;
-  } while (next && guard < 30);
-  return results;
+  const pluggy = (await fetchAccountsWithConnectors(client))
+    .filter((acc) => String(acc.type).toUpperCase() === "CREDIT");
+  const manuals = (await loadManualAccounts(client))
+    .filter((acc) => String(acc.type).toUpperCase() === "CREDIT");
+  return [...pluggy, ...manuals];
 }
 
 function serializeItem(tx: Record<string, unknown>, cardsById: Map<string, Record<string, unknown>>) {
@@ -239,18 +183,13 @@ export async function handleCreditCards(client: PluggyClient): Promise<Response>
   }
 
   const cardsById = new Map(creditCards.map((c) => [String(c.id), c]));
-  const transactionsByAccount: Record<string, Record<string, unknown>[]> = {};
-  const billsByAccount: Record<string, Record<string, unknown>[]> = {};
-
-  await Promise.all(creditCards.map(async (card) => {
-    const id = String(card.id);
-    const [txs, bills] = await Promise.all([
-      fetchAllTransactionsForAccount(client, id),
-      fetchBillsForAccount(client, id),
-    ]);
-    transactionsByAccount[id] = txs;
-    billsByAccount[id] = bills;
-  }));
+  const { transactionsByAccount, billsByAccount } = await loadCreditLedger(client, creditCards);
+  const manuals = await loadManualTransactions(client);
+  for (const tx of manuals) {
+    const id = String(tx.accountId || "");
+    if (!id || !cardsById.has(id)) continue;
+    transactionsByAccount[id] = [...(transactionsByAccount[id] || []), tx];
+  }
 
   const cards = creditCards.map((card) => {
     const id = String(card.id);

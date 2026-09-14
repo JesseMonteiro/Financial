@@ -110,24 +110,8 @@ public struct LiveBudgetRepository: BudgetRepository {
     public init(bff: BFFClient) { self.bff = bff }
 
     public func fetchLimits(month: YearMonth, force: Bool) async throws -> [BudgetLimit] {
-        let rows = try await bff.getBudgets(force: force)
-        let transactions = (try? await bff.getTransactions(force: force)) ?? []
-        var spentByCategory: [String: Decimal] = [:]
-        for tx in transactions {
-            let date = InstantDate(isoString: String(tx.date.prefix(10)))
-            guard let date, date.yearMonth == month else { continue }
-            let isDebit = (tx.type ?? "").uppercased() == "DEBIT" || tx.amount < 0
-            guard isDebit else { continue }
-            let category = tx.category ?? "Other"
-            spentByCategory[category, default: 0] += abs(tx.amount)
-        }
-        return rows.map { row in
-            DomainMapper.budgetLimit(
-                row,
-                month: month,
-                spent: Money(amount: spentByCategory[row.category] ?? 0)
-            )
-        }
+        let screen = try await bff.getBudgetScreen(month: month, force: force)
+        return screen.categories.map { DomainMapper.budgetLimit($0, month: month) }
     }
 
     public func saveLimit(_ limit: BudgetLimit) async throws {
@@ -259,14 +243,8 @@ public struct LiveSubscriptionsRepository: SubscriptionsRepository {
     public init(bff: BFFClient) { self.bff = bff }
 
     public func fetchSubscriptions(force: Bool) async throws -> [Subscription] {
-        async let txTask = bff.getTransactions(force: force)
-        async let manualsTask = bff.getManualExpenses(force: force)
-        let transactions = (try? await txTask) ?? []
-        let manuals = (try? await manualsTask) ?? []
-        return DerivedFinance.detectSubscriptions(
-            transactions: transactions.map(DomainMapper.transaction),
-            manuals: manuals.map(DomainMapper.manualExpense)
-        )
+        let screen = try await bff.getSubscriptionsScreen(force: force)
+        return screen.items.map(DomainMapper.subscription)
     }
 }
 
@@ -275,21 +253,8 @@ public struct LiveAgendaRepository: AgendaRepository {
     public init(bff: BFFClient) { self.bff = bff }
 
     public func fetchItems(month: YearMonth, force: Bool) async throws -> [AgendaItem] {
-        async let billsTask = bff.getBills(force: force)
-        async let manualsTask = bff.getManualExpenses(force: force)
-        async let loansTask = bff.getLoans(force: force)
-        async let recTask = bff.getReceivables(force: force)
-        let bills = (try? await billsTask) ?? []
-        let manuals = (try? await manualsTask) ?? []
-        let loans = (try? await loansTask) ?? []
-        let receivables = (try? await recTask) ?? []
-        return DerivedFinance.buildAgenda(
-            month: month,
-            bills: bills.map(DomainMapper.bill),
-            manuals: manuals.map(DomainMapper.manualExpense),
-            loans: loans.map(DomainMapper.loan),
-            receivables: receivables.map(DomainMapper.receivable)
-        )
+        let screen = try await bff.getAgenda(month: month, force: force)
+        return screen.items.map(DomainMapper.agendaItem)
     }
 }
 
@@ -393,5 +358,14 @@ public struct LiveParseBill: ParseBillUseCase {
     public init(bff: BFFClient) { self.bff = bff }
     public func execute(base64: String, mimeType: String) async throws -> ParsedBill {
         DomainMapper.parsedBill(try await bff.parseBill(base64: base64, mimeType: mimeType))
+    }
+}
+
+public struct LiveReportsRepository: ReportsRepository {
+    private let bff: BFFClient
+    public init(bff: BFFClient) { self.bff = bff }
+
+    public func fetchReport(months: Int, accountId: String?, force: Bool) async throws -> ReportsSnapshot {
+        DomainMapper.reports(try await bff.getReports(months: months, accountId: accountId, force: force))
     }
 }

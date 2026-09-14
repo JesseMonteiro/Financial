@@ -46,6 +46,15 @@ export function calculateNetWorth(accounts = [], investments = [], loans = []) {
   };
 }
 
+export function sumOpenBillsTotal(accounts = []) {
+  return accounts.reduce((sum, a) => {
+    if (a?.type !== 'CREDIT') return sum;
+    if (a.isManual) return sum + Math.abs(Number(a.billAmount ?? a.balance) || 0);
+    if (a.openBillTotal != null) return sum + Math.abs(Number(a.openBillTotal) || 0);
+    return sum;
+  }, 0);
+}
+
 export function groupTransactionsByCategory(transactions = []) {
   const categoriesMap = {};
   

@@ -14,6 +14,7 @@ public struct DashboardSnapshot: Sendable, Hashable {
     public var weeklyRecap: DashboardWeeklyRecap
     public var recentTransactions: [DashboardRecentTransaction]
     public var budgetCategories: [DashboardBudgetCategory]
+    public var calculationVersion: String?
 
     public init(
         displayName: String,
@@ -27,7 +28,8 @@ public struct DashboardSnapshot: Sendable, Hashable {
         insights: [DashboardInsight],
         weeklyRecap: DashboardWeeklyRecap,
         recentTransactions: [DashboardRecentTransaction],
-        budgetCategories: [DashboardBudgetCategory]
+        budgetCategories: [DashboardBudgetCategory],
+        calculationVersion: String? = nil
     ) {
         self.displayName = displayName
         self.selectedMonth = selectedMonth
@@ -41,13 +43,14 @@ public struct DashboardSnapshot: Sendable, Hashable {
         self.weeklyRecap = weeklyRecap
         self.recentTransactions = recentTransactions
         self.budgetCategories = budgetCategories
+        self.calculationVersion = calculationVersion
     }
 
     /// Backward-compatible aliases used by older UI stubs.
     public var netWorth: Money { summary.netWorth }
     public var monthIncome: Money { cashflow.income }
     public var monthExpense: Money { cashflow.expense }
-    public var openBillsTotal: Money { summary.creditDebt }
+    public var openBillsTotal: Money { summary.openBillsTotal }
 }
 
 public struct DashboardSummary: Sendable, Hashable {
@@ -56,6 +59,8 @@ public struct DashboardSummary: Sendable, Hashable {
     public var reservedBalance: Money
     public var investmentTotal: Money
     public var creditDebt: Money
+    /// Sum of open-cycle bills (`openBillTotal`), never outstanding.
+    public var openBillsTotal: Money
     public var loansTotal: Money
     public var totalAssets: Money
     public var bankCount: Int
@@ -67,6 +72,7 @@ public struct DashboardSummary: Sendable, Hashable {
         reservedBalance: Money,
         investmentTotal: Money,
         creditDebt: Money,
+        openBillsTotal: Money = .zero,
         loansTotal: Money,
         totalAssets: Money,
         bankCount: Int,
@@ -77,6 +83,7 @@ public struct DashboardSummary: Sendable, Hashable {
         self.reservedBalance = reservedBalance
         self.investmentTotal = investmentTotal
         self.creditDebt = creditDebt
+        self.openBillsTotal = openBillsTotal
         self.loansTotal = loansTotal
         self.totalAssets = totalAssets
         self.bankCount = bankCount

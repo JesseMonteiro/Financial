@@ -4,6 +4,17 @@
  */
 import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.39.8';
 import { errorResponse, jsonResponse } from '../middleware/http.ts';
+import {
+  fetchAccountsWithConnectors,
+  loadCreditLedger,
+  loadCustomNames,
+} from '../utils/creditLedger.ts';
+import {
+  enrichAccounts,
+  enrichBankAccount,
+  enrichCreditAccount,
+} from '../utils/accountValues.ts';
+import { mergeInvestmentsWithReserved } from '../utils/reservedBalances.ts';
 
 export const PLUGGY_API = 'https://api.pluggy.ai';
 
@@ -144,11 +155,25 @@ export function ownedItemIds(client: PluggyClient, requested?: string | null): s
 
 export async function handleAccounts(client: PluggyClient, url: URL, id?: string): Promise<Response> {
   if (id) {
-    const account = await pluggyJson(client, `/accounts/${id}`) as { itemId?: string };
+    const account = await pluggyJson(client, `/accounts/${id}`) as {
+      itemId?: string;
+      type?: string;
+      id?: string;
+    };
     if (!account?.itemId || !client.itemIds.includes(account.itemId)) {
       return errorResponse('Acesso negado para esta conta', 403);
     }
-    return jsonResponse(account);
+    const type = String(account.type || "").toUpperCase();
+    if (type === "CREDIT") {
+      const { transactionsByAccount, billsByAccount } = await loadCreditLedger(client, [account]);
+      const accId = String(account.id || id);
+      return jsonResponse(enrichCreditAccount(
+        account,
+        transactionsByAccount[accId] || [],
+        billsByAccount[accId] || [],
+      ));
+    }
+    return jsonResponse(enrichBankAccount(account));
   }
 
   const itemId = url.searchParams.get('itemId');
@@ -161,18 +186,19 @@ export async function handleAccounts(client: PluggyClient, url: URL, id?: string
     return jsonResponse({ results: [], total: 0 });
   }
 
-  const all: unknown[] = [];
-  for (const iid of targetItemIds) {
-    try {
-      const params: Record<string, string | undefined> = { itemId: iid };
-      if (type) params.type = type;
-      const d = await pluggyJson(client, '/accounts', { params }) as { results?: unknown[] };
-      all.push(...(d.results || []));
-    } catch (e) {
-      console.error(`[pluggy-proxy] Error fetching accounts for item ${iid}:`, e);
-    }
-  }
-  return jsonResponse({ results: all, total: all.length });
+  let all = await fetchAccountsWithConnectors(client);
+  if (itemId) all = all.filter((acc) => String(acc.itemId) === itemId);
+  if (type) all = all.filter((acc) => String(acc.type).toUpperCase() === String(type).toUpperCase());
+
+  const creditCards = all.filter((acc) => String(acc.type).toUpperCase() === "CREDIT");
+  const { transactionsByAccount, billsByAccount } = await loadCreditLedger(client, creditCards);
+  const names = await loadCustomNames(client);
+  const enriched = enrichAccounts(all, transactionsByAccount, billsByAccount).map((acc) => {
+    const accId = String(acc.id || "");
+    if (accId && names[accId]) acc.name = names[accId];
+    return acc;
+  });
+  return jsonResponse({ results: enriched, total: enriched.length });
 }
 
 export async function handleTransactions(
@@ -233,7 +259,9 @@ export async function handleInvestments(client: PluggyClient, url: URL, id?: str
       /* skip */
     }
   }
-  return jsonResponse({ results: all, total: all.length });
+  const accounts = await fetchAccountsWithConnectors(client);
+  const merged = mergeInvestmentsWithReserved(all as Record<string, unknown>[], accounts);
+  return jsonResponse({ results: merged, total: merged.length });
 }
 
 export async function handleLoans(client: PluggyClient, url: URL, id?: string): Promise<Response> {

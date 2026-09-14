@@ -15,6 +15,11 @@ import {
   type PluggyClient,
 } from "../handlers/pluggy.ts";
 import { handleCreditCards } from "../handlers/creditCards.ts";
+import { handleDashboard } from "../handlers/dashboard.ts";
+import { handleAgenda } from "../handlers/agenda.ts";
+import { handleBudgetScreen } from "../handlers/budgetScreen.ts";
+import { handleReports } from "../handlers/reports.ts";
+import { handleSubscriptions } from "../handlers/subscriptions.ts";
 
 export interface V1Context {
   requestId: string;
@@ -131,6 +136,25 @@ export async function handleV1(
         break;
       case "credit-cards":
         legacy = await handleCreditCards(clientConfig);
+        break;
+      case "dashboard":
+        legacy = await handleDashboard(clientConfig, url);
+        break;
+      case "agenda":
+        if (method !== "GET") return v1Err("Method not allowed", 405, req);
+        legacy = await handleAgenda(clientConfig, url);
+        break;
+      case "budget-screen":
+        if (method !== "GET") return v1Err("Method not allowed", 405, req);
+        legacy = await handleBudgetScreen(clientConfig, url);
+        break;
+      case "reports":
+        if (method !== "GET") return v1Err("Method not allowed", 405, req);
+        legacy = await handleReports(clientConfig, url);
+        break;
+      case "subscriptions":
+        if (method !== "GET") return v1Err("Method not allowed", 405, req);
+        legacy = await handleSubscriptions(clientConfig);
         break;
       case "connectors":
         legacy = await handleConnectors(clientConfig, url, actionOrId);
