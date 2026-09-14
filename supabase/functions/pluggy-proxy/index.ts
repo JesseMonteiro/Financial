@@ -1112,6 +1112,18 @@ async function handleJoint(
       .in('user_id', memberIds);
     if (recvError) return errorResponse(recvError.message, 500);
 
+    const { data: mealBenefits, error: mealError } = await service
+      .from('meal_benefits')
+      .select('*')
+      .in('user_id', memberIds);
+    if (mealError) console.warn('[joint] meal_benefits', mealError.message);
+
+    const { data: mealBenefitPurchases, error: mealPurchaseError } = await service
+      .from('meal_benefit_purchases')
+      .select('*')
+      .in('user_id', memberIds);
+    if (mealPurchaseError) console.warn('[joint] meal_benefit_purchases', mealPurchaseError.message);
+
     const labelById = Object.fromEntries(members.map((m) => [m.id, m.displayName]));
 
     for (const row of (manualAccounts || []) as Record<string, unknown>[]) {
@@ -1188,6 +1200,16 @@ async function handleJoint(
         accountId: (row as { account_id?: string }).account_id || 'manual',
       })),
       receivables: (receivables || []).map((row) => ({
+        ...row,
+        ownerUserId: row.user_id,
+        ownerLabel: labelById[row.user_id as string] || 'Usuário',
+      })),
+      mealBenefits: (mealBenefits || []).map((row) => ({
+        ...row,
+        ownerUserId: row.user_id,
+        ownerLabel: labelById[row.user_id as string] || 'Usuário',
+      })),
+      mealBenefitPurchases: (mealBenefitPurchases || []).map((row) => ({
         ...row,
         ownerUserId: row.user_id,
         ownerLabel: labelById[row.user_id as string] || 'Usuário',

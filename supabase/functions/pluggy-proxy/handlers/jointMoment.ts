@@ -17,6 +17,7 @@ import {
   withSavedMonthSalary,
 } from "../utils/monthSalary.ts";
 import { asItemIdList, pluggyJson } from "./pluggy.ts";
+import { momentItemsFor } from "../utils/mealBenefits.ts";
 
 type AnyRec = Record<string, unknown>;
 
@@ -253,6 +254,8 @@ async function handleJointFinancialMomentInner(
     manualsRes,
     manualAccountsRes,
     receivablesRes,
+    mealBenefitsRes,
+    mealPurchasesRes,
   ] = await Promise.all([
     service
       .from("profiles")
@@ -263,6 +266,8 @@ async function handleJointFinancialMomentInner(
     service.from("manual_transactions").select("*").in("user_id", memberIds),
     service.from("manual_accounts").select("*").in("user_id", memberIds),
     service.from("receivables").select("*").in("user_id", memberIds),
+    service.from("meal_benefits").select("*").in("user_id", memberIds),
+    service.from("meal_benefit_purchases").select("*").in("user_id", memberIds),
   ]);
 
   if (profilesRes.error) return errorResponse(profilesRes.error.message, 500);
@@ -522,7 +527,22 @@ async function handleJointFinancialMomentInner(
     );
   }
 
-  const serialized = serializeMoment(month, moment, monthsStatus, cardFaceMeta);
+  const serialized = serializeMoment(
+    month,
+    moment,
+    monthsStatus,
+    cardFaceMeta,
+    {
+      items: momentItemsFor(
+        ((mealBenefitsRes.data || []) as AnyRec[]).map((row) => ({
+          ...row,
+          ownerLabel: labelById[String(row.user_id)] || "Usuário",
+        })),
+        (mealPurchasesRes.data || []) as AnyRec[],
+        month,
+      ),
+    },
+  );
 
   return jsonResponse({
     link: {

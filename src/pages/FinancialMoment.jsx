@@ -2,7 +2,10 @@ import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { useAccountStore } from '../stores/accountStore';
 import { useTransactionStore } from '../stores/transactionStore';
 import { useReceivableStore } from '../stores/receivableStore';
+import { useMealBenefitStore } from '../stores/mealBenefitStore';
 import { useCreditDataStore } from '../stores/creditDataStore';
+import { MealBenefitMomentCards } from '../components/MealBenefitMomentCards';
+import { momentItemsFor } from '../utils/mealBenefits';
 import { getLocalSetting, setLocalSetting, getMonthlySalaries, saveMonthlySalaries } from '../services/storage';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
@@ -43,6 +46,7 @@ export function FinancialMoment() {
   const { accounts, loadAccounts, loading: accountsLoading, lastUpdated: accountsUpdatedAt } = useAccountStore();
   const { transactions, loadTransactions, setManualPaid, pending } = useTransactionStore();
   const { receivables, loadReceivables } = useReceivableStore();
+  const { benefits: mealBenefits, purchases: mealPurchases, loadMealBenefits } = useMealBenefitStore();
   const {
     loadForAccounts,
     loading: creditLoading,
@@ -69,6 +73,7 @@ export function FinancialMoment() {
     loadAccounts();
     loadTransactions();
     loadReceivables();
+    loadMealBenefits();
 
     (async () => {
       const stored = await getMonthlySalaries();
@@ -231,6 +236,11 @@ export function FinancialMoment() {
       bankAccountIds,
       bankAccountNameById,
     ]
+  );
+
+  const mealMomentItems = useMemo(
+    () => (selectedMonth ? momentItemsFor(mealBenefits, mealPurchases, selectedMonth) : []),
+    [selectedMonth, mealBenefits, mealPurchases]
   );
 
   const monthsStatus = useMemo(
@@ -599,6 +609,7 @@ export function FinancialMoment() {
                 </div>
                 <ProgressBar percent={pctSpent} color={spent > entries ? 'var(--danger)' : 'var(--primary)'} height={10} />
               </div>
+              <MealBenefitMomentCards items={mealMomentItems} isMobile />
               <div className="moment-mobile-stack">
                 {salaryCard}
                 {billsCard}
@@ -690,6 +701,8 @@ export function FinancialMoment() {
                   </p>
                 </div>
               </Card>
+
+              <MealBenefitMomentCards items={mealMomentItems} />
 
               <div className="dashboard-grid">
                 <div className="col-6" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>

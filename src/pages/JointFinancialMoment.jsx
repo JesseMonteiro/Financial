@@ -31,6 +31,8 @@ import {
 } from 'lucide-react';
 import { AccountIcon, accountById } from '../components/AccountIcon';
 import { MomentBillStrip } from '../components/MomentBillStrip';
+import { MealBenefitMomentCards } from '../components/MealBenefitMomentCards';
+import { momentItemsFor } from '../utils/mealBenefits';
 import { useAccountStore } from '../stores/accountStore';
 import { decorateAccountWithIcon, decorateAccountsWithIcons } from '../utils/accountIcons';
 import { mergeLocalCardFaces, shareCardFacesByProduct } from '../utils/cardFaces';
@@ -52,6 +54,8 @@ export function JointFinancialMoment() {
     billsByAccount,
     manuals,
     receivables,
+    mealBenefits,
+    mealBenefitPurchases,
     statusLoading,
     momentLoading,
     loadStatus,
@@ -302,6 +306,10 @@ export function JointFinancialMoment() {
   const spent = activeMonthData?.expensesTotal || 0;
   const pctSpent = Math.min(100, Math.round((spent / entries) * 100));
   const thisMonthYm = currentMonthYm();
+  const mealMomentItems = useMemo(
+    () => (selectedMonth ? momentItemsFor(mealBenefits, mealBenefitPurchases, selectedMonth) : []),
+    [selectedMonth, mealBenefits, mealBenefitPurchases]
+  );
 
   useEffect(() => {
     if (!isMobile || isPageLoading) return undefined;
@@ -686,6 +694,7 @@ export function JointFinancialMoment() {
                     </div>
                     <ProgressBar percent={pctSpent} color={spent > entries ? 'var(--danger)' : 'var(--primary)'} height={10} />
                   </div>
+                  <MealBenefitMomentCards items={mealMomentItems} isMobile />
                   <div className="moment-mobile-stack">
                     {salaryCard}
                     {billsCard}
@@ -774,6 +783,8 @@ export function JointFinancialMoment() {
                       <ProgressBar percent={pctSpent} color={spent > entries ? 'var(--danger)' : 'var(--primary)'} height={12} />
                     </div>
                   </Card>
+
+                  <MealBenefitMomentCards items={mealMomentItems} />
 
                   <div className="dashboard-grid">
                     <div className="col-6" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>

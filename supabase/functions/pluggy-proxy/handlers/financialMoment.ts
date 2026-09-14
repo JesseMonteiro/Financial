@@ -19,6 +19,7 @@ import {
   saveMonthlySalaries,
   withSavedMonthSalary,
 } from "../utils/monthSalary.ts";
+import { momentItemsFor } from "../utils/mealBenefits.ts";
 
 async function fetchAccounts(client: PluggyClient): Promise<Record<string, unknown>[]> {
   const chunks = await Promise.all(client.itemIds.map(async (iid) => {
@@ -235,6 +236,16 @@ export function serializeMoment(
   moment: any,
   monthsStatus: Record<string, { isPositive: boolean; net: number }> = {},
   cardFaceMeta: Record<string, CardFaceMeta> = {},
+  mealBenefits: { items: Array<{
+    id: string;
+    kind: string;
+    label: string;
+    remaining: number;
+    monthCredit: number;
+    monthSpent: number;
+    creditDay: number;
+    ownerLabel: string | null;
+  }> } = { items: [] },
 ) {
   return {
     selectedMonth,
@@ -327,6 +338,18 @@ export function serializeMoment(
       isPositive: (Number(moment.netBalance) || 0) >= 0,
       net: Number(moment.netBalance) || 0,
     },
+    mealBenefits: {
+      items: (mealBenefits.items || []).map((item) => ({
+        id: String(item.id || ""),
+        kind: String(item.kind || "VA"),
+        label: String(item.label || ""),
+        remaining: Number(item.remaining) || 0,
+        monthCredit: Number(item.monthCredit) || 0,
+        monthSpent: Number(item.monthSpent) || 0,
+        creditDay: Number(item.creditDay) || 1,
+        ownerLabel: item.ownerLabel ? String(item.ownerLabel) : null,
+      })),
+    },
   };
 }
 
@@ -417,6 +440,13 @@ export async function handleFinancialMoment(
     .select("*")
     .eq("user_id", client.userId);
 
+  const [{ data: mealBenefitsRows, error: mealBenefitsError }, { data: mealPurchaseRows, error: mealPurchaseError }] = await Promise.all([
+    client.supabase.from("meal_benefits").select("*").eq("user_id", client.userId),
+    client.supabase.from("meal_benefit_purchases").select("*").eq("user_id", client.userId),
+  ]);
+  if (mealBenefitsError) console.warn("[financial-moment] meal_benefits", mealBenefitsError.message);
+  if (mealPurchaseError) console.warn("[financial-moment] meal_benefit_purchases", mealPurchaseError.message);
+
   const salaries = await getMonthlySalaries(client.supabase, client.userId);
 
   const allTransactions = [...bankTransactions, ...manualTxs];
@@ -448,7 +478,13 @@ export async function handleFinancialMoment(
     creditBillPeriod: moment.creditBillPeriod,
   });
 
-  return jsonResponse(serializeMoment(month, moment, monthsStatus, cardFaceMeta));
+  return jsonResponse(serializeMoment(
+    month,
+    moment,
+    monthsStatus,
+    cardFaceMeta,
+    { items: momentItemsFor(mealBenefitsRows || [], mealPurchaseRows || [], month) },
+  ));
 }
 
 export async function handleGetCurrentSalary(

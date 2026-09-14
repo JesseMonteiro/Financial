@@ -371,3 +371,51 @@ struct JointInvestmentsDTO: Decodable, Sendable {
     let investments: [PluggyInvestmentDTO]
 }
 
+struct DomainMealBenefitRowDTO: Decodable, Sendable {
+    let id: String
+    let kind: String?
+    let label: String?
+    let monthlyAmount: Decimal
+    let creditDay: Int
+    let startsOn: String?
+    let openingBalance: Decimal
+    let showInMoment: Bool
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decodeIfPresent(String.self, forKey: .id) ?? UUID().uuidString
+        kind = try c.decodeIfPresent(String.self, forKey: .kind)
+        label = try c.decodeIfPresent(String.self, forKey: .label)
+        monthlyAmount = FlexibleDecimal.decode(c, forKey: .monthlyAmount) ?? 0
+        creditDay = try c.decodeIfPresent(Int.self, forKey: .creditDay) ?? 1
+        startsOn = try c.decodeIfPresent(String.self, forKey: .startsOn)
+        openingBalance = FlexibleDecimal.decode(c, forKey: .openingBalance) ?? 0
+        showInMoment = try c.decodeIfPresent(Bool.self, forKey: .showInMoment) ?? false
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, kind, label, monthlyAmount, creditDay, startsOn, openingBalance, showInMoment
+    }
+}
+
+struct DomainMealPurchaseRowDTO: Decodable, Sendable {
+    let id: String
+    let benefitId: String
+    let amount: Decimal
+    let purchasedAt: String?
+    let description: String?
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decodeIfPresent(String.self, forKey: .id) ?? UUID().uuidString
+        benefitId = try c.decodeIfPresent(String.self, forKey: .benefitId) ?? ""
+        amount = FlexibleDecimal.decode(c, forKey: .amount) ?? 0
+        purchasedAt = try c.decodeIfPresent(String.self, forKey: .purchasedAt)
+        description = try c.decodeIfPresent(String.self, forKey: .description)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, benefitId, amount, purchasedAt, description
+    }
+}
+

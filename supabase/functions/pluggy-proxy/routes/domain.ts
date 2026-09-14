@@ -7,7 +7,9 @@ type DomainTable =
   | "goals"
   | "receivables"
   | "manual_transactions"
-  | "manual_accounts";
+  | "manual_accounts"
+  | "meal_benefits"
+  | "meal_benefit_purchases";
 
 const TABLE_MAP: Record<string, DomainTable> = {
   budgets: "budgets",
@@ -15,6 +17,8 @@ const TABLE_MAP: Record<string, DomainTable> = {
   receivables: "receivables",
   "manual-transactions": "manual_transactions",
   "manual-accounts": "manual_accounts",
+  "meal-benefits": "meal_benefits",
+  "meal-benefit-purchases": "meal_benefit_purchases",
 };
 
 export async function handleDomainV1(

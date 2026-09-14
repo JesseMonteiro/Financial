@@ -138,6 +138,37 @@ public struct LiveGoalsRepository: GoalsRepository {
     }
 }
 
+public struct LiveMealBenefitsRepository: MealBenefitsRepository {
+    private let bff: BFFClient
+    public init(bff: BFFClient) { self.bff = bff }
+
+    public func fetchBenefits(force: Bool) async throws -> [MealBenefit] {
+        async let benefitRows = bff.getMealBenefits(force: force)
+        async let purchaseRows = bff.getMealBenefitPurchases(force: force)
+        let purchases = try await purchaseRows.map(DomainMapper.mealPurchase)
+        let grouped = Dictionary(grouping: purchases, by: \.benefitId)
+        return try await benefitRows.map { dto in
+            DomainMapper.mealBenefit(dto, purchases: grouped[dto.id] ?? [])
+        }
+    }
+
+    public func saveBenefit(_ benefit: MealBenefit) async throws {
+        try await bff.saveMealBenefit(benefit)
+    }
+
+    public func deleteBenefit(id: String) async throws {
+        try await bff.deleteMealBenefit(id: id)
+    }
+
+    public func savePurchase(_ purchase: MealBenefitPurchase) async throws {
+        try await bff.saveMealBenefitPurchase(purchase)
+    }
+
+    public func deletePurchase(id: String) async throws {
+        try await bff.deleteMealBenefitPurchase(id: id)
+    }
+}
+
 public struct LiveReceivablesRepository: ReceivablesRepository {
     private let bff: BFFClient
     public init(bff: BFFClient) { self.bff = bff }

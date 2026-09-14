@@ -9,6 +9,7 @@ import {
 } from '../services/api';
 import { CACHE_TTL_MS, isFreshTimestamp } from '../services/clientCache';
 import { mergeInvestmentsWithReserved } from '../utils/reservedBalances';
+import { normalizeMealBenefit, normalizeMealPurchase } from '../utils/mealBenefits';
 
 function toCamelCase(obj) {
   if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return obj;
@@ -55,6 +56,8 @@ export const useJointStore = create((set, get) => ({
   billsByAccount: {},
   manuals: [],
   receivables: [],
+  mealBenefits: [],
+  mealBenefitPurchases: [],
   investments: [],
   investmentAccounts: [],
   statusLoading: false,
@@ -160,6 +163,12 @@ export const useJointStore = create((set, get) => ({
         billsByAccount: data.billsByAccount || {},
         manuals: (data.manuals || []).map(normalizeManual),
         receivables: (data.receivables || []).map(normalizeReceivable),
+        mealBenefits: (data.mealBenefits || []).map((row) =>
+          normalizeMealBenefit({ ...toCamelCase(row), ownerUserId: row.ownerUserId || row.user_id, ownerLabel: row.ownerLabel })
+        ),
+        mealBenefitPurchases: (data.mealBenefitPurchases || []).map((row) =>
+          normalizeMealPurchase({ ...toCamelCase(row), ownerUserId: row.ownerUserId || row.user_id, ownerLabel: row.ownerLabel })
+        ),
         momentLoading: false,
         lastLoadedAt: Date.now(),
       });

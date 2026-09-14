@@ -33,6 +33,7 @@ public struct JointMomentDTO: Codable, Sendable {
     public let totals: FinancialTotalsDTO
     public let status: MonthStatusDTO
     public let monthsStatus: [String: MonthStatusDTO]?
+    public let mealBenefits: MealBenefitsSummaryDTO?
 }
 
 public struct JointInviteResponseDTO: Codable, Sendable {

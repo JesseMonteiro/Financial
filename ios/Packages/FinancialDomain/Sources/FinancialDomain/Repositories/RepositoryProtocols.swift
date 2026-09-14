@@ -237,6 +237,20 @@ public extension BankConnectionsRepository {
     func deleteItem(id: String) async throws {}
 }
 
+public protocol MealBenefitsRepository: Sendable {
+    func fetchBenefits(force: Bool) async throws -> [MealBenefit]
+    func saveBenefit(_ benefit: MealBenefit) async throws
+    func deleteBenefit(id: String) async throws
+    func savePurchase(_ purchase: MealBenefitPurchase) async throws
+    func deletePurchase(id: String) async throws
+}
+
+public extension MealBenefitsRepository {
+    func fetchBenefits() async throws -> [MealBenefit] {
+        try await fetchBenefits(force: false)
+    }
+}
+
 public struct BankConnectionItem: Sendable, Identifiable, Hashable, Codable {
     public let id: String
     public var institutionName: String

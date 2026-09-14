@@ -8,6 +8,7 @@ import Investments
 import Loans
 import Budget
 import Goals
+import MealVouchers
 import Receivables
 import ManualExpenses
 import FinancialMoment
@@ -190,14 +191,16 @@ struct AdaptiveShell: View {
                     buildFinancialMomentDetail: composition.buildFinancialMomentDetail,
                     manageMonthlySalary: composition.manageMonthlySalary,
                 toggleManualExpensePaid: composition.toggleManualExpensePaid,
-                onCreateManualExpense: { composition.selectedRoute = .manualExpenses }
+                onCreateManualExpense: { composition.selectedRoute = .manualExpenses },
+                onOpenMealVouchers: { composition.selectedRoute = .mealVouchers }
                 )
         case .jointFinance:
             JointFinanceView(
                 repository: composition.jointRepository,
                 investments: composition.investmentsRepository,
                 toggleManualExpensePaid: composition.toggleManualExpensePaid,
-                onOpenSettings: { composition.selectedRoute = .settings }
+                onOpenSettings: { composition.selectedRoute = .settings },
+                onOpenMealVouchers: { composition.selectedRoute = .mealVouchers }
             )
         case .manualExpenses:
             ManualExpensesView(
@@ -211,6 +214,8 @@ struct AdaptiveShell: View {
             AgendaView(repository: composition.agendaRepository)
         case .goals:
             GoalsView(repository: composition.goalsRepository)
+        case .mealVouchers:
+            MealVouchersView(repository: composition.mealBenefitsRepository)
         case .reports:
             ReportsView(repository: composition.reportsRepository)
         case .bankConnections:

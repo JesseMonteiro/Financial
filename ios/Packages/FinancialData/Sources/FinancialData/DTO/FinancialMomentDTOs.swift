@@ -12,6 +12,7 @@ public struct FinancialMomentDTO: Codable, Sendable {
     public let status: MonthStatusDTO
     public let monthsStatus: [String: MonthStatusDTO]?
     public let calculationVersion: String?
+    public let mealBenefits: MealBenefitsSummaryDTO?
 
     public init(
         selectedMonth: String,
@@ -23,7 +24,8 @@ public struct FinancialMomentDTO: Codable, Sendable {
         totals: FinancialTotalsDTO,
         status: MonthStatusDTO,
         monthsStatus: [String: MonthStatusDTO]? = nil,
-        calculationVersion: String? = nil
+        calculationVersion: String? = nil,
+        mealBenefits: MealBenefitsSummaryDTO? = nil
     ) {
         self.selectedMonth = selectedMonth
         self.salary = salary
@@ -35,6 +37,46 @@ public struct FinancialMomentDTO: Codable, Sendable {
         self.status = status
         self.monthsStatus = monthsStatus
         self.calculationVersion = calculationVersion
+        self.mealBenefits = mealBenefits
+    }
+}
+
+public struct MealBenefitsSummaryDTO: Codable, Sendable {
+    public let items: [MealBenefitMomentItemDTO]
+
+    public init(items: [MealBenefitMomentItemDTO] = []) {
+        self.items = items
+    }
+}
+
+public struct MealBenefitMomentItemDTO: Codable, Sendable {
+    public let id: String
+    public let kind: String
+    public let label: String
+    public let remaining: Double
+    public let monthCredit: Double
+    public let monthSpent: Double
+    public let creditDay: Int
+    public let ownerLabel: String?
+
+    public init(
+        id: String,
+        kind: String,
+        label: String,
+        remaining: Double,
+        monthCredit: Double,
+        monthSpent: Double,
+        creditDay: Int,
+        ownerLabel: String? = nil
+    ) {
+        self.id = id
+        self.kind = kind
+        self.label = label
+        self.remaining = remaining
+        self.monthCredit = monthCredit
+        self.monthSpent = monthSpent
+        self.creditDay = creditDay
+        self.ownerLabel = ownerLabel
     }
 }
 

@@ -798,3 +798,105 @@ export async function getPluggyItemIds() {
   }
   return Array.isArray(data?.pluggy_item_ids) ? data.pluggy_item_ids.filter(Boolean) : [];
 }
+
+// --- Meal benefits (VA/VR) ---
+export async function getStoredMealBenefits() {
+  const userId = await getCurrentUserId();
+  if (!userId) return [];
+  const { data, error } = await supabase.from('meal_benefits').select('*').eq('user_id', userId);
+  if (error) {
+    console.error('Error fetching meal benefits:', error);
+    return [];
+  }
+  return (data || []).map(toCamelCase);
+}
+
+export async function saveStoredMealBenefit(benefit) {
+  const userId = await getCurrentUserId();
+  if (!userId) return;
+  const row = {
+    id: benefit.id,
+    user_id: userId,
+    kind: benefit.kind === 'VR' ? 'VR' : 'VA',
+    label: benefit.label ?? '',
+    monthly_amount: benefit.monthlyAmount ?? benefit.monthly_amount ?? 0,
+    credit_day: benefit.creditDay ?? benefit.credit_day,
+    starts_on: benefit.startsOn ?? benefit.starts_on,
+    opening_balance: benefit.openingBalance ?? benefit.opening_balance ?? 0,
+    show_in_moment: Boolean(benefit.showInMoment ?? benefit.show_in_moment),
+    updated_at: new Date().toISOString(),
+  };
+  if (benefit.createdAt || benefit.created_at) {
+    row.created_at = benefit.createdAt || benefit.created_at;
+  }
+  const { error } = await supabase
+    .from('meal_benefits')
+    .upsert(row, { onConflict: 'id' });
+  if (error) {
+    console.error('Error saving meal benefit:', error);
+    throw error;
+  }
+}
+
+export async function deleteStoredMealBenefit(id) {
+  const userId = await getCurrentUserId();
+  if (!userId) return;
+  const { error } = await supabase
+    .from('meal_benefits')
+    .delete()
+    .eq('user_id', userId)
+    .eq('id', id);
+  if (error) {
+    console.error('Error deleting meal benefit:', error);
+    throw error;
+  }
+}
+
+export async function getStoredMealBenefitPurchases() {
+  const userId = await getCurrentUserId();
+  if (!userId) return [];
+  const { data, error } = await supabase.from('meal_benefit_purchases').select('*').eq('user_id', userId);
+  if (error) {
+    console.error('Error fetching meal benefit purchases:', error);
+    return [];
+  }
+  return (data || []).map(toCamelCase);
+}
+
+export async function saveStoredMealBenefitPurchase(purchase) {
+  const userId = await getCurrentUserId();
+  if (!userId) return;
+  const row = {
+    id: purchase.id,
+    user_id: userId,
+    benefit_id: purchase.benefitId ?? purchase.benefit_id,
+    amount: purchase.amount ?? 0,
+    purchased_at: purchase.purchasedAt ?? purchase.purchased_at,
+    description: purchase.description ?? '',
+    updated_at: new Date().toISOString(),
+  };
+  if (purchase.createdAt || purchase.created_at) {
+    row.created_at = purchase.createdAt || purchase.created_at;
+  }
+  const { error } = await supabase
+    .from('meal_benefit_purchases')
+    .upsert(row, { onConflict: 'id' });
+  if (error) {
+    console.error('Error saving meal benefit purchase:', error);
+    throw error;
+  }
+}
+
+export async function deleteStoredMealBenefitPurchase(id) {
+  const userId = await getCurrentUserId();
+  if (!userId) return;
+  const { error } = await supabase
+    .from('meal_benefit_purchases')
+    .delete()
+    .eq('user_id', userId)
+    .eq('id', id);
+  if (error) {
+    console.error('Error deleting meal benefit purchase:', error);
+    throw error;
+  }
+}

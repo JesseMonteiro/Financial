@@ -8,6 +8,7 @@ import UIKit
 public struct FinancialMomentView: View {
     @State private var viewModel: FinancialMomentDetailViewModel
     private let onCreateManualExpense: (() -> Void)?
+    private let onOpenMealVouchers: (() -> Void)?
 
     private var isPhoneIdiom: Bool {
         #if canImport(UIKit)
@@ -21,7 +22,8 @@ public struct FinancialMomentView: View {
         buildFinancialMomentDetail: any BuildFinancialMomentDetailUseCase,
         manageMonthlySalary: any ManageMonthlySalaryUseCase,
         toggleManualExpensePaid: any ToggleManualExpensePaidUseCase,
-        onCreateManualExpense: (() -> Void)? = nil
+        onCreateManualExpense: (() -> Void)? = nil,
+        onOpenMealVouchers: (() -> Void)? = nil
     ) {
         _viewModel = State(initialValue: FinancialMomentDetailViewModel(
             buildFinancialMomentDetail: buildFinancialMomentDetail,
@@ -29,11 +31,13 @@ public struct FinancialMomentView: View {
             toggleManualExpensePaid: toggleManualExpensePaid
         ))
         self.onCreateManualExpense = onCreateManualExpense
+        self.onOpenMealVouchers = onOpenMealVouchers
     }
 
     public init() {
         _viewModel = State(initialValue: FinancialMomentDetailViewModel())
         self.onCreateManualExpense = nil
+        self.onOpenMealVouchers = nil
     }
 
     public var body: some View {
@@ -74,10 +78,12 @@ public struct FinancialMomentView: View {
                     if isPhoneIdiom {
                         mobileKPIs(detail)
                         utilizationCard(detail)
+                        mealBenefitsCards(detail)
                         mobileContentStack(detail)
                     } else {
                         desktopKPIs(detail)
                         utilizationCard(detail)
+                        mealBenefitsCards(detail)
                         desktopContentColumns(detail)
                     }
                 }
@@ -241,6 +247,44 @@ public struct FinancialMomentView: View {
                 Text("Suas despesas consomem \(percent)% do seu orçamento líquido. Restam \(Money(amount: max(0, detail.totals.netBalance.amount)).formatted()) livres para investimento ou reserva.")
                     .font(.caption2)
                     .foregroundStyle(FinancialColors.textMuted)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func mealBenefitsCards(_ detail: FinancialMomentDetail) -> some View {
+        if !detail.mealBenefits.isEmpty {
+            ForEach(detail.mealBenefits.items) { item in
+                GlassCard(title: item.kind.title, subtitle: item.label) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Saldo")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(FinancialColors.textMuted)
+                                Text(item.remaining.formatted())
+                                    .font(.title2.weight(.bold))
+                            }
+                            Spacer()
+                            Image(systemName: "fork.knife")
+                                .foregroundStyle(FinancialColors.textMuted)
+                        }
+                        Text("Crédito dia \(item.creditDay) · gasto no mês \(item.monthSpent.formatted())")
+                            .font(.caption)
+                            .foregroundStyle(FinancialColors.textMuted)
+                        if let owner = item.ownerLabel, !owner.isEmpty {
+                            Text(owner)
+                                .font(.caption2)
+                                .foregroundStyle(FinancialColors.textMuted)
+                        }
+                        if onOpenMealVouchers != nil {
+                            Button("Gerenciar VA/VR") {
+                                onOpenMealVouchers?()
+                            }
+                            .font(.caption.weight(.semibold))
+                        }
+                    }
+                }
             }
         }
     }

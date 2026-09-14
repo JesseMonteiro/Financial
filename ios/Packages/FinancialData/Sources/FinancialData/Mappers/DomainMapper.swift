@@ -280,7 +280,8 @@ public enum DomainMapper {
             manualExpenses: dto.manualExpenses,
             totals: dto.totals,
             status: dto.status,
-            monthsStatus: dto.monthsStatus
+            monthsStatus: dto.monthsStatus,
+            mealBenefits: dto.mealBenefits
         )
         return JointMomentSnapshot(
             link: jointLink(dto.link),
@@ -356,6 +357,30 @@ public enum DomainMapper {
             target: money(amount: dto.targetAmount),
             current: money(amount: dto.currentAmount),
             deadline: dto.deadline.flatMap(InstantDate.init(isoString:))
+        )
+    }
+
+    static func mealBenefit(_ dto: DomainMealBenefitRowDTO, purchases: [MealBenefitPurchase] = []) -> MealBenefit {
+        MealBenefit(
+            id: dto.id,
+            kind: MealBenefitKind(rawValue: dto.kind ?? "VA") ?? .va,
+            label: dto.label ?? "",
+            monthlyAmount: money(amount: dto.monthlyAmount),
+            creditDay: dto.creditDay,
+            startsOn: dto.startsOn.flatMap { InstantDate(isoString: String($0.prefix(10))) } ?? InstantDate(from: Date()),
+            openingBalance: money(amount: dto.openingBalance),
+            showInMoment: dto.showInMoment,
+            purchases: purchases
+        )
+    }
+
+    static func mealPurchase(_ dto: DomainMealPurchaseRowDTO) -> MealBenefitPurchase {
+        MealBenefitPurchase(
+            id: dto.id,
+            benefitId: dto.benefitId,
+            amount: money(amount: dto.amount),
+            purchasedAt: dto.purchasedAt.flatMap { InstantDate(isoString: String($0.prefix(10))) } ?? InstantDate(from: Date()),
+            description: dto.description ?? ""
         )
     }
 
@@ -600,7 +625,25 @@ public enum DomainMapper {
             manualExpenses: manualExpensesSummary(dto.manualExpenses),
             totals: financialTotals(dto.totals),
             status: monthStatus(dto.status),
-            monthsStatus: statuses
+            monthsStatus: statuses,
+            mealBenefits: mealBenefitsSummary(dto.mealBenefits)
+        )
+    }
+
+    public static func mealBenefitsSummary(_ dto: MealBenefitsSummaryDTO?) -> MealBenefitsSummary {
+        MealBenefitsSummary(items: (dto?.items ?? []).map(mealBenefitMomentItem))
+    }
+
+    public static func mealBenefitMomentItem(_ dto: MealBenefitMomentItemDTO) -> MealBenefitMomentItem {
+        MealBenefitMomentItem(
+            id: dto.id,
+            kind: MealBenefitKind(rawValue: dto.kind) ?? .va,
+            label: dto.label,
+            remaining: money(dto.remaining),
+            monthCredit: money(dto.monthCredit),
+            monthSpent: money(dto.monthSpent),
+            creditDay: dto.creditDay,
+            ownerLabel: dto.ownerLabel
         )
     }
 

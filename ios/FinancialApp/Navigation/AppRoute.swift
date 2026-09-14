@@ -16,6 +16,7 @@ public enum AppRoute: String, CaseIterable, Identifiable, Hashable, Sendable {
     case subscriptions
     case agenda
     case goals
+    case mealVouchers
     case reports
     case bankConnections
     case settings
@@ -39,6 +40,7 @@ public enum AppRoute: String, CaseIterable, Identifiable, Hashable, Sendable {
         case .subscriptions: return "Assinaturas"
         case .agenda: return "Agenda"
         case .goals: return "Metas"
+        case .mealVouchers: return "VA / VR"
         case .reports: return "Relatórios"
         case .bankConnections: return "Conexões Bancárias"
         case .settings: return "Configurações"
@@ -62,6 +64,7 @@ public enum AppRoute: String, CaseIterable, Identifiable, Hashable, Sendable {
         case .subscriptions: return "Assinaturas"
         case .agenda: return "Agenda"
         case .goals: return "Metas"
+        case .mealVouchers: return "VA/VR"
         case .reports: return "Relatórios"
         case .bankConnections: return "Conectar"
         case .settings: return "Ajustes"
@@ -85,6 +88,7 @@ public enum AppRoute: String, CaseIterable, Identifiable, Hashable, Sendable {
         case .subscriptions: return "arrow.triangle.2.circlepath"
         case .agenda: return "calendar"
         case .goals: return "target"
+        case .mealVouchers: return "fork.knife"
         case .reports: return "chart.bar.xaxis"
         case .bankConnections: return "link"
         case .settings: return "gearshape"
@@ -106,7 +110,7 @@ public enum AppRoute: String, CaseIterable, Identifiable, Hashable, Sendable {
     public static let sidebarItems: [AppRoute] = [
         .dashboard, .accounts, .transactions, .investments, .creditCards,
         .loans, .budget, .receivables, .financialMoment, .jointFinance,
-        .manualExpenses, .subscriptions, .agenda, .goals, .reports,
+        .manualExpenses, .subscriptions, .agenda, .goals, .mealVouchers, .reports,
         .bankConnections, .settings
     ]
 
@@ -138,6 +142,7 @@ public enum AppRoute: String, CaseIterable, Identifiable, Hashable, Sendable {
         case "subscriptions": return .subscriptions
         case "agenda", "calendar": return .agenda
         case "goals": return .goals
+        case "meal-vouchers": return .mealVouchers
         case "reports": return .reports
         case "connect": return .bankConnections
         case "settings": return .settings

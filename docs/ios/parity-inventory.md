@@ -30,7 +30,7 @@ Source of truth for web ↔ iOS parity. Every web route in [`src/App.jsx`](../..
 
 ---
 
-## Primary product routes (18 areas)
+## Primary product routes (19 areas)
 
 | # | Web path | Label | Web page | iOS feature module | Primary screen | Status |
 | --- | ---: | --- | --- | --- | --- | --- |
@@ -48,6 +48,7 @@ Source of truth for web ↔ iOS parity. Every web route in [`src/App.jsx`](../..
 | 12 | `/subscriptions` | Assinaturas | `Subscriptions.jsx` | `Subscriptions` | `SubscriptionsView` (derivado no cliente) | 🟡 |
 | 13 | `/agenda` (`/calendar` → redirect) | Agenda | `Agenda.jsx` | `Agenda` | `AgendaView` (derivado no cliente) | 🟡 |
 | 14 | `/goals` | Metas | `Goals.jsx` | `Goals` | `GoalsView` CRUD `/v1/domain/goals` | 🟡 |
+| 19 | `/meal-vouchers` | VA / VR | `MealVouchers.jsx` | `MealVouchers` | `MealVouchersView` CRUD `/v1/domain/meal-benefits` | 🟡 |
 | 15 | `/reports` | Relatórios | `Reports.jsx` | `Reports` | `ReportsView` + CSV | 🟡 |
 | 16 | `/connect` | Conexões Bancárias | `ConnectBank.jsx` | `BankConnections` | lista, sync, Pluggy Connect WKWebView | 🟡 |
 | 17 | `/settings` | Configurações | `Settings.jsx` | `Settings` | tema, Telegram, logout; export/delete 🚫 web | 🟡 |

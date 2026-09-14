@@ -391,6 +391,51 @@ public struct BFFClient: Sendable {
         await invalidateCaches(matching: ["bff:domain:goals"])
     }
 
+    func getMealBenefits(force: Bool = false) async throws -> [DomainMealBenefitRowDTO] {
+        try await domainGet("meal-benefits", as: [DomainMealBenefitRowDTO].self, cacheKey: "bff:domain:meal-benefits", force: force)
+    }
+
+    func getMealBenefitPurchases(force: Bool = false) async throws -> [DomainMealPurchaseRowDTO] {
+        try await domainGet("meal-benefit-purchases", as: [DomainMealPurchaseRowDTO].self, cacheKey: "bff:domain:meal-benefit-purchases", force: force)
+    }
+
+    public func saveMealBenefit(_ benefit: MealBenefit) async throws {
+        let body: [String: Any] = [
+            "id": benefit.id,
+            "kind": benefit.kind.rawValue,
+            "label": benefit.label,
+            "monthly_amount": NSDecimalNumber(decimal: benefit.monthlyAmount.amount).doubleValue,
+            "credit_day": benefit.creditDay,
+            "starts_on": benefit.startsOn.isoString,
+            "opening_balance": NSDecimalNumber(decimal: benefit.openingBalance.amount).doubleValue,
+            "show_in_moment": benefit.showInMoment,
+        ]
+        try await domainWrite(path: "v1/domain/meal-benefits", method: .post, body: body)
+        await invalidateCaches(matching: ["bff:domain:meal-benefits", "bff:financial-moment:", "bff:joint:"])
+    }
+
+    public func deleteMealBenefit(id: String) async throws {
+        _ = try await api.sendRaw(APIRequest(path: "v1/domain/meal-benefits/\(id)", method: .delete))
+        await invalidateCaches(matching: ["bff:domain:meal-benefits", "bff:financial-moment:", "bff:joint:"])
+    }
+
+    public func saveMealBenefitPurchase(_ purchase: MealBenefitPurchase) async throws {
+        let body: [String: Any] = [
+            "id": purchase.id,
+            "benefit_id": purchase.benefitId,
+            "amount": NSDecimalNumber(decimal: purchase.amount.amount).doubleValue,
+            "purchased_at": purchase.purchasedAt.isoString,
+            "description": purchase.description,
+        ]
+        try await domainWrite(path: "v1/domain/meal-benefit-purchases", method: .post, body: body)
+        await invalidateCaches(matching: ["bff:domain:meal-benefit-purchases", "bff:financial-moment:", "bff:joint:"])
+    }
+
+    public func deleteMealBenefitPurchase(id: String) async throws {
+        _ = try await api.sendRaw(APIRequest(path: "v1/domain/meal-benefit-purchases/\(id)", method: .delete))
+        await invalidateCaches(matching: ["bff:domain:meal-benefit-purchases", "bff:financial-moment:", "bff:joint:"])
+    }
+
     func getReceivables(force: Bool = false) async throws -> [DomainReceivableRowDTO] {
         try await domainGet("receivables", as: [DomainReceivableRowDTO].self, cacheKey: "bff:domain:receivables", force: force)
     }

@@ -54,6 +54,8 @@ targets:
       - package: Financial
         product: Goals
       - package: Financial
+        product: MealVouchers
+      - package: Financial
         product: Receivables
       - package: Financial
         product: ManualExpenses

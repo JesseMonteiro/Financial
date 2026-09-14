@@ -10,6 +10,7 @@ import { CreditCards } from './pages/CreditCards';
 import { Loans } from './pages/Loans';
 import { Budget } from './pages/Budget';
 import { Goals } from './pages/Goals';
+import { MealVouchers } from './pages/MealVouchers';
 import { Reports } from './pages/Reports';
 import { ConnectBank } from './pages/ConnectBank';
 import { Settings } from './pages/Settings';
@@ -42,6 +43,7 @@ export default function App() {
           <Route path="loans" element={<Loans />} />
           <Route path="budget" element={<Budget />} />
           <Route path="goals" element={<Goals />} />
+          <Route path="meal-vouchers" element={<MealVouchers />} />
           <Route path="receivables" element={<Receivables />} />
           <Route path="manual-expenses" element={<ManualExpenses />} />
           <Route path="financial-moment" element={<FinancialMoment />} />

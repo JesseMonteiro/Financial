@@ -69,6 +69,7 @@ final class AppCompositionRoot {
     let loansRepository: any LoansRepository
     let budgetRepository: any BudgetRepository
     let goalsRepository: any GoalsRepository
+    let mealBenefitsRepository: any MealBenefitsRepository
     let receivablesRepository: any ReceivablesRepository
     let manualExpensesRepository: any ManualExpensesRepository
     let jointRepository: any JointFinanceRepository
@@ -124,6 +125,7 @@ final class AppCompositionRoot {
         self.loansRepository = LiveLoansRepository(bff: bff)
         self.budgetRepository = LiveBudgetRepository(bff: bff)
         self.goalsRepository = LiveGoalsRepository(bff: bff)
+        self.mealBenefitsRepository = LiveMealBenefitsRepository(bff: bff)
         self.receivablesRepository = LiveReceivablesRepository(bff: bff)
         self.manualExpensesRepository = LiveManualExpensesRepository(bff: bff)
         self.jointRepository = LiveJointFinanceRepository(bff: bff)

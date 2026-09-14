@@ -12,6 +12,7 @@ public struct FinancialMomentDetail: Sendable, Hashable {
     public var status: MonthStatus
     /// Net status per month key (`YYYY-MM`) for the timeline chips.
     public var monthsStatus: [String: MonthStatus]
+    public var mealBenefits: MealBenefitsSummary
 
     public init(
         selectedMonth: YearMonth,
@@ -22,7 +23,8 @@ public struct FinancialMomentDetail: Sendable, Hashable {
         manualExpenses: ManualExpensesSummary,
         totals: FinancialTotals,
         status: MonthStatus,
-        monthsStatus: [String: MonthStatus] = [:]
+        monthsStatus: [String: MonthStatus] = [:],
+        mealBenefits: MealBenefitsSummary = .empty
     ) {
         self.selectedMonth = selectedMonth
         self.salary = salary
@@ -33,6 +35,7 @@ public struct FinancialMomentDetail: Sendable, Hashable {
         self.totals = totals
         self.status = status
         self.monthsStatus = monthsStatus
+        self.mealBenefits = mealBenefits
     }
 }
 

@@ -13,7 +13,9 @@ export {
   getCustomAccountNames, saveCustomAccountNames,
   getCustomAccountIcons, saveCustomAccountIcons, uploadAccountIconFile, uploadCardFaceFile, deleteAccountIconFile,
   getMonthlySalaries, saveMonthlySalaries,
-  getPluggyCredentials, savePluggyCredentials, getPluggyItemIds
+  getPluggyCredentials, savePluggyCredentials, getPluggyItemIds,
+  getStoredMealBenefits, saveStoredMealBenefit, deleteStoredMealBenefit,
+  getStoredMealBenefitPurchases, saveStoredMealBenefitPurchase, deleteStoredMealBenefitPurchase,
 } from './supabaseStorage.js';
 
 const DB_NAME = 'FinanceHub_DB';

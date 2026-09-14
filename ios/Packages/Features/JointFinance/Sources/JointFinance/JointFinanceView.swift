@@ -5,12 +5,14 @@ import FinancialDomain
 public struct JointFinanceView: View {
     @State private var viewModel: JointFinanceViewModel
     private let onOpenSettings: (() -> Void)?
+    private let onOpenMealVouchers: (() -> Void)?
 
     public init(
         repository: any JointFinanceRepository,
         investments: (any InvestmentsRepository)? = nil,
         toggleManualExpensePaid: any ToggleManualExpensePaidUseCase = StubToggleManualExpensePaid(),
-        onOpenSettings: (() -> Void)? = nil
+        onOpenSettings: (() -> Void)? = nil,
+        onOpenMealVouchers: (() -> Void)? = nil
     ) {
         _viewModel = State(wrappedValue: JointFinanceViewModel(
             repository: repository,
@@ -18,6 +20,7 @@ public struct JointFinanceView: View {
             toggleManualExpensePaid: toggleManualExpensePaid
         ))
         self.onOpenSettings = onOpenSettings
+        self.onOpenMealVouchers = onOpenMealVouchers
     }
 
     public init() {
@@ -81,6 +84,7 @@ public struct JointFinanceView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     kpiGrid(detail)
                     utilizationCard(detail)
+                    mealBenefitsCards(detail)
                     salariesCard(snapshot)
                     if !detail.creditCards.isEmpty { billsCard(detail) }
                     if !detail.automaticDebits.isEmpty { debitsCard(detail) }
@@ -204,6 +208,44 @@ public struct JointFinanceView: View {
                 Text("Despesas consomem \(percent)% das entradas combinadas.")
                     .font(.caption2)
                     .foregroundStyle(FinancialColors.textMuted)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func mealBenefitsCards(_ detail: FinancialMomentDetail) -> some View {
+        if !detail.mealBenefits.isEmpty {
+            ForEach(detail.mealBenefits.items) { item in
+                GlassCard(title: item.kind.title, subtitle: item.label) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Saldo")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(FinancialColors.textMuted)
+                                Text(item.remaining.formatted())
+                                    .font(.title2.weight(.bold))
+                            }
+                            Spacer()
+                            Image(systemName: "fork.knife")
+                                .foregroundStyle(FinancialColors.textMuted)
+                        }
+                        Text("Crédito dia \(item.creditDay) · gasto no mês \(item.monthSpent.formatted())")
+                            .font(.caption)
+                            .foregroundStyle(FinancialColors.textMuted)
+                        if let owner = item.ownerLabel, !owner.isEmpty {
+                            Text(owner)
+                                .font(.caption2)
+                                .foregroundStyle(FinancialColors.textMuted)
+                        }
+                        if onOpenMealVouchers != nil {
+                            Button("Gerenciar VA/VR") {
+                                onOpenMealVouchers?()
+                            }
+                            .font(.caption.weight(.semibold))
+                        }
+                    }
+                }
             }
         }
     }
