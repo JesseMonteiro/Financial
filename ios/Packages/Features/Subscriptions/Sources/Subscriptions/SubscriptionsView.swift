@@ -17,7 +17,7 @@ public struct SubscriptionsView: View {
         Group {
             switch viewModel.state {
             case .idle, .loading:
-                BrandLoadingView()
+                PageLoadingSkeleton(style: .summaryList)
             case .empty:
                 EmptyState(
                     title: "Sem assinaturas",
@@ -30,7 +30,7 @@ public struct SubscriptionsView: View {
                 content
             }
         }
-        .navigationTitle("Assinaturas")
+        .financialPageTitle("Assinaturas")
         .refreshable { await viewModel.load(force: true) }
         .task { await viewModel.load() }
     }

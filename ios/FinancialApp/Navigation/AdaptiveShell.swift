@@ -23,7 +23,9 @@ struct AdaptiveShell: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
     @State private var selectedTab: AppRoute = .dashboard
 
-    private var phoneTabs: [AppRoute] { [.dashboard, .transactions, .creditCards, .financialMoment] }
+    private var phoneTabs: [AppRoute] {
+        AppRoute.primaryTabs(hasJointLink: composition.hasJointLink)
+    }
 
     private var visibleSidebar: [AppRoute] {
         AppRoute.sidebarItems(hasJointLink: composition.hasJointLink)
@@ -43,6 +45,14 @@ struct AdaptiveShell: View {
         .onChange(of: composition.hasJointLink) { _, hasLink in
             if !hasLink, composition.selectedRoute == .jointFinance {
                 composition.selectedRoute = .more
+            }
+            // 4th tab swaps joint ↔ manuals; keep selection valid for TabView tags.
+            if selectedTab != .more, !phoneTabs.contains(selectedTab) {
+                selectedTab = phoneTabs.contains(composition.selectedRoute)
+                    ? composition.selectedRoute
+                    : .more
+            } else {
+                syncTab(with: composition.selectedRoute)
             }
         }
     }
@@ -67,17 +77,30 @@ struct AdaptiveShell: View {
             }
             .tag(AppRoute.more)
         }
+        .id(composition.hasJointLink ? "tabs-joint" : "tabs-solo")
         .toolbarBackground(.visible, for: .tabBar)
         .onAppear { syncTab(with: composition.selectedRoute) }
         .onChange(of: composition.selectedRoute) { _, route in
             syncTab(with: route)
+        }
+        .onChange(of: selectedTab) { _, tab in
+            if phoneTabs.contains(tab) {
+                composition.selectedRoute = tab
+            } else if tab == .more,
+                      phoneTabs.contains(composition.selectedRoute) {
+                composition.selectedRoute = .more
+            }
         }
     }
 
     @ViewBuilder
     private var moreStack: some View {
         if phoneTabs.contains(composition.selectedRoute) || composition.selectedRoute == .more {
-            MoreMenuView(selection: $composition.selectedRoute, routes: visibleSidebar)
+            MoreMenuView(
+                selection: $composition.selectedRoute,
+                routes: visibleSidebar,
+                primaryTabs: phoneTabs
+            )
         } else {
             destination(for: composition.selectedRoute)
                 .toolbar {
@@ -132,7 +155,8 @@ struct AdaptiveShell: View {
         case .accounts:
             AccountsView(
                 repository: composition.accountsRepository,
-                onConnect: { composition.selectedRoute = .bankConnections }
+                onConnect: { composition.selectedRoute = .bankConnections },
+                onInvestments: { composition.selectedRoute = .investments }
             )
         case .transactions:
             TransactionsView(
@@ -178,7 +202,8 @@ struct AdaptiveShell: View {
         case .manualExpenses:
             ManualExpensesView(
                 repository: composition.manualExpensesRepository,
-                accounts: composition.accountsRepository
+                accounts: composition.accountsRepository,
+                togglePaid: composition.toggleManualExpensePaid
             )
         case .subscriptions:
             SubscriptionsView(repository: composition.subscriptionsRepository)
@@ -201,7 +226,11 @@ struct AdaptiveShell: View {
                 onJointChanged: { Task { await composition.refreshJointNav() } }
             )
         case .more:
-            MoreMenuView(selection: $composition.selectedRoute, routes: visibleSidebar)
+            MoreMenuView(
+                selection: $composition.selectedRoute,
+                routes: visibleSidebar,
+                primaryTabs: phoneTabs
+            )
         }
     }
 }
@@ -209,11 +238,11 @@ struct AdaptiveShell: View {
 private struct MoreMenuView: View {
     @Binding var selection: AppRoute
     let routes: [AppRoute]
+    let primaryTabs: [AppRoute]
 
     private var extras: [AppRoute] {
-        routes.filter {
-        ![AppRoute.dashboard, .transactions, .creditCards, .financialMoment].contains($0)
-        }
+        let primary = Set(primaryTabs)
+        return routes.filter { !primary.contains($0) }
     }
 
     var body: some View {
@@ -224,6 +253,6 @@ private struct MoreMenuView: View {
                 Label(route.title, systemImage: route.systemImage)
             }
         }
-        .navigationTitle("Mais")
+        .financialPageTitle("Mais")
     }
 }

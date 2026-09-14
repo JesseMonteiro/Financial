@@ -31,10 +31,10 @@ export function v1Ok(data: unknown, req: Request, status = 200): Response {
   return jsonResponse(
     {
       data,
-    meta: {
-      calculationVersion: CALCULATION_VERSION,
+      meta: {
+        calculationVersion: CALCULATION_VERSION,
         requestId,
-      generatedAt: new Date().toISOString(),
+        generatedAt: new Date().toISOString(),
       },
     },
     status,

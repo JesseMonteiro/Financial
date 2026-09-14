@@ -63,11 +63,11 @@ export async function handleDomainV1(
 
   if (method === "POST") {
     const row = { ...(body as Record<string, unknown>), user_id: auth.user.id };
-    const conflict = table === "budgets" ? "user_id,category" : row.id ? "id" : null;
-    const query = conflict
-      ? auth.supabase.from(table).upsert(row, { onConflict: conflict }).select("*").single()
-      : auth.supabase.from(table).insert(row).select("*").single();
-    const { data, error } = await query;
+    const { data, error } = await auth.supabase
+      .from(table)
+      .upsert(row, { onConflict: "id" })
+      .select("*")
+      .single();
     if (error) return v1Err(error.message, 500, req);
     return v1Ok(data, req, 201);
   }
@@ -120,7 +120,6 @@ async function handleProfile(
       "monthly_salaries",
       "custom_account_names",
       "custom_account_icons",
-      "telegram_chat_id",
     ];
     const patch: Record<string, unknown> = { id: userId };
     for (const key of allowed) {

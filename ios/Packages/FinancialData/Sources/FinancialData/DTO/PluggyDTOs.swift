@@ -44,6 +44,10 @@ public struct PluggyAccountDTO: Decodable, Sendable {
     public let currencyCode: String?
     public let marketingName: String?
     public let itemId: String?
+    public let number: String?
+    public let updatedAt: String?
+    public let bankData: PluggyBankDataDTO?
+    public let creditData: PluggyCreditDataDTO?
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -54,11 +58,139 @@ public struct PluggyAccountDTO: Decodable, Sendable {
         currencyCode = try c.decodeIfPresent(String.self, forKey: .currencyCode)
         marketingName = try c.decodeIfPresent(String.self, forKey: .marketingName)
         itemId = try c.decodeIfPresent(String.self, forKey: .itemId)
+        number = try c.decodeIfPresent(String.self, forKey: .number)
+        updatedAt = try c.decodeIfPresent(String.self, forKey: .updatedAt)
+        bankData = try c.decodeIfPresent(PluggyBankDataDTO.self, forKey: .bankData)
+        creditData = try c.decodeIfPresent(PluggyCreditDataDTO.self, forKey: .creditData)
         balance = Self.decodeDecimal(c, forKey: .balance) ?? 0
     }
 
     private enum CodingKeys: String, CodingKey {
         case id, name, type, subtype, balance, currencyCode, marketingName, itemId
+        case number, updatedAt, bankData, creditData
+    }
+
+    private static func decodeDecimal(_ c: KeyedDecodingContainer<CodingKeys>, forKey key: CodingKeys) -> Decimal? {
+        if let d = try? c.decode(Decimal.self, forKey: key) { return d }
+        if let d = try? c.decode(Double.self, forKey: key) {
+            return Decimal(string: String(d)) ?? Decimal(d)
+        }
+        if let s = try? c.decode(String.self, forKey: key) { return Decimal(string: s) }
+        return nil
+    }
+}
+
+public struct PluggyBankDataDTO: Decodable, Sendable {
+    public let transferNumber: String?
+    public let closingBalance: Decimal?
+    public let automaticallyInvestedBalance: Decimal?
+    public let overdraftContractedLimit: Decimal?
+    public let overdraftUsedLimit: Decimal?
+    public let unarrangedOverdraftAmount: Decimal?
+    public let institutionName: String?
+    public let primaryColor: String?
+    public let reservedBalances: [PluggyReservedBalanceDTO]?
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        transferNumber = try c.decodeIfPresent(String.self, forKey: .transferNumber)
+        closingBalance = Self.decodeDecimal(c, forKey: .closingBalance)
+        automaticallyInvestedBalance = Self.decodeDecimal(c, forKey: .automaticallyInvestedBalance)
+        overdraftContractedLimit = Self.decodeDecimal(c, forKey: .overdraftContractedLimit)
+        overdraftUsedLimit = Self.decodeDecimal(c, forKey: .overdraftUsedLimit)
+        unarrangedOverdraftAmount = Self.decodeDecimal(c, forKey: .unarrangedOverdraftAmount)
+        institutionName = try c.decodeIfPresent(String.self, forKey: .institutionName)
+        primaryColor = try c.decodeIfPresent(String.self, forKey: .primaryColor)
+        reservedBalances = try c.decodeIfPresent([PluggyReservedBalanceDTO].self, forKey: .reservedBalances)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case transferNumber, closingBalance, automaticallyInvestedBalance
+        case overdraftContractedLimit, overdraftUsedLimit, unarrangedOverdraftAmount
+        case institutionName, primaryColor, reservedBalances
+    }
+
+    private static func decodeDecimal(_ c: KeyedDecodingContainer<CodingKeys>, forKey key: CodingKeys) -> Decimal? {
+        if let d = try? c.decode(Decimal.self, forKey: key) { return d }
+        if let d = try? c.decode(Double.self, forKey: key) {
+            return Decimal(string: String(d)) ?? Decimal(d)
+        }
+        if let s = try? c.decode(String.self, forKey: key) { return Decimal(string: s) }
+        return nil
+    }
+
+    public var reservedTotal: Decimal {
+        (reservedBalances ?? []).reduce(0) { $0 + $1.totalAmount }
+    }
+}
+
+public struct PluggyReservedBalanceDTO: Decodable, Sendable {
+    public let identification: String?
+    public let name: String?
+    public let availableAmounts: [PluggyAvailableAmountDTO]?
+
+    public var totalAmount: Decimal {
+        (availableAmounts ?? []).reduce(0) { partial, entry in
+            partial + (entry.amount ?? 0)
+        }
+    }
+}
+
+public struct PluggyAvailableAmountDTO: Decodable, Sendable {
+    public let amount: Decimal?
+    public let currencyCode: String?
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        currencyCode = try c.decodeIfPresent(String.self, forKey: .currencyCode)
+        if let d = try? c.decode(Decimal.self, forKey: .amount) {
+            amount = d
+        } else if let d = try? c.decode(Double.self, forKey: .amount) {
+            amount = Decimal(string: String(d)) ?? Decimal(d)
+        } else if let s = try? c.decode(String.self, forKey: .amount) {
+            amount = Decimal(string: s)
+        } else {
+            amount = nil
+        }
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case amount, currencyCode
+    }
+}
+
+public struct PluggyCreditDataDTO: Decodable, Sendable {
+    public let level: String?
+    public let brand: String?
+    public let balanceCloseDate: String?
+    public let balanceDueDate: String?
+    public let availableCreditLimit: Decimal?
+    public let creditLimit: Decimal?
+    public let isLimitFlexible: Bool?
+    public let status: String?
+    public let holderType: String?
+    public let number: String?
+    public let institutionName: String?
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        level = try c.decodeIfPresent(String.self, forKey: .level)
+        brand = try c.decodeIfPresent(String.self, forKey: .brand)
+        balanceCloseDate = try c.decodeIfPresent(String.self, forKey: .balanceCloseDate)
+        balanceDueDate = try c.decodeIfPresent(String.self, forKey: .balanceDueDate)
+        isLimitFlexible = try c.decodeIfPresent(Bool.self, forKey: .isLimitFlexible)
+        status = try c.decodeIfPresent(String.self, forKey: .status)
+        holderType = try c.decodeIfPresent(String.self, forKey: .holderType)
+        number = try c.decodeIfPresent(String.self, forKey: .number)
+        institutionName = try c.decodeIfPresent(String.self, forKey: .institutionName)
+        availableCreditLimit = Self.decodeDecimal(c, forKey: .availableCreditLimit)
+        creditLimit = Self.decodeDecimal(c, forKey: .creditLimit)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case level, brand, balanceCloseDate, balanceDueDate
+        case availableCreditLimit, creditLimit, isLimitFlexible
+        case status, holderType, number, institutionName
     }
 
     private static func decodeDecimal(_ c: KeyedDecodingContainer<CodingKeys>, forKey key: CodingKeys) -> Decimal? {

@@ -92,7 +92,7 @@ async function fetchCreditAccounts(client: PluggyClient): Promise<Record<string,
     try {
       const [d, item] = await Promise.all([
         pluggyJson(client, "/accounts", { params: { itemId: iid } }) as Promise<{
-        results?: Record<string, unknown>[];
+          results?: Record<string, unknown>[];
         }>,
         pluggyJson(client, `/items/${iid}`).catch(() => null) as Promise<{
           connector?: { name?: string };

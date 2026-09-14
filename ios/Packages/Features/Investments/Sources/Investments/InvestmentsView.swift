@@ -25,7 +25,7 @@ public struct InvestmentsView: View {
         Group {
             switch viewModel.state {
             case .idle, .loading:
-                BrandLoadingView()
+                PageLoadingSkeleton(style: .summaryList)
             case .empty:
                 EmptyState(
                     title: "Sem investimentos",
@@ -38,7 +38,7 @@ public struct InvestmentsView: View {
                 content
             }
         }
-        .navigationTitle("Investimentos")
+        .financialPageTitle("Investimentos")
         .refreshable { await viewModel.load(force: true) }
         .task(id: viewModel.scope) { await viewModel.load() }
         .toolbar {

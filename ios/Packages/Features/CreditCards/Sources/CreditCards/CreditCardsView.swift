@@ -34,7 +34,7 @@ public struct CreditCardsView: View {
             Group {
                 switch viewModel.state {
                 case .idle, .loading:
-                    BrandLoadingView()
+                    PageLoadingSkeleton(style: .creditCards)
                 case .empty:
                     EmptyState(
                         title: "Nenhum cartão",
@@ -48,10 +48,7 @@ public struct CreditCardsView: View {
                 }
             }
         }
-        .navigationTitle("Cartões de Crédito")
-        #if os(iOS)
-        .navigationBarTitleDisplayMode(.large)
-        #endif
+        .financialPageTitle("Cartões de Crédito")
         .refreshable { await viewModel.load(force: true) }
         .task { await viewModel.load() }
         .toolbar {
@@ -159,9 +156,8 @@ public struct CreditCardsView: View {
                 }
                 statement
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 16)
-            .padding(.bottom, 24)
+            .financialPageGutter()
+            .containerRelativeFrame(.horizontal)
         }
         .contentMargins(.horizontal, 0, for: .scrollContent)
         .contentMargins(.horizontal, 0, for: .scrollIndicators)
@@ -182,7 +178,6 @@ public struct CreditCardsView: View {
                     .foregroundStyle(FinancialColors.textSecondary)
             }
         }
-        .padding(.top, 4)
     }
 
     private func faceStyle(for card: CreditCardSummary) -> CardFaceStyle {
@@ -197,7 +192,7 @@ public struct CreditCardsView: View {
 
     private var cardCarousel: some View {
         VStack(spacing: 10) {
-            ScrollView(.horizontal, showsIndicators: false) {
+            IsolatedHScroll(height: CreditCardFaceMetrics.size.height + 16) {
                 HStack(spacing: 12) {
                     CreditAllCardsChip(
                         count: viewModel.cards.count,
@@ -206,6 +201,7 @@ public struct CreditCardsView: View {
                     ) {
                         viewModel.selectCard(CreditCardsScreen.allCardsId)
                     }
+                    .focusEffectDisabled()
 
                     ForEach(viewModel.cards) { card in
                         Button {
@@ -224,12 +220,16 @@ public struct CreditCardsView: View {
                             )
                         }
                         .buttonStyle(.plain)
+                        .focusEffectDisabled()
                     }
                 }
                 .padding(.vertical, 8)
+                // Rest position aligns with page gutter; scroll can still reach screen edges.
+                .padding(.horizontal, PageLayout.gutter)
             }
+            // Edge-to-edge like Momento / Conta conjunta — only the faces, not the title above.
+            .padding(.horizontal, -PageLayout.gutter)
             .frame(maxWidth: .infinity)
-            .frame(height: CreditCardFaceMetrics.size.height + 16)
 
             HStack(spacing: 6) {
                 circleDot(active: viewModel.isAllCards)
@@ -290,25 +290,77 @@ public struct CreditCardsView: View {
 
     private var billStrip: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack {
+            HStack(alignment: .center, spacing: 8) {
                 SectionHeader("Seletor de faturas")
-                Spacer()
-                if let openKey = viewModel.period.openDueKey, viewModel.activeBillKey != openKey {
-                    Button("Fatura atual") {
-                        viewModel.selectBill(openKey)
+                Spacer(minLength: 0)
+                if !viewModel.isViewingCurrentMonthBill,
+                   viewModel.currentMonthBillKey != nil {
+                    Button("atual") {
+                        viewModel.selectCurrentMonthBill()
                     }
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(FinancialColors.primary)
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
                 }
             }
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 10) {
-                    ForEach(viewModel.period.bills) { bill in
-                        billChip(bill)
+            GeometryReader { geo in
+                let chipWidth: CGFloat = 185
+                let sideInset = max(0, (geo.size.width - chipWidth) / 2)
+
+                ScrollView(.horizontal, showsIndicators: false) {
+                    ScrollViewReader { proxy in
+                        HStack(spacing: 10) {
+                            ForEach(viewModel.period.bills) { bill in
+                                billChip(bill)
+                                    .id(bill.dueMonth)
+                            }
+                        }
+                        .padding(.horizontal, sideInset)
+                        .onAppear {
+                            scrollBillStrip(proxy, to: viewModel.activeBillKey, animated: false)
+                        }
+                        .onChange(of: viewModel.activeBillKey) { _, newKey in
+                            scrollBillStrip(proxy, to: newKey, animated: true)
+                        }
+                        .onChange(of: viewModel.selectedCardId) { _, _ in
+                            // Same month key across cards won't fire activeBillKey onChange —
+                            // re-center after the new card's strip lays out.
+                            scrollBillStrip(proxy, to: viewModel.activeBillKey, animated: true, deferLayout: true)
+                        }
                     }
                 }
+                .contentMargins(.horizontal, 0, for: .scrollContent)
+                .contentMargins(.horizontal, 0, for: .scrollIndicators)
+                .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
             }
+            .frame(height: 148)
+            .padding(.horizontal, -PageLayout.gutter)
+            .frame(maxWidth: .infinity)
+        }
+    }
+
+    private func scrollBillStrip(
+        _ proxy: ScrollViewProxy,
+        to key: String,
+        animated: Bool,
+        deferLayout: Bool = false
+    ) {
+        guard !key.isEmpty else { return }
+        let run = {
+            guard viewModel.period.bills.contains(where: { $0.dueMonth == key }) else { return }
+            if animated {
+                withAnimation(.easeInOut(duration: 0.25)) {
+                    proxy.scrollTo(key, anchor: .center)
+                }
+            } else {
+                proxy.scrollTo(key, anchor: .center)
+            }
+        }
+        if deferLayout {
+            DispatchQueue.main.async(execute: run)
+        } else {
+            run()
         }
     }
 
@@ -545,6 +597,26 @@ public struct CreditCardsView: View {
             }
         }
         .padding(.vertical, 4)
+    }
+}
+
+private struct IsolatedHScroll<Content: View>: View {
+    var height: CGFloat?
+    @ViewBuilder var content: () -> Content
+
+    init(height: CGFloat? = nil, @ViewBuilder content: @escaping () -> Content) {
+        self.height = height
+        self.content = content
+    }
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            content()
+        }
+        .frame(height: height)
+        .contentMargins(.horizontal, 0, for: .scrollContent)
+        .contentMargins(.horizontal, 0, for: .scrollIndicators)
+        .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
     }
 }
 

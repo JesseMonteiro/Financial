@@ -991,16 +991,36 @@ export function getDueMonthKey(tx, officialBills = [], forecastToDueOffset = 0) 
  */
 export function isBillSettled(bill, opts = {}) {
   if (!bill) return false;
+  const status = String(bill.status || "").toUpperCase();
+  if (status === "PAID") return true;
+
   const total = Number(bill.totalAmount) || 0;
   const payments = bill.payments || [];
   if (payments.length && total > 0) {
-    const paid = payments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+    const paid = payments.reduce((s, p) => s + (Number(p?.amount) || 0), 0);
     // Exact cover only (within rounding). Over/under → fall through to tx match.
     if (Math.abs(paid - total) <= 0.05) return true;
   }
 
   const { transactions = [], officialBills = [], forecastToDueOffset = 0 } = opts;
-  if (!total || !transactions.length) return false;
+  if (!transactions.length) return false;
+
+  const billId = bill.id != null ? String(bill.id) : "";
+  const billAccountId = String(bill.accountId || bill.account_id || "");
+  const scopedTxs = billAccountId
+    ? transactions.filter((t) => !t.accountId || String(t.accountId) === billAccountId)
+    : transactions;
+
+  // Payment explicitly linked to this official bill
+  if (billId) {
+    for (const t of scopedTxs) {
+      if (!isBillPayment(t)) continue;
+      const tBillId = t.creditCardMetadata?.billId || t.billId;
+      if (tBillId != null && String(tBillId) === billId) return true;
+    }
+  }
+
+  if (!total) return false;
 
   const dueYm = ymFromIso(bill.dueDate);
   if (!dueYm) return false;
@@ -1008,7 +1028,7 @@ export function isBillSettled(bill, opts = {}) {
   const billMap = billMapFromList(officialBills);
   const nextYm = ymAdd(dueYm, 1);
 
-  for (const t of transactions) {
+  for (const t of scopedTxs) {
     if (!isBillPayment(t)) continue;
     const amt = Math.abs(txBillingAmount(t));
     if (Math.abs(amt - total) > 0.05) continue;
@@ -1181,8 +1201,8 @@ export function buildCreditCardBills({
   // Open due first — needed to remap stale PENDING out of closed cycles
   const accountIds = [
     ...new Set([
-      ...creditCards.map((c) => c.id),
-      ...transactions.map((t) => t.accountId).filter(Boolean),
+      ...creditCards.map((c) => String(c.id || '')).filter(Boolean),
+      ...transactions.map((t) => String(t.accountId || '')).filter(Boolean),
     ]),
   ];
   const openByAccount = {};
@@ -1193,9 +1213,9 @@ export function buildCreditCardBills({
   const profileByAccount = {};
   for (const accountId of accountIds) {
     const offset = offsetForAccount(accountId, transactions, officialBills, offsetCache, creditCards);
-    const acctBills = officialBills.filter((b) => b.accountId === accountId);
-    const acctTxs = transactions.filter((t) => t.accountId === accountId);
-    const cardAcc = creditCards.find((c) => c.id === accountId);
+    const acctBills = officialBills.filter((b) => String(b.accountId || b.account_id || '') === String(accountId));
+    const acctTxs = transactions.filter((t) => String(t.accountId || '') === String(accountId));
+    const cardAcc = creditCards.find((c) => String(c.id) === String(accountId));
     profileByAccount[accountId] = resolveConnectorProfile({
       account: cardAcc,
       connectorName: cardAcc?.connectorName || cardAcc?._connector,
@@ -1247,7 +1267,7 @@ export function buildCreditCardBills({
   const dueKeyForTx = (t) => {
     const offset = offsetForAccount(t.accountId, transactions, officialBills, offsetCache, creditCards);
     let key = getDueMonthKey(t, billMap, offset);
-    const openForCard = openByAccount[t.accountId] || openDueKey;
+    const openForCard = openByAccount[String(t.accountId || "")] || openByAccount[t.accountId] || openDueKey;
     // Prefer series continuity over raw forecast offset for unbound installments
     // — but only toward the open/future cycle. Anchoring PENDING to a posted
     // sibling on an old official bill pulls Bradesco parcels into a reconstructed
@@ -1398,13 +1418,14 @@ export function buildCreditCardBills({
   for (const entry of seriesList) {
     const { total, maxNum, maxDue, sample, accountId } = entry;
     const seriesKey = entry.seriesKey || installmentSeriesKey(sample);
-    const openFor = openByAccount[accountId] || openDueKey;
+    const acctKey = String(accountId || sample?.accountId || "");
+    const openFor = openByAccount[acctKey] || openByAccount[accountId] || openDueKey;
     const openHasOfficial = officialBills.some(
       (b) =>
         ymFromIso(b.dueDate) === openFor &&
-        (!accountId || !b.accountId || b.accountId === accountId)
+        (!accountId || !b.accountId || String(b.accountId) === acctKey)
     );
-    const profile = profileByAccount[accountId];
+    const profile = profileByAccount[acctKey] || profileByAccount[accountId];
     // Bradesco/Amazon only: open cycle often has no official bill and stale
     // series would otherwise project N+1 into a paid month (dropped). Nubank
     // is missing the official every cycle until close — sliding dumps last
@@ -1544,14 +1565,14 @@ export function buildCreditCardBills({
       });
       const official = officialBills.find(
         (b) =>
-          (!card.id || b.accountId === card.id) &&
+          (!card.id || String(b.accountId || b.account_id || '') === String(card.id)) &&
           ymFromIso(b.dueDate) === dueYm
       );
 
       const scopedItems = bucket.items.filter(
-        (t) => !card.id || !t.accountId || t.accountId === card.id
+        (t) => !card.id || !t.accountId || String(t.accountId) === String(card.id)
       );
-      const cardOpenKey = openByAccount[card.id] || openDueKey;
+      const cardOpenKey = openByAccount[card.id] || openByAccount[String(card.id)] || openDueKey;
       const chargeSumMode = profile?.chargeSumMode || 'signed_net';
 
       if (official) {
@@ -1637,6 +1658,7 @@ export function buildCreditCardBills({
   return {
     forecastToDueOffset: globalOffset,
     openDueKey,
+    openByAccount,
     sortedDueKeys: Object.keys(bills).filter((k) => k !== 'Outros').sort(),
     bills,
   };

@@ -412,12 +412,80 @@ public struct CompactKPICell: View {
                 .foregroundStyle(FinancialColors.textMuted)
                 .lineLimit(1)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(FinancialColors.bgSecondary)
         .overlay(alignment: .leading) {
             Rectangle().fill(accent).frame(width: 3)
         }
+    }
+}
+
+/// Compact bank / card mark for lists — mirrors web `AccountIcon`.
+public struct AccountIconView: View {
+    public let name: String
+    public var institutionName: String
+    public var marketingName: String
+    public var iconKey: String?
+    public var isCredit: Bool
+    public var size: CGFloat
+
+    public init(
+        name: String,
+        institutionName: String = "",
+        marketingName: String = "",
+        iconKey: String? = nil,
+        isCredit: Bool = false,
+        size: CGFloat = 40
+    ) {
+        self.name = name
+        self.institutionName = institutionName
+        self.marketingName = marketingName
+        self.iconKey = iconKey
+        self.isCredit = isCredit
+        self.size = size
+    }
+
+    private var style: CardFaceStyle {
+        CardFaceCatalog.style(
+            iconKey: iconKey,
+            name: name,
+            institution: institutionName,
+            marketingName: marketingName
+        )
+    }
+
+    private var corner: CGFloat { max(6, size * 0.22) }
+
+    public var body: some View {
+        Group {
+            if let assetName = style.assetName, let image = CardFaceImageLoader.image(named: assetName) {
+                image
+                    .resizable()
+                    .scaledToFit()
+                    .padding(size * 0.09)
+                    .frame(width: size, height: size)
+                    .background(Color.white)
+            } else {
+                Image(systemName: isCredit ? "creditcard.fill" : "building.columns.fill")
+                    .font(.system(size: size * 0.4, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: size, height: size)
+                    .background(
+                        LinearGradient(
+                            colors: style.gradient,
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: corner, style: .continuous)
+                .strokeBorder(FinancialColors.border, lineWidth: 1)
+        }
+        .accessibilityHidden(true)
     }
 }

@@ -20,7 +20,7 @@ public struct ReportsView: View {
         Group {
             switch viewModel.state {
             case .idle, .loading:
-                BrandLoadingView()
+                PageLoadingSkeleton(style: .dashboard)
             case .empty:
                 EmptyState(
                     title: "Sem relatório",
@@ -33,7 +33,7 @@ public struct ReportsView: View {
                 content
             }
         }
-        .navigationTitle("Relatórios")
+        .financialPageTitle("Relatórios")
         .refreshable { await viewModel.load(force: true) }
         .task(id: "\(viewModel.months.rawValue)-\(viewModel.accountId ?? "all")") {
             await viewModel.load()

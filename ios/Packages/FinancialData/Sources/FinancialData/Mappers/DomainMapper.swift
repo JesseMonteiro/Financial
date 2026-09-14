@@ -35,15 +35,61 @@ public enum DomainMapper {
         default: mappedType = .other
         }
         let currency = dto.currencyCode ?? "BRL"
+        let institution =
+            dto.bankData?.institutionName
+            ?? dto.creditData?.institutionName
+            ?? dto.name
+        let number = dto.number ?? dto.creditData?.number
+        let reserved = dto.bankData?.reservedTotal ?? 0
+        let creditLimit = dto.creditData?.creditLimit.map { money(amount: $0, currencyCode: currency) }
+        let available = dto.creditData?.availableCreditLimit.map { money(amount: $0, currencyCode: currency) }
+        let billAmount: Money? = mappedType == .credit
+            ? money(amount: abs(dto.balance), currencyCode: currency)
+            : nil
+        var updatedAt: Date?
+        if let raw = dto.updatedAt {
+            updatedAt = ISO8601DateFormatter().date(from: raw)
+                ?? ISO8601DateFormatter.withFractional.date(from: raw)
+        }
         return Account(
             id: dto.id,
             name: dto.marketingName ?? dto.name,
             type: mappedType,
             balance: money(amount: dto.balance, currencyCode: currency),
-            institutionName: dto.name,
+            institutionName: institution,
             connectorId: dto.itemId,
             isHidden: false,
-            currencyCode: currency
+            currencyCode: currency,
+            number: number,
+            marketingName: dto.marketingName,
+            isManual: false,
+            updatedAt: updatedAt,
+            billAmount: billAmount,
+            creditLimit: creditLimit,
+            availableCreditLimit: available,
+            reservedBalance: money(amount: reserved, currencyCode: currency)
+        )
+    }
+
+    public static func account(fromManual mapped: ManualAccount) -> Account {
+        let isCredit = mapped.type == .credit
+        return Account(
+            id: mapped.id,
+            name: mapped.name,
+            type: mapped.type,
+            balance: isCredit ? (mapped.billAmount ?? mapped.balance) : mapped.balance,
+            institutionName: mapped.institutionName.isEmpty ? nil : mapped.institutionName,
+            connectorId: nil,
+            isHidden: false,
+            currencyCode: mapped.balance.currencyCode,
+            isManual: true,
+            billAmount: mapped.billAmount,
+            creditLimit: mapped.creditLimit,
+            availableCreditLimit: {
+                guard isCredit, let limit = mapped.creditLimit else { return nil }
+                let bill = (mapped.billAmount ?? mapped.balance).amount
+                return Money(amount: max(0, limit.amount - bill), currencyCode: limit.currencyCode)
+            }()
         )
     }
 
@@ -311,20 +357,63 @@ public enum DomainMapper {
     static func receivable(_ dto: DomainReceivableRowDTO) -> Receivable {
         let paid = dto.paidInstallments ?? 0
         let total = max(1, dto.installments ?? 1)
+        let isContinuous = dto.isContinuous ?? false
+        let history = (dto.installmentHistory ?? []).enumerated().compactMap { index, row -> ReceivableInstallment? in
+            let number = row.installmentNumber ?? (index + 1)
+            let due = row.dueDate.flatMap { InstantDate(isoString: String($0.prefix(10))) }
+                ?? InstantDate(from: Date())
+            let amount = money(amount: abs(row.amount ?? 0))
+            let paidAt = row.paidAt.flatMap { InstantDate(isoString: String($0.prefix(10))) }
+            return ReceivableInstallment(
+                installmentNumber: number,
+                amount: amount,
+                dueDate: due,
+                paidAt: paidAt
+            )
+        }.sorted { $0.installmentNumber < $1.installmentNumber }
+
+        let synthesized: [ReceivableInstallment]
+        if history.isEmpty {
+            let per = money(amount: abs(dto.totalAmount) / Decimal(total))
+            synthesized = (1...total).map { n in
+                ReceivableInstallment(
+                    installmentNumber: n,
+                    amount: per,
+                    dueDate: InstantDate(from: Date()),
+                    paidAt: n <= paid ? InstantDate(from: Date()) : nil
+                )
+            }
+        } else {
+            synthesized = history
+        }
+
         return Receivable(
             id: dto.id,
             description: dto.description ?? "Recebível",
             amount: money(amount: dto.totalAmount),
-            isReceived: paid >= total && !(dto.isContinuous ?? false),
+            dueDate: synthesized.first?.dueDate,
+            isReceived: paid >= total && !isContinuous,
             counterparty: dto.personName,
             installments: total,
             paidInstallments: paid,
-            isContinuous: dto.isContinuous ?? false
+            isContinuous: isContinuous,
+            personColor: dto.personColor,
+            originalTotalAmount: dto.originalTotalAmount.map { money(amount: $0) },
+            linkedTransactionId: dto.linkedTransactionId,
+            linkedBillForecastDate: dto.linkedBillForecastDate,
+            notes: dto.notes,
+            installmentHistory: synthesized
         )
     }
 
     static func manualExpense(_ dto: DomainManualRowDTO) -> ManualExpense {
-        ManualExpense(
+        let paidAt: InstantDate?
+        if let raw = dto.paidAt, raw.count >= 10 {
+            paidAt = InstantDate(isoString: String(raw.prefix(10)))
+        } else {
+            paidAt = nil
+        }
+        return ManualExpense(
             id: dto.id,
             description: dto.description,
             amount: money(amount: abs(dto.amount)),
@@ -333,7 +422,11 @@ public enum DomainMapper {
             accountId: dto.accountId,
             isPaid: dto.isPaid ?? false,
             isRecurring: dto.isRecurring ?? false,
-            isContinuous: dto.isContinuous ?? false
+            isContinuous: dto.isContinuous ?? false,
+            parentId: dto.parentId,
+            originalDescription: dto.originalDescription,
+            frequency: dto.frequency,
+            paidAt: paidAt
         )
     }
 

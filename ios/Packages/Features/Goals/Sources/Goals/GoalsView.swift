@@ -18,7 +18,7 @@ public struct GoalsView: View {
         Group {
             switch viewModel.state {
             case .idle, .loading:
-                BrandLoadingView()
+                PageLoadingSkeleton(style: .list)
             case .empty:
                 EmptyState(
                     title: "Nenhuma meta",
@@ -33,7 +33,7 @@ public struct GoalsView: View {
                 content
             }
         }
-        .navigationTitle("Metas")
+        .financialPageTitle("Metas")
         .refreshable { await viewModel.load(force: true) }
         .task { await viewModel.load() }
         .toolbar {

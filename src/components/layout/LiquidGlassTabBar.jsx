@@ -2,7 +2,7 @@ import React, { useEffect } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { LayoutGroup, motion } from 'framer-motion';
 import { LogOut, X, ShieldCheck } from 'lucide-react';
-import { mobilePrimaryTabs, mobileTabPaths, getVisibleNavItems } from './navItems';
+import { getMobilePrimaryTabs, getMobileTabPaths, getVisibleNavItems } from './navItems';
 import { useScrollDirection } from '../../hooks/useScrollDirection';
 import { useAuthStore } from '../../stores/authStore';
 import { useJointStore } from '../../stores/jointStore';
@@ -21,7 +21,11 @@ function TabPill({ reduce }) {
 export function LiquidGlassTabBar({ moreOpen, onMoreOpen, onMoreClose }) {
   const { hidden } = useScrollDirection({ threshold: 10 });
   const location = useLocation();
-  const isPrimaryRoute = mobileTabPaths.includes(location.pathname);
+  const jointLink = useJointStore((s) => s.link);
+  const hasJointLink = jointLink?.status === 'active';
+  const tabPaths = getMobileTabPaths(hasJointLink);
+  const primaryTabs = getMobilePrimaryTabs(hasJointLink);
+  const isPrimaryRoute = tabPaths.includes(location.pathname);
   const showBar = !hidden || moreOpen;
   const reduce = usePrefersReducedMotion();
 
@@ -32,7 +36,7 @@ export function LiquidGlassTabBar({ moreOpen, onMoreOpen, onMoreClose }) {
           className={`liquid-tabbar ${showBar ? '' : 'liquid-tabbar--hidden'}`}
           aria-label="Navegação principal"
         >
-          {mobilePrimaryTabs.map((item) => {
+          {primaryTabs.map((item) => {
             const Icon = item.icon;
             if (item.isMore) {
               const active = moreOpen || !isPrimaryRoute;

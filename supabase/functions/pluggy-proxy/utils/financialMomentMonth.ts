@@ -7,7 +7,9 @@ import {
   isBillSettled,
   sumCycleCharges,
   resolveOfficialBillTotal,
+  ymAdd,
 } from "../creditBillPeriod.ts";
+import { resolveConnectorProfile } from "../creditConnectors/profiles.ts";
 import { automaticDebitsForMonth, isAutomaticDebitPending } from "./analytics.ts";
 import { resolveMonthSalary } from "./monthSalary.ts";
 
@@ -26,6 +28,14 @@ export interface FinancialMomentMonthOptions {
   bankAccountIds?: string[];
   bankAccountNameById?: Record<string, string>;
   creditBillPeriod?: AnyRec;
+  /** Prebuilt per-card periods (joint). Mixing every member's cards into one
+   *  buildCreditCardBills collides installment projection and drops ~future bills. */
+  periodByCardId?: Map<string, AnyRec>;
+  /**
+   * When true, reuse one shared creditBillPeriod for every card.
+   * Unsafe for joint (installment series collide). Solo may use it only as fallback.
+   */
+  preferSharedCreditPeriod?: boolean;
 }
 
 export function buildFinancialMomentMonthList(baseDate = new Date()) {
@@ -61,53 +71,104 @@ export function cardBillAmountForMonth({
   cardTransactions?: AnyRec[];
   creditBillPeriod?: AnyRec;
 }) {
+  const cardId = String(card.id || "");
+  const openKey = String(
+    creditBillPeriod?.openByAccount?.[String(cardId)]
+      || creditBillPeriod?.openByAccount?.[cardId]
+      || creditBillPeriod?.openDueKey
+      || "",
+  );
   const matchingBill = cardBills.find(
     (b) =>
-      (b.accountId === card.id || b.account_id === card.id) &&
+      String(b.accountId || b.account_id || "") === cardId &&
       String(b.dueDate || b.due_date || "").startsWith(ym),
   );
   const periodBill = creditBillPeriod?.bills?.[ym];
   const scoped = (periodBill?.items || []).filter(
     (t: AnyRec) =>
-      (!t.accountId || t.accountId === card.id) && !isBillPayment(t),
+      (!t.accountId || String(t.accountId) === cardId) && !isBillPayment(t),
   );
 
   if (matchingBill) {
-    const amount = resolveOfficialBillTotal(matchingBill, scoped, {
-      chargeSumMode: "signed_net",
-      liftOfficialToCycleCharges: false,
-      includeProjectedInOfficialTotal: true,
-      ignoreUnbackedOfficial: Boolean(creditBillPeriod?.openDueKey) &&
-        ym > creditBillPeriod.openDueKey,
+    const profile = resolveConnectorProfile({ account: card });
+    const chargeSumMode = profile.chargeSumMode || "signed_net";
+    let amount = resolveOfficialBillTotal(matchingBill, scoped, {
+      chargeSumMode,
+      liftOfficialToCycleCharges: Boolean(profile.liftOfficialToCycleCharges),
+      includeProjectedInOfficialTotal: profile.includeProjectedInOfficialTotal !== false,
+      ignoreUnbackedOfficial: Boolean(openKey) && ym > openKey,
     });
-    if (amount <= 0.05 && creditBillPeriod?.openDueKey && ym > creditBillPeriod.openDueKey) {
-      return null;
+    if (openKey && ym > openKey) {
+      const cycleAmount = sumCycleCharges(scoped, {
+        includeProjected: true,
+        chargeSumMode,
+      });
+      if (cycleAmount > amount + 0.05) amount = cycleAmount;
     }
-    return {
-      amount,
-      dueDate: String(matchingBill.dueDate || matchingBill.due_date || `${ym}-10`),
-      isPaid: isBillSettled(matchingBill, {
-        transactions: cardTransactions,
-        officialBills: cardBills,
+    if (!(amount <= 0.05 && openKey && ym > openKey)) {
+      let isPaid = isBillSettled(matchingBill, {
+        transactions: cardTransactions.filter(
+          (t: AnyRec) => !t.accountId || String(t.accountId) === cardId,
+        ),
+        officialBills: cardBills.filter(
+          (b: AnyRec) => String(b.accountId || b.account_id || "") === cardId,
+        ),
         forecastToDueOffset: creditBillPeriod?.forecastToDueOffset || 0,
-      }),
-      isFallback: false,
-    };
+      });
+      if (!isPaid && openKey) {
+        const unpaidCutoff = ymAdd(openKey, -2);
+        if (ym < unpaidCutoff) isPaid = true;
+      }
+      return {
+        amount,
+        dueDate: String(matchingBill.dueDate || matchingBill.due_date || `${ym}-10`),
+        isPaid,
+        isFallback: false,
+      };
+    }
   }
 
   if (!periodBill) return null;
 
-  const openKey = creditBillPeriod.openDueKey;
-  const includeProjected = ym >= openKey;
+  const includeProjected = !openKey || ym >= openKey;
   const amount = sumCycleCharges(scoped, { includeProjected });
   if (amount <= 0) return null;
+
+  const isPaid = Boolean(openKey) && ym < openKey;
 
   return {
     amount,
     dueDate: periodBill.dueDate || `${ym}-10`,
-    isPaid: false,
+    isPaid,
     isFallback: true,
   };
+}
+
+/** One `buildCreditCardBills` per card — required for joint (and matches web chips). */
+export function buildCreditBillPeriodByCardId(
+  creditCards: AnyRec[] = [],
+  cardTransactions: AnyRec[] = [],
+  cardBills: AnyRec[] = [],
+): Map<string, AnyRec> {
+  const periodByCardId = new Map<string, AnyRec>();
+  for (const card of creditCards) {
+    const cardId = String(card.id || "");
+    if (!cardId || periodByCardId.has(cardId)) continue;
+    periodByCardId.set(
+      cardId,
+      buildCreditCardBills({
+        transactions: cardTransactions.filter(
+          (t: AnyRec) => !t.accountId || String(t.accountId) === cardId,
+        ),
+        officialBills: cardBills.filter(
+          (b: AnyRec) => String(b.accountId || b.account_id || "") === cardId,
+        ),
+        creditCards: [card],
+        selectedCardId: card.id,
+      }),
+    );
+  }
+  return periodByCardId;
 }
 
 export function computeFinancialMomentMonth(opts: FinancialMomentMonthOptions) {
@@ -123,17 +184,27 @@ export function computeFinancialMomentMonth(opts: FinancialMomentMonthOptions) {
     bankAccountIds = [],
     bankAccountNameById = {},
     creditBillPeriod: periodIn,
+    periodByCardId: periodByCardIdIn,
+    preferSharedCreditPeriod = false,
   } = opts;
 
   if (!selectedMonth) return null;
 
+  const periodByCardId = periodByCardIdIn && periodByCardIdIn.size
+    ? periodByCardIdIn
+    : (preferSharedCreditPeriod
+      ? new Map<string, AnyRec>()
+      : buildCreditBillPeriodByCardId(creditCards, cardTransactions, cardBills));
+
   const creditBillPeriod = periodIn ||
-    buildCreditCardBills({
-      transactions: cardTransactions,
-      officialBills: cardBills,
-      creditCards,
-      selectedCardId: "all",
-    });
+    (preferSharedCreditPeriod || periodByCardId.size === 0
+      ? buildCreditCardBills({
+        transactions: cardTransactions,
+        officialBills: cardBills,
+        creditCards,
+        selectedCardId: "all",
+      })
+      : undefined);
 
   const salary = salaryOverride != null
     ? Number(salaryOverride) || 0
@@ -170,12 +241,14 @@ export function computeFinancialMomentMonth(opts: FinancialMomentMonthOptions) {
   let creditCardsTotal = 0;
 
   creditCards.forEach((card) => {
+    const cardId = String(card.id || "");
+    const cardPeriod = periodByCardId.get(cardId) || creditBillPeriod;
     const bill = cardBillAmountForMonth({
       card,
       ym: selectedMonth,
       cardBills,
       cardTransactions,
-      creditBillPeriod,
+      creditBillPeriod: cardPeriod,
     });
     if (!bill) return;
     activeBills.push({
@@ -262,7 +335,7 @@ export function computeFinancialMomentMonth(opts: FinancialMomentMonthOptions) {
   };
 }
 
-/** Net status per month for the chip strip (web parity). */
+/** Net status per month for the chip strip (web parity — one period per card). */
 export function computeFinancialMomentMonthsStatus(opts: {
   monthList?: { ym: string }[];
   salaries?: Record<string, number>;
@@ -273,6 +346,7 @@ export function computeFinancialMomentMonthsStatus(opts: {
   cardTransactions?: AnyRec[];
   bankAccountIds?: string[];
   creditBillPeriod?: AnyRec;
+  periodByCardId?: Map<string, AnyRec>;
 }): Record<string, { isPositive: boolean; net: number }> {
   const {
     monthList = [],
@@ -284,16 +358,15 @@ export function computeFinancialMomentMonthsStatus(opts: {
     cardTransactions = [],
     bankAccountIds = [],
     creditBillPeriod: periodIn,
+    periodByCardId: periodByCardIdIn,
   } = opts;
 
   const statuses: Record<string, { isPositive: boolean; net: number }> = {};
-  const creditBillPeriod = periodIn ||
-    buildCreditCardBills({
-      transactions: cardTransactions,
-      officialBills: cardBills,
-      creditCards,
-      selectedCardId: "all",
-    });
+
+  const periodByCardId = periodByCardIdIn && periodByCardIdIn.size
+    ? periodByCardIdIn
+    : buildCreditBillPeriodByCardId(creditCards, cardTransactions, cardBills);
+  const sharedPeriod = periodIn;
 
   for (const m of monthList) {
     const ym = m.ym;
@@ -312,12 +385,13 @@ export function computeFinancialMomentMonthsStatus(opts: {
 
     let creditCardsTotal = 0;
     creditCards.forEach((card) => {
+      const cardId = String(card.id || "");
       const bill = cardBillAmountForMonth({
         card,
         ym,
         cardBills,
         cardTransactions,
-        creditBillPeriod,
+        creditBillPeriod: periodByCardId.get(cardId) || sharedPeriod,
       });
       if (bill) creditCardsTotal += bill.amount;
     });

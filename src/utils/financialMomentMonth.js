@@ -5,6 +5,7 @@ import {
   sumCycleCharges,
   resolveOfficialBillTotal,
   MONTHS_PT,
+  ymAdd,
 } from './creditBillPeriod';
 import { resolveConnectorProfile } from './creditConnectors/profiles';
 import { resolveMonthSalary } from './monthSalary';
@@ -36,47 +37,76 @@ export function cardBillAmountForMonth({
   cardTransactions = [],
   creditBillPeriod,
 }) {
+  const cardId = String(card.id || '');
+  const openKey = String(
+    creditBillPeriod?.openByAccount?.[String(cardId)]
+      || creditBillPeriod?.openByAccount?.[cardId]
+      || creditBillPeriod?.openDueKey
+      || ''
+  );
   const matchingBill = cardBills.find(
-    (b) => b.accountId === card.id && String(b.dueDate || '').startsWith(ym)
+    (b) =>
+      String(b.accountId || b.account_id || '') === cardId &&
+      String(b.dueDate || '').startsWith(ym)
   );
   const periodBill = creditBillPeriod?.bills?.[ym];
   const scoped = (periodBill?.items || []).filter(
-    (t) => (!t.accountId || t.accountId === card.id) && !isBillPayment(t)
+    (t) => (!t.accountId || String(t.accountId) === cardId) && !isBillPayment(t)
   );
 
   if (matchingBill) {
     const profile = resolveConnectorProfile({ account: card });
-    const openKey = creditBillPeriod?.openDueKey || '';
-    const amount = resolveOfficialBillTotal(matchingBill, scoped, {
-      chargeSumMode: profile.chargeSumMode || 'signed_net',
+    const chargeSumMode = profile.chargeSumMode || 'signed_net';
+    let amount = resolveOfficialBillTotal(matchingBill, scoped, {
+      chargeSumMode,
       liftOfficialToCycleCharges: Boolean(profile.liftOfficialToCycleCharges),
       includeProjectedInOfficialTotal: profile.includeProjectedInOfficialTotal !== false,
       ignoreUnbackedOfficial: Boolean(openKey) && ym > openKey,
     });
-    if (amount <= 0.05 && openKey && ym > openKey) return null;
-    return {
-      amount,
-      dueDate: matchingBill.dueDate,
-      isPaid: isBillSettled(matchingBill, {
-        transactions: cardTransactions,
-        officialBills: cardBills,
+    // Future leftover official totals (Inter 50.67 with 0 txs) must not hide
+    // pending/projected cycle charges for that due month.
+    if (openKey && ym > openKey) {
+      const cycleAmount = sumCycleCharges(scoped, {
+        includeProjected: true,
+        chargeSumMode,
+      });
+      if (cycleAmount > amount + 0.05) amount = cycleAmount;
+    }
+    if (!(amount <= 0.05 && openKey && ym > openKey)) {
+      let isPaid = isBillSettled(matchingBill, {
+        transactions: cardTransactions.filter(
+          (t) => !t.accountId || String(t.accountId) === cardId
+        ),
+        officialBills: cardBills.filter(
+          (b) => String(b.accountId || b.account_id || '') === cardId
+        ),
         forecastToDueOffset: creditBillPeriod?.forecastToDueOffset || 0,
-      }),
-      isFallback: false,
-    };
+      });
+      if (!isPaid && openKey) {
+        const unpaidCutoff = ymAdd(openKey, -2);
+        if (ym < unpaidCutoff) isPaid = true;
+      }
+      return {
+        amount,
+        dueDate: matchingBill.dueDate,
+        isPaid,
+        isFallback: false,
+      };
+    }
   }
 
   if (!periodBill) return null;
 
-  const openKey = creditBillPeriod.openDueKey;
-  const includeProjected = ym >= openKey;
+  const includeProjected = !openKey || ym >= openKey;
   const amount = sumCycleCharges(scoped, { includeProjected });
   if (amount <= 0) return null;
+
+  const isPaid = Boolean(openKey) && ym < openKey;
 
   return {
     amount,
     dueDate: periodBill.dueDate || `${ym}-10`,
-    isPaid: false,
+    isPaid,
     isFallback: true,
   };
 }
@@ -153,12 +183,24 @@ export function computeFinancialMomentMonth({
   let creditCardsTotal = 0;
 
   creditCards.forEach((card) => {
+    const cardId = String(card.id || '');
+    // Per-card period so joint settlement matches solo Momento for the same card.
+    const cardPeriod = buildCreditCardBills({
+      transactions: cardTransactions.filter(
+        (t) => !t.accountId || String(t.accountId) === cardId
+      ),
+      officialBills: cardBills.filter(
+        (b) => String(b.accountId || b.account_id || '') === cardId
+      ),
+      creditCards: [card],
+      selectedCardId: card.id,
+    });
     const bill = cardBillAmountForMonth({
       card,
       ym: selectedMonth,
       cardBills,
       cardTransactions,
-      creditBillPeriod,
+      creditBillPeriod: cardPeriod,
     });
     if (!bill) return;
     activeBills.push({
@@ -244,7 +286,27 @@ export function computeFinancialMomentMonthsStatus({
   const statuses = {};
   if (skipWhileLoading) return statuses;
 
-  const creditBillPeriod =
+  // One period per card: mixing every joint card into a single buildCreditCardBills
+  // collides installment series and drops future projections (iOS surplus too high).
+  const periodByCardId = new Map();
+  for (const card of creditCards) {
+    const cardId = String(card.id || '');
+    if (!cardId || periodByCardId.has(cardId)) continue;
+    periodByCardId.set(
+      cardId,
+      buildCreditCardBills({
+        transactions: cardTransactions.filter(
+          (t) => !t.accountId || String(t.accountId) === cardId
+        ),
+        officialBills: cardBills.filter(
+          (b) => String(b.accountId || b.account_id || '') === cardId
+        ),
+        creditCards: [card],
+        selectedCardId: card.id,
+      })
+    );
+  }
+  const sharedPeriod =
     periodIn ||
     buildCreditCardBills({
       transactions: cardTransactions,
@@ -262,9 +324,10 @@ export function computeFinancialMomentMonthsStatus({
 
     let receivablesTotal = 0;
     receivables.forEach((r) => {
-      (r.installmentHistory || []).forEach((inst) => {
-        if ((inst.dueDate || '').startsWith(ym)) {
-          receivablesTotal += inst.amount;
+      (r.installmentHistory || r.installment_history || []).forEach((inst) => {
+        const due = inst.dueDate || inst.due_date || '';
+        if (String(due).startsWith(ym)) {
+          receivablesTotal += Number(inst.amount) || 0;
         }
       });
     });
@@ -273,12 +336,13 @@ export function computeFinancialMomentMonthsStatus({
 
     let creditCardsTotal = 0;
     creditCards.forEach((card) => {
+      const cardId = String(card.id || '');
       const bill = cardBillAmountForMonth({
         card,
         ym,
         cardBills,
         cardTransactions,
-        creditBillPeriod,
+        creditBillPeriod: periodByCardId.get(cardId) || sharedPeriod,
       });
       if (bill) creditCardsTotal += bill.amount;
     });

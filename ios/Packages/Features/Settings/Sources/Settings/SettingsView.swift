@@ -28,6 +28,28 @@ public struct SettingsView: View {
     }
 
     public var body: some View {
+        Group {
+            switch viewModel.state {
+            case .idle, .loading:
+                PageLoadingSkeleton(style: .form)
+            default:
+                settingsForm
+            }
+        }
+        .financialPageTitle("Configurações")
+        .task { await viewModel.load() }
+        .confirmationDialog("Desvincular conta conjunta?", isPresented: $showUnlinkConfirm) {
+            Button("Desvincular", role: .destructive) {
+                Task {
+                    await viewModel.unlinkJoint()
+                    onJointChanged?()
+                }
+            }
+            Button("Cancelar", role: .cancel) {}
+        }
+    }
+
+    private var settingsForm: some View {
         Form {
             Section("Aparência") {
                 Picker("Tema", selection: $viewModel.settings.theme) {
@@ -129,17 +151,6 @@ public struct SettingsView: View {
                 LabeledContent("Versão", value: "1.0.0")
                 LabeledContent("Cálculo de faturas", value: "1.0.0")
             }
-        }
-        .navigationTitle("Configurações")
-        .task { await viewModel.load() }
-        .confirmationDialog("Desvincular conta conjunta?", isPresented: $showUnlinkConfirm) {
-            Button("Desvincular", role: .destructive) {
-                Task {
-                    await viewModel.unlinkJoint()
-                    onJointChanged?()
-                }
-            }
-            Button("Cancelar", role: .cancel) {}
         }
     }
 }

@@ -92,10 +92,16 @@ public enum AppRoute: String, CaseIterable, Identifiable, Hashable, Sendable {
         }
     }
 
-    /// Primary iPhone tabs (matches `mobileTabPaths`).
-    public static let primaryTabs: [AppRoute] = [
-        .dashboard, .transactions, .creditCards, .financialMoment, .more
-    ]
+    /// Primary iPhone tabs (matches web `getMobileTabPaths`).
+    /// Order: Início · Cartões · Momento · Conta conjunta|Despesas · (+ Mais in the shell).
+    public static func primaryTabs(hasJointLink: Bool) -> [AppRoute] {
+        [
+            .dashboard,
+            .creditCards,
+            .financialMoment,
+            hasJointLink ? .jointFinance : .manualExpenses,
+        ]
+    }
 
     public static let sidebarItems: [AppRoute] = [
         .dashboard, .accounts, .transactions, .investments, .creditCards,

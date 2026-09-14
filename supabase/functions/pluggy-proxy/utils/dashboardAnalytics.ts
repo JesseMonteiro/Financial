@@ -462,4 +462,3 @@ export function buildBudgetCategories(
     .sort((a, b) => b.spent - a.spent)
     .slice(0, 6);
 }
-

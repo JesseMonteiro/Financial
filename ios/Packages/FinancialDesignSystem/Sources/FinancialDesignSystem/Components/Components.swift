@@ -1,4 +1,7 @@
 import SwiftUI
+#if canImport(UIKit)
+import UIKit
+#endif
 
 public struct GlassCard<Content: View>: View {
     private let title: String?
@@ -189,6 +192,58 @@ public struct PageChrome<Content: View>: View {
             FinancialColors.bgPrimary.ignoresSafeArea()
             content
         }
+    }
+}
+
+public extension View {
+    /// Large title in the navigation bar, on the same row as trailing actions.
+    func financialPageTitle(_ title: String) -> some View {
+        modifier(FinancialPageTitleModifier(title: title))
+    }
+
+    /// Side inset shared by feature pages (same as Momento Financeiro).
+    /// Top inset is 40% tighter than the side/bottom gutter so content sits closer to the nav title.
+    func financialPageGutter() -> some View {
+        padding(.horizontal, PageLayout.gutter)
+            .padding(.bottom, PageLayout.gutter)
+            .padding(.top, PageLayout.contentTop)
+    }
+}
+
+public enum PageLayout {
+    public static let gutter: CGFloat = 16
+    /// Distance from nav title to first content — 60% of `gutter` (40% tighter).
+    public static let contentTop: CGFloat = gutter * 0.6
+}
+
+private struct FinancialPageTitleModifier: ViewModifier {
+    let title: String
+
+    private var titleFont: Font {
+        #if canImport(UIKit)
+        let size = UIFont.preferredFont(forTextStyle: .largeTitle).pointSize * 0.8
+        return .system(size: size, weight: .bold)
+        #else
+        return .title.weight(.bold)
+        #endif
+    }
+
+    func body(content: Content) -> some View {
+        content
+            .navigationTitle(title)
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarRole(.editor)
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Text(title)
+                        .font(titleFont)
+                        .foregroundStyle(FinancialColors.textPrimary)
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
+                }
+            }
+            #endif
     }
 }
 
@@ -406,7 +461,10 @@ public struct WrappingHStack: Layout {
         var width: CGFloat = 0
 
         for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
+            var size = subview.sizeThatFits(.unspecified)
+            // Never demand more width than offered, otherwise the enclosing
+            // page grows wider than its container and loses its side insets.
+            size.width = min(size.width, maxWidth)
             if x > 0, x + size.width > maxWidth {
                 x = 0
                 y += rowHeight + lineSpacing
@@ -415,7 +473,7 @@ public struct WrappingHStack: Layout {
             frames.append(CGRect(origin: CGPoint(x: x, y: y), size: size))
             rowHeight = max(rowHeight, size.height)
             x += size.width + spacing
-            width = max(width, x - spacing)
+            width = min(max(width, x - spacing), maxWidth)
         }
 
         let height = y + rowHeight
@@ -464,24 +522,6 @@ public struct EmptyState: View {
         .padding()
         .frame(maxWidth: .infinity)
         .accessibilityElement(children: .combine)
-    }
-}
-
-public struct SkeletonView: View {
-    public var height: CGFloat
-    public var cornerRadius: CGFloat
-
-    public init(height: CGFloat = 20, cornerRadius: CGFloat = 8) {
-        self.height = height
-        self.cornerRadius = cornerRadius
-    }
-
-    public var body: some View {
-        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-            .fill(FinancialColors.bgTertiary)
-            .frame(height: height)
-            .redacted(reason: .placeholder)
-            .accessibilityLabel("Carregando")
     }
 }
 

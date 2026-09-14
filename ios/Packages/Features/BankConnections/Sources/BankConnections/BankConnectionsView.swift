@@ -18,7 +18,7 @@ public struct BankConnectionsView: View {
         Group {
             switch viewModel.state {
             case .idle, .loading:
-                BrandLoadingView()
+                PageLoadingSkeleton(style: .list)
             case .empty:
                 EmptyState(
                     title: "Nenhuma conexão",
@@ -33,7 +33,7 @@ public struct BankConnectionsView: View {
                 content
             }
         }
-        .navigationTitle("Conexões Bancárias")
+        .financialPageTitle("Conexões Bancárias")
         .refreshable { await viewModel.load(force: true) }
         .task { await viewModel.load() }
         .toolbar {

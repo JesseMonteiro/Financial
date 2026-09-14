@@ -90,6 +90,8 @@ final class AppCompositionRoot {
     let parseBill: any ParseBillUseCase
 
     var isAuthenticated: Bool = false
+    /// `false` until the first session restore finishes — prevents the login flash on cold start.
+    var hasBootstrapped: Bool = false
     var isOffline: Bool = false
     var selectedRoute: AppRoute = .dashboard
     var configurationWarning: String?
@@ -180,6 +182,7 @@ final class AppCompositionRoot {
         } else {
             hasJointLink = false
         }
+        hasBootstrapped = true
     }
 
     func signOut() async {

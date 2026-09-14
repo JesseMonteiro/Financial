@@ -27,7 +27,7 @@ public struct TransactionsView: View {
             Group {
                 switch viewModel.state {
                 case .idle, .loading:
-                    BrandLoadingView()
+                    PageLoadingSkeleton(style: .list)
                 case .empty:
                     EmptyState(
                         title: "Sem transações",
@@ -43,7 +43,7 @@ public struct TransactionsView: View {
                 }
             }
         }
-        .navigationTitle("Transações")
+        .financialPageTitle("Transações")
         .searchable(text: $viewModel.searchText, prompt: "Buscar descrição ou categoria")
         .refreshable { await viewModel.load(force: true) }
         .task(id: "\(viewModel.selectedMonth?.key ?? "all")-\(viewModel.selectedAccountId ?? "all")") {

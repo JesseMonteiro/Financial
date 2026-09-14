@@ -29,7 +29,7 @@ public struct JointFinanceView: View {
             Group {
                 switch viewModel.state {
                 case .idle, .loading:
-                    BrandLoadingView()
+                    PageLoadingSkeleton(style: .moment)
                 case .inactive:
                     inactiveView
                 case .failed(let message):
@@ -41,8 +41,7 @@ public struct JointFinanceView: View {
                 }
             }
         }
-        .navigationTitle("Conta conjunta")
-        .navigationBarTitleDisplayMode(.large)
+        .financialPageTitle("Conta conjunta")
         .refreshable { await viewModel.load(force: true) }
         .task(id: viewModel.selectedMonth.key) { await viewModel.load() }
     }
@@ -75,17 +74,24 @@ public struct JointFinanceView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 header(snapshot)
+                    .padding(.horizontal, PageLayout.gutter)
+
                 monthSelector(detail)
-                kpiGrid(detail)
-                utilizationCard(detail)
-                salariesCard(snapshot)
-                if !detail.creditCards.isEmpty { billsCard(detail) }
-                if !detail.automaticDebits.isEmpty { debitsCard(detail) }
-                if !detail.manualExpenses.isEmpty { manualsCard(detail) }
-                if !detail.receivables.isEmpty { receivablesCard(detail) }
-                investmentsCard()
+
+                VStack(alignment: .leading, spacing: 16) {
+                    kpiGrid(detail)
+                    utilizationCard(detail)
+                    salariesCard(snapshot)
+                    if !detail.creditCards.isEmpty { billsCard(detail) }
+                    if !detail.automaticDebits.isEmpty { debitsCard(detail) }
+                    if !detail.manualExpenses.isEmpty { manualsCard(detail) }
+                    if !detail.receivables.isEmpty { receivablesCard(detail) }
+                    investmentsCard()
+                }
+                .padding(.horizontal, PageLayout.gutter)
             }
-            .padding()
+            .padding(.top, PageLayout.contentTop)
+            .padding(.bottom, PageLayout.gutter)
         }
     }
 
@@ -103,41 +109,42 @@ public struct JointFinanceView: View {
     }
 
     private func monthSelector(_ detail: FinancialMomentDetail) -> some View {
-        GlassCard {
-            VStack(spacing: 12) {
-                if viewModel.selectedMonth != YearMonth(from: Date()) {
-                    HStack {
-                        Spacer()
-                        Button("Mês atual") { viewModel.selectCurrentMonth() }
-                            .buttonStyle(.bordered)
-                            .controlSize(.small)
-                    }
+        VStack(spacing: 12) {
+            if viewModel.selectedMonth != YearMonth(from: Date()) {
+                HStack {
+                    Spacer()
+                    Button("Mês atual") { viewModel.selectCurrentMonth() }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
                 }
-                ScrollView(.horizontal, showsIndicators: false) {
-                    ScrollViewReader { proxy in
-                        HStack(spacing: 8) {
-                            ForEach(Array(viewModel.monthOptions.enumerated()), id: \.offset) { index, month in
-                                JointMonthChip(
-                                    month: month,
-                                    status: detail.monthsStatus[month.key]
-                                        ?? (month == detail.selectedMonth ? detail.status : nil),
-                                    isSelected: index == viewModel.selectedMonthIndex,
-                                    isCurrent: month == YearMonth(from: Date())
-                                ) {
-                                    viewModel.selectMonth(at: index)
-                                }
-                                .id(index)
+                .padding(.horizontal, PageLayout.gutter)
+            }
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                ScrollViewReader { proxy in
+                    HStack(spacing: 8) {
+                        ForEach(Array(viewModel.monthOptions.enumerated()), id: \.offset) { index, month in
+                            JointMonthChip(
+                                month: month,
+                                status: detail.monthsStatus[month.key]
+                                    ?? (month == detail.selectedMonth ? detail.status : nil),
+                                isSelected: index == viewModel.selectedMonthIndex,
+                                isCurrent: month == YearMonth(from: Date())
+                            ) {
+                                viewModel.selectMonth(at: index)
                             }
+                            .id(index)
                         }
-                        .onAppear { proxy.scrollTo(viewModel.selectedMonthIndex, anchor: .center) }
-                        .onChange(of: viewModel.selectedMonthIndex) { _, newValue in
-                            withAnimation(.easeInOut(duration: 0.25)) {
-                                proxy.scrollTo(newValue, anchor: .center)
-                            }
+                    }
+                    .onAppear { proxy.scrollTo(viewModel.selectedMonthIndex, anchor: .center) }
+                    .onChange(of: viewModel.selectedMonthIndex) { _, newValue in
+                        withAnimation(.easeInOut(duration: 0.25)) {
+                            proxy.scrollTo(newValue, anchor: .center)
                         }
                     }
                 }
             }
+            .accessibilityLabel("Seletor de período")
         }
     }
 
@@ -215,7 +222,9 @@ public struct JointFinanceView: View {
                                 get: { viewModel.salaryInputs[member.id] ?? "" },
                                 set: { viewModel.salaryInputs[member.id] = $0 }
                             ))
+                            #if os(iOS)
                             .keyboardType(.decimalPad)
+                            #endif
                             .textFieldStyle(.roundedBorder)
                             Button {
                                 Task { await viewModel.saveSalary(for: member.id) }
@@ -237,33 +246,66 @@ public struct JointFinanceView: View {
     }
 
     private func billsCard(_ detail: FinancialMomentDetail) -> some View {
-        GlassCard {
-            VStack(alignment: .leading, spacing: 12) {
-                SectionHeader(
-                    "Faturas de cartão",
-                    subtitle: "Total \(detail.creditCards.total.formatted())"
-                )
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Faturas de Cartão de Crédito")
+                .font(.headline)
+                .fontWeight(.semibold)
+                .foregroundStyle(FinancialColors.textPrimary)
+
+            if detail.creditCards.isEmpty {
+                Text("Nenhuma fatura de cartão vencendo neste mês.")
+                    .font(.caption)
+                    .foregroundStyle(FinancialColors.textMuted)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 16)
+            } else {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 12) {
                         ForEach(detail.creditCards.bills) { bill in
-                            VStack(alignment: .leading, spacing: 6) {
-                                CreditCardFaceView(
-                                    name: bill.cardName,
-                                    lastFour: bill.lastFour,
-                                    amountLabel: bill.amount.formatted(),
-                                    institutionName: bill.institutionName,
-                                    marketingName: bill.marketingName,
-                                    connectorName: bill.connectorName,
-                                    iconKey: bill.iconKey,
-                                    cardFaceURL: bill.cardFaceURL,
-                                    status: bill.isPaid ? .paid : .due,
-                                    ownerLabel: bill.ownerLabel
-                                )
-                                .frame(width: 160, height: 100)
-                            }
+                            CreditCardFaceView(
+                                name: bill.cardName,
+                                lastFour: bill.lastFour,
+                                amountLabel: bill.amount.formatted(),
+                                institutionName: bill.institutionName,
+                                marketingName: bill.marketingName.isEmpty ? bill.cardName : bill.marketingName,
+                                connectorName: bill.connectorName,
+                                iconKey: bill.iconKey,
+                                cardFaceURL: bill.cardFaceURL,
+                                selected: false,
+                                status: bill.isPaid ? .paid : .due,
+                                ownerLabel: bill.ownerLabel
+                            )
                         }
                     }
+                    .padding(.vertical, 4)
+                    // Rest position aligns with page gutter; scroll can still reach screen edges.
+                    .padding(.horizontal, PageLayout.gutter)
                 }
+                .padding(.horizontal, -PageLayout.gutter)
+                .frame(maxWidth: .infinity)
+                .frame(height: CreditCardFaceMetrics.size.height + 8)
+
+                HStack {
+                    Text("Total Faturas")
+                        .font(.caption)
+                        .fontWeight(.bold)
+                    Spacer()
+                    Text(detail.creditCards.total.formatted())
+                        .font(.caption)
+                        .fontWeight(.bold)
+                        .foregroundStyle(FinancialColors.danger)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    RoundedRectangle(cornerRadius: Radius().lg, style: .continuous)
+                        .fill(Color.white.opacity(0.92))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: Radius().lg, style: .continuous)
+                        .strokeBorder(FinancialColors.border, lineWidth: 1)
+                )
             }
         }
     }
@@ -447,17 +489,23 @@ private struct JointMonthChip: View {
         return status.isPositive ? FinancialColors.success : FinancialColors.danger
     }
 
+    private var netLabel: String? {
+        guard let status else { return nil }
+        let formatted = status.net.formatted()
+        return status.isPositive ? "+\(formatted)" : formatted
+    }
+
     var body: some View {
         Button(action: onTap) {
             VStack(spacing: 2) {
                 Text(monthName)
                     .font(.caption.weight(isSelected ? .bold : .semibold))
                     .foregroundStyle(tone ?? FinancialColors.textPrimary)
-                Text("\(month.year)\(isCurrent ? " • Atual" : "")")
+                Text(verbatim: "\(month.year)\(isCurrent ? " • Atual" : "")")
                     .font(.system(size: 10))
                     .foregroundStyle(FinancialColors.textMuted)
-                if let status {
-                    Text(status.isPositive ? "+\(status.net.formatted())" : status.net.formatted())
+                if let netLabel {
+                    Text(netLabel)
                         .font(.system(size: 10, weight: .bold).monospacedDigit())
                         .foregroundStyle(tone ?? FinancialColors.textSecondary)
                         .lineLimit(1)
@@ -469,14 +517,27 @@ private struct JointMonthChip: View {
             .padding(.vertical, 10)
             .background(
                 RoundedRectangle(cornerRadius: Radius().md, style: .continuous)
-                    .fill(tone?.opacity(isSelected ? 0.15 : 0.05) ?? FinancialColors.tertiaryBackground)
+                    .fill(chipFill)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: Radius().md, style: .continuous)
-                    .strokeBorder(tone?.opacity(isSelected ? 1 : 0.35) ?? FinancialColors.border, lineWidth: isSelected ? 2 : 1)
+                    .strokeBorder(chipBorder, lineWidth: isSelected ? 2 : 1)
             )
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("\(monthName) \(month.year)")
+        .accessibilityValue(netLabel ?? "")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    private var chipFill: Color {
+        guard let tone else { return FinancialColors.tertiaryBackground }
+        return tone.opacity(isSelected ? 0.15 : 0.05)
+    }
+
+    private var chipBorder: Color {
+        guard let tone else { return FinancialColors.border }
+        return tone.opacity(isSelected ? 1 : 0.35)
     }
 }
 

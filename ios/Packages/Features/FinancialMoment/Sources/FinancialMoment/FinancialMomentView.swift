@@ -1,10 +1,21 @@
 import SwiftUI
 import FinancialDesignSystem
 import FinancialDomain
+#if canImport(UIKit)
+import UIKit
+#endif
 
 public struct FinancialMomentView: View {
     @State private var viewModel: FinancialMomentDetailViewModel
     private let onCreateManualExpense: (() -> Void)?
+
+    private var isPhoneIdiom: Bool {
+        #if canImport(UIKit)
+        UIDevice.current.userInterfaceIdiom == .phone
+        #else
+        false
+        #endif
+    }
 
     public init(
         buildFinancialMomentDetail: any BuildFinancialMomentDetailUseCase,
@@ -30,7 +41,7 @@ public struct FinancialMomentView: View {
             Group {
                 switch viewModel.state {
                 case .idle, .loading:
-                    BrandLoadingView()
+                    PageLoadingSkeleton(style: .moment)
                 case .empty:
                     EmptyState(
                         title: "Mês zerado",
@@ -48,8 +59,7 @@ public struct FinancialMomentView: View {
                 }
             }
         }
-        .navigationTitle("Momento Financeiro")
-        .navigationBarTitleDisplayMode(.large)
+        .financialPageTitle("Momento Financeiro")
         .refreshable { await viewModel.load(force: true) }
         .task(id: viewModel.selectedMonth.key) { await viewModel.load() }
     }
@@ -59,75 +69,67 @@ public struct FinancialMomentView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 monthSelector(detail)
-                if onCreateManualExpense != nil {
-                    Button {
-                        onCreateManualExpense?()
-                    } label: {
-                        Label("Criar despesa manual", systemImage: "plus.circle")
-                            .frame(maxWidth: .infinity)
+
+                VStack(alignment: .leading, spacing: 16) {
+                    if isPhoneIdiom {
+                        mobileKPIs(detail)
+                        utilizationCard(detail)
+                        mobileContentStack(detail)
+                    } else {
+                        desktopKPIs(detail)
+                        utilizationCard(detail)
+                        desktopContentColumns(detail)
                     }
-                    .buttonStyle(.bordered)
-                    .tint(FinancialColors.primary)
                 }
-                
-                if UIDevice.current.userInterfaceIdiom == .phone {
-                    mobileKPIs(detail)
-                    utilizationCard(detail)
-                    mobileContentStack(detail)
-                } else {
-                    desktopKPIs(detail)
-                    utilizationCard(detail)
-                    desktopContentColumns(detail)
-                }
+                .padding(.horizontal, PageLayout.gutter)
             }
-            .padding()
+            .padding(.top, PageLayout.contentTop)
+            .padding(.bottom, PageLayout.gutter)
         }
     }
 
     @ViewBuilder
     private func monthSelector(_ detail: FinancialMomentDetail) -> some View {
-        GlassCard {
-            VStack(spacing: 12) {
-                if viewModel.selectedMonth != YearMonth(from: Date()),
-                   UIDevice.current.userInterfaceIdiom == .phone {
-                    HStack {
-                        Spacer()
-                        Button("Mês atual") {
-                            viewModel.selectCurrentMonth()
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
+        VStack(spacing: 12) {
+            if viewModel.selectedMonth != YearMonth(from: Date()),
+               isPhoneIdiom {
+                HStack {
+                    Spacer()
+                    Button("Mês atual") {
+                        viewModel.selectCurrentMonth()
                     }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
                 }
-
-                ScrollView(.horizontal, showsIndicators: false) {
-                    ScrollViewReader { proxy in
-                        HStack(spacing: 8) {
-                            ForEach(Array(viewModel.monthOptions.enumerated()), id: \.offset) { index, month in
-                                MomentMonthChip(
-                                    month: month,
-                                    status: detail.monthsStatus[month.key] ?? (month == detail.selectedMonth ? detail.status : nil),
-                                    isSelected: index == viewModel.selectedMonthIndex,
-                                    isCurrent: month == YearMonth(from: Date())
-                                ) {
-                                    viewModel.selectMonth(at: index)
-                                }
-                                .id(index)
-                            }
-                        }
-                        .padding(.horizontal, 2)
-                        .onAppear {
-                            proxy.scrollTo(viewModel.selectedMonthIndex, anchor: .center)
-                        }
-                        .onChange(of: viewModel.selectedMonthIndex) { _, newValue in
-                            withAnimation(.easeInOut(duration: 0.25)) {
-                                proxy.scrollTo(newValue, anchor: .center)
-                            }
-                        }
-                    }
-                }
-                .accessibilityLabel("Seletor de período")
+                .padding(.horizontal, PageLayout.gutter)
             }
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                ScrollViewReader { proxy in
+                    HStack(spacing: 8) {
+                        ForEach(Array(viewModel.monthOptions.enumerated()), id: \.offset) { index, month in
+                            MomentMonthChip(
+                                month: month,
+                                status: detail.monthsStatus[month.key] ?? (month == detail.selectedMonth ? detail.status : nil),
+                                isSelected: index == viewModel.selectedMonthIndex,
+                                isCurrent: month == YearMonth(from: Date())
+                            ) {
+                                viewModel.selectMonth(at: index)
+                            }
+                            .id(index)
+                        }
+                    }
+                    .onAppear {
+                        proxy.scrollTo(viewModel.selectedMonthIndex, anchor: .center)
+                    }
+                    .onChange(of: viewModel.selectedMonthIndex) { _, newValue in
+                        withAnimation(.easeInOut(duration: 0.25)) {
+                            proxy.scrollTo(newValue, anchor: .center)
+                        }
+                    }
+                }
+            }
+            .accessibilityLabel("Seletor de período")
         }
     }
 
@@ -249,7 +251,7 @@ public struct FinancialMomentView: View {
             salaryCard(detail)
             if !detail.creditCards.isEmpty { billsCard(detail) }
             if !detail.automaticDebits.isEmpty { debitsCard(detail) }
-            if !detail.manualExpenses.isEmpty { manualsCard(detail) }
+            if shouldShowManualsCard(detail) { manualsCard(detail) }
             if !detail.receivables.isEmpty { receivablesCard(detail) }
         }
     }
@@ -286,7 +288,7 @@ public struct FinancialMomentView: View {
                 
                 if !detail.creditCards.isEmpty { billsCard(detail) }
                 if !detail.automaticDebits.isEmpty { debitsCard(detail) }
-                if !detail.manualExpenses.isEmpty { manualsCard(detail) }
+                if shouldShowManualsCard(detail) { manualsCard(detail) }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -296,7 +298,7 @@ public struct FinancialMomentView: View {
     private func salaryCard(_ detail: FinancialMomentDetail) -> some View {
         GlassCard(
             title: "Salário Mensal",
-            subtitle: UIDevice.current.userInterfaceIdiom == .phone ? nil : 
+            subtitle: isPhoneIdiom ? nil : 
                 "Salário líquido deste mês. Ao salvar, vira o padrão dos próximos meses."
         ) {
             HStack {
@@ -306,7 +308,9 @@ public struct FinancialMomentView: View {
                     
                     TextField("0,00", text: $viewModel.salaryInput)
                         .textFieldStyle(.roundedBorder)
+                        #if os(iOS)
                         .keyboardType(.decimalPad)
+                        #endif
                         .disabled(viewModel.isSavingSalary)
                 }
                 
@@ -324,7 +328,7 @@ public struct FinancialMomentView: View {
     private func receivablesCard(_ detail: FinancialMomentDetail) -> some View {
         GlassCard(
             title: "Valores a Receber (Reembolsos)",
-            subtitle: UIDevice.current.userInterfaceIdiom == .phone ? nil : 
+            subtitle: isPhoneIdiom ? nil : 
                 "Reembolsos e parcelas a receber de amigos/familiares vencendo neste mês."
         ) {
             if detail.receivables.isEmpty {
@@ -390,11 +394,19 @@ public struct FinancialMomentView: View {
 
     @ViewBuilder
     private func billsCard(_ detail: FinancialMomentDetail) -> some View {
-        GlassCard(
-            title: "Faturas de Cartão de Crédito",
-            subtitle: UIDevice.current.userInterfaceIdiom == .phone ? nil :
-                "Faturas fechadas e estimadas com vencimento neste mês."
-        ) {
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Faturas de Cartão de Crédito")
+                    .font(.headline)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(FinancialColors.textPrimary)
+                if !isPhoneIdiom {
+                    Text("Faturas fechadas e estimadas com vencimento neste mês.")
+                        .font(.caption)
+                        .foregroundStyle(FinancialColors.textSecondary)
+                }
+            }
+
             if detail.creditCards.isEmpty {
                 Text("Nenhuma fatura de cartão vencendo neste mês.")
                     .font(.caption)
@@ -402,52 +414,66 @@ public struct FinancialMomentView: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 16)
             } else {
-                VStack(alignment: .leading, spacing: 12) {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 12) {
-                            ForEach(detail.creditCards.bills) { bill in
-                                CreditCardFaceView(
-                                    name: bill.cardName,
-                                    lastFour: bill.lastFour,
-                                    amountLabel: bill.amount.formatted(),
-                                    institutionName: bill.institutionName,
-                                    marketingName: bill.marketingName.isEmpty ? bill.cardName : bill.marketingName,
-                                    connectorName: bill.connectorName,
-                                    iconKey: bill.iconKey,
-                                    cardFaceURL: bill.cardFaceURL,
-                                    selected: false,
-                                    status: bill.isPaid ? .paid : .due,
-                                    ownerLabel: bill.ownerLabel
-                                )
-                            }
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 12) {
+                        ForEach(detail.creditCards.bills) { bill in
+                            CreditCardFaceView(
+                                name: bill.cardName,
+                                lastFour: bill.lastFour,
+                                amountLabel: bill.amount.formatted(),
+                                institutionName: bill.institutionName,
+                                marketingName: bill.marketingName.isEmpty ? bill.cardName : bill.marketingName,
+                                connectorName: bill.connectorName,
+                                iconKey: bill.iconKey,
+                                cardFaceURL: bill.cardFaceURL,
+                                selected: false,
+                                status: bill.isPaid ? .paid : .due,
+                                ownerLabel: bill.ownerLabel
+                            )
                         }
-                        .padding(.vertical, 4)
                     }
-                    .frame(maxWidth: .infinity)
-                    .frame(height: CreditCardFaceMetrics.size.height + 8)
-
-                    Divider()
-
-                    HStack {
-                        Text("Total Faturas")
-                            .font(.caption)
-                            .fontWeight(.bold)
-                        Spacer()
-                        Text(detail.creditCards.total.formatted())
-                            .font(.caption)
-                            .fontWeight(.bold)
-                            .foregroundStyle(FinancialColors.danger)
-                    }
+                    .padding(.vertical, 4)
+                    // Rest position aligns with page gutter; scroll can still reach screen edges.
+                    .padding(.horizontal, PageLayout.gutter)
                 }
+                .padding(.horizontal, -PageLayout.gutter)
+                .frame(maxWidth: .infinity)
+                .frame(height: CreditCardFaceMetrics.size.height + 8)
+
+                HStack {
+                    Text("Total Faturas")
+                        .font(.caption)
+                        .fontWeight(.bold)
+                    Spacer()
+                    Text(detail.creditCards.total.formatted())
+                        .font(.caption)
+                        .fontWeight(.bold)
+                        .foregroundStyle(FinancialColors.danger)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    RoundedRectangle(cornerRadius: Radius().lg, style: .continuous)
+                        .fill(Color.white.opacity(0.92))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: Radius().lg, style: .continuous)
+                        .strokeBorder(FinancialColors.border, lineWidth: 1)
+                )
             }
         }
+    }
+
+    private func shouldShowManualsCard(_ detail: FinancialMomentDetail) -> Bool {
+        !detail.manualExpenses.isEmpty || onCreateManualExpense != nil
     }
 
     @ViewBuilder
     private func debitsCard(_ detail: FinancialMomentDetail) -> some View {
         GlassCard(
             title: "Débito Automático",
-            subtitle: UIDevice.current.userInterfaceIdiom == .phone ? nil : 
+            subtitle: isPhoneIdiom ? nil : 
                 "Convênios e débitos automáticos das contas bancárias neste mês (energia, celular, financiamentos). PIX e transferências não entram."
         ) {
             if detail.automaticDebits.isEmpty {
@@ -522,32 +548,43 @@ public struct FinancialMomentView: View {
     private func manualsCard(_ detail: FinancialMomentDetail) -> some View {
         GlassCard(
             title: "Despesas Manuais",
-            subtitle: UIDevice.current.userInterfaceIdiom == .phone ? nil : 
+            subtitle: isPhoneIdiom ? nil :
                 "Marque Pago por ocorrência deste mês (só controle; não altera saldo)."
         ) {
-            if detail.manualExpenses.isEmpty {
-                Text("Nenhuma despesa manual registrada para este mês.")
-                    .font(.caption)
-                    .foregroundStyle(FinancialColors.textMuted)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 16)
-            } else {
-                VStack(spacing: 8) {
-                    ForEach(detail.manualExpenses.items) { expense in
-                        manualExpenseRow(expense)
+            VStack(alignment: .leading, spacing: 12) {
+                if let onCreateManualExpense {
+                    Button(action: onCreateManualExpense) {
+                        Label("Criar despesa manual", systemImage: "plus.circle")
+                            .frame(maxWidth: .infinity)
                     }
-                    
-                    Divider()
-                    
-                    HStack {
-                        Text("Total Manuais")
-                            .font(.caption)
-                            .fontWeight(.bold)
-                        Spacer()
-                        Text(detail.manualExpenses.total.formatted())
-                            .font(.caption)
-                            .fontWeight(.bold)
-                            .foregroundStyle(FinancialColors.danger)
+                    .buttonStyle(.bordered)
+                    .tint(FinancialColors.primary)
+                }
+
+                if detail.manualExpenses.isEmpty {
+                    Text("Nenhuma despesa manual registrada para este mês.")
+                        .font(.caption)
+                        .foregroundStyle(FinancialColors.textMuted)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+                } else {
+                    VStack(spacing: 8) {
+                        ForEach(detail.manualExpenses.items) { expense in
+                            manualExpenseRow(expense)
+                        }
+
+                        Divider()
+
+                        HStack {
+                            Text("Total Manuais")
+                                .font(.caption)
+                                .fontWeight(.bold)
+                            Spacer()
+                            Text(detail.manualExpenses.total.formatted())
+                                .font(.caption)
+                                .fontWeight(.bold)
+                                .foregroundStyle(FinancialColors.danger)
+                        }
                     }
                 }
             }
@@ -695,7 +732,7 @@ private struct MomentMonthChip: View {
                 Text(monthName)
                     .font(.caption.weight(isSelected ? .bold : .semibold))
                     .foregroundStyle(tone ?? FinancialColors.textPrimary)
-                Text("\(month.year)\(isCurrent ? " • Atual" : "")")
+                Text(verbatim: "\(month.year)\(isCurrent ? " • Atual" : "")")
                     .font(.system(size: 10))
                     .foregroundStyle(FinancialColors.textMuted)
                 if let netLabel {

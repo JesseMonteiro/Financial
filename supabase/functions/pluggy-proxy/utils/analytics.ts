@@ -166,4 +166,3 @@ export function automaticDebitsForMonth(
     return ymFromDate(t.date) === ym;
   });
 }
-

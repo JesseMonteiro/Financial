@@ -21,7 +21,7 @@ public struct BudgetView: View {
         Group {
             switch viewModel.state {
             case .idle, .loading:
-                BrandLoadingView()
+                PageLoadingSkeleton(style: .summaryList)
             case .empty:
                 EmptyState(
                     title: "Sem orçamento",
@@ -36,7 +36,7 @@ public struct BudgetView: View {
                 content
             }
         }
-        .navigationTitle("Orçamento")
+        .financialPageTitle("Orçamento")
         .refreshable { await viewModel.load(force: true) }
         .task(id: viewModel.selectedMonth.key) { await viewModel.load() }
         .toolbar {

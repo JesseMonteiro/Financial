@@ -39,13 +39,30 @@ export const navItems = [
   { label: 'Configurações', shortLabel: 'Ajustes', path: '/settings', icon: Settings },
 ];
 
-/** Primary tabs shown in the liquid glass bottom bar (paths). */
-export const mobileTabPaths = ['/', '/transactions', '/credit-cards', '/financial-moment'];
+/** Primary tabs shown in the liquid glass bottom bar (paths), excluding Mais. */
+export function getMobileTabPaths(hasJointLink) {
+  return [
+    '/',
+    '/credit-cards',
+    '/financial-moment',
+    hasJointLink ? '/joint-account' : '/manual-expenses',
+  ];
+}
 
-export const mobilePrimaryTabs = [
-  ...mobileTabPaths.map((path) => navItems.find((item) => item.path === path)).filter(Boolean),
-  { label: 'Mais', shortLabel: 'Mais', path: '__more__', icon: MoreHorizontal, isMore: true },
-];
+/** @deprecated Use getMobileTabPaths(hasJointLink) — kept for static imports. */
+export const mobileTabPaths = getMobileTabPaths(false);
+
+export function getMobilePrimaryTabs(hasJointLink) {
+  return [
+    ...getMobileTabPaths(hasJointLink)
+      .map((path) => navItems.find((item) => item.path === path))
+      .filter(Boolean),
+    { label: 'Mais', shortLabel: 'Mais', path: '__more__', icon: MoreHorizontal, isMore: true },
+  ];
+}
+
+/** @deprecated Use getMobilePrimaryTabs(hasJointLink). */
+export const mobilePrimaryTabs = getMobilePrimaryTabs(false);
 
 /** Filter nav for sidebar / more drawer (hide joint until linked). */
 export function getVisibleNavItems(hasJointLink) {

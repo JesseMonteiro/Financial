@@ -12,16 +12,7 @@ public struct LiveAccountsRepository: AccountsRepository {
         let names = (try? await profileTask)?.customAccountNames ?? [:]
         var accounts = try await pluggy.map(DomainMapper.account)
         accounts.append(contentsOf: try await manuals.map {
-            let mapped = DomainMapper.manualAccount($0)
-            return Account(
-                id: mapped.id,
-                name: mapped.name,
-                type: mapped.type,
-                balance: mapped.type == .credit ? (mapped.billAmount ?? mapped.balance) : mapped.balance,
-                institutionName: mapped.institutionName,
-                connectorId: nil,
-                isHidden: false
-            )
+            DomainMapper.account(fromManual: DomainMapper.manualAccount($0))
         })
         if !names.isEmpty {
             accounts = accounts.map { account in
@@ -194,12 +185,24 @@ public struct LiveManualExpensesRepository: ManualExpensesRepository {
         return DomainMapper.manualExpense(saved)
     }
 
+    public func createExpenses(_ expenses: [ManualExpense]) async throws {
+        for expense in expenses {
+            _ = try await createExpense(expense)
+        }
+    }
+
     public func updateExpense(_ expense: ManualExpense) async throws {
         _ = try await bff.saveManualExpense(expense)
     }
 
     public func deleteExpense(id: String) async throws {
         try await bff.deleteManualExpense(id: id)
+    }
+
+    public func deleteExpenses(ids: [String]) async throws {
+        for id in ids {
+            try await bff.deleteManualExpense(id: id)
+        }
     }
 
     private func withNewID(_ expense: ManualExpense) -> ManualExpense {
@@ -212,7 +215,11 @@ public struct LiveManualExpensesRepository: ManualExpensesRepository {
             accountId: expense.accountId,
             isPaid: expense.isPaid,
             isRecurring: expense.isRecurring,
-            isContinuous: expense.isContinuous
+            isContinuous: expense.isContinuous,
+            parentId: expense.parentId,
+            originalDescription: expense.originalDescription,
+            frequency: expense.frequency,
+            paidAt: expense.paidAt
         )
     }
 }

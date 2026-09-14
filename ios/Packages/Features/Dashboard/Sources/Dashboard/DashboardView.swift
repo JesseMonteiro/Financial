@@ -41,7 +41,7 @@ public struct DashboardView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     switch viewModel.state {
                     case .idle, .loading:
-                        BrandLoadingView()
+                        PageLoadingSkeleton(style: .dashboard, embedded: true)
                     case .empty:
                         EmptyState(
                             title: "Nenhum dado ainda",
@@ -64,10 +64,10 @@ public struct DashboardView: View {
                         loadedContent(snap)
                     }
                 }
-                .padding()
+                .financialPageGutter()
             }
         }
-        .navigationTitle("Início")
+        .financialPageTitle("Início")
         .refreshable { await viewModel.load(force: true) }
         .task { await viewModel.load() }
     }
@@ -266,7 +266,6 @@ public struct DashboardView: View {
                 .controlSize(.small)
             }
         }
-        .padding(.top, 4)
     }
 
     private func insightsAndRecap(_ snap: DashboardSnapshot) -> some View {

@@ -105,13 +105,27 @@ public extension ReceivablesRepository {
 public protocol ManualExpensesRepository: Sendable {
     func fetchExpenses(month: YearMonth?, force: Bool) async throws -> [ManualExpense]
     func createExpense(_ expense: ManualExpense) async throws -> ManualExpense
+    func createExpenses(_ expenses: [ManualExpense]) async throws
     func updateExpense(_ expense: ManualExpense) async throws
     func deleteExpense(id: String) async throws
+    func deleteExpenses(ids: [String]) async throws
 }
 
 public extension ManualExpensesRepository {
     func fetchExpenses(month: YearMonth?) async throws -> [ManualExpense] {
         try await fetchExpenses(month: month, force: false)
+    }
+
+    func createExpenses(_ expenses: [ManualExpense]) async throws {
+        for expense in expenses {
+            _ = try await createExpense(expense)
+        }
+    }
+
+    func deleteExpenses(ids: [String]) async throws {
+        for id in ids {
+            try await deleteExpense(id: id)
+        }
     }
 }
 

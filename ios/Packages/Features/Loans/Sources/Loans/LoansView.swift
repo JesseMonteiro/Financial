@@ -17,7 +17,7 @@ public struct LoansView: View {
         Group {
             switch viewModel.state {
             case .idle, .loading:
-                BrandLoadingView()
+                PageLoadingSkeleton(style: .summaryList)
             case .empty:
                 EmptyState(
                     title: "Sem empréstimos",
@@ -30,7 +30,7 @@ public struct LoansView: View {
                 content
             }
         }
-        .navigationTitle("Empréstimos")
+        .financialPageTitle("Empréstimos")
         .refreshable { await viewModel.load(force: true) }
         .task { await viewModel.load() }
     }

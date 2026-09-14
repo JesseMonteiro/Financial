@@ -288,6 +288,7 @@ public struct BFFClient: Sendable {
 
         _ = try await api.sendRaw(request)
         await invalidateCaches(matching: [
+            "bff:domain:manuals",
             "bff:financial-moment:",
             "bff:dashboard:",
             "bff:joint:",
@@ -358,15 +359,34 @@ public struct BFFClient: Sendable {
     }
 
     public func saveReceivable(_ receivable: Receivable) async throws {
-        let body: [String: Any] = [
+        let history: [[String: Any]] = receivable.installmentHistory.map { inst in
+            var row: [String: Any] = [
+                "installment_number": inst.installmentNumber,
+                "amount": NSDecimalNumber(decimal: inst.amount.amount).doubleValue,
+                "due_date": inst.dueDate.isoString,
+            ]
+            if let paidAt = inst.paidAt {
+                row["paid_at"] = paidAt.isoString
+            } else {
+                row["paid_at"] = NSNull()
+            }
+            return row
+        }
+        var body: [String: Any] = [
             "id": receivable.id,
             "person_name": receivable.counterparty ?? "",
             "description": receivable.description,
             "total_amount": NSDecimalNumber(decimal: receivable.amount.amount).doubleValue,
+            "original_total_amount": NSDecimalNumber(decimal: (receivable.originalTotalAmount ?? receivable.amount).amount).doubleValue,
             "installments": receivable.installments,
             "paid_installments": receivable.paidInstallments,
             "is_continuous": receivable.isContinuous,
+            "installment_history": history,
         ]
+        if let color = receivable.personColor { body["person_color"] = color }
+        if let notes = receivable.notes { body["notes"] = notes }
+        if let linked = receivable.linkedTransactionId { body["linked_transaction_id"] = linked }
+        if let forecast = receivable.linkedBillForecastDate { body["linked_bill_forecast_date"] = forecast }
         try await domainWrite(path: "v1/domain/receivables", method: .post, body: body)
         await invalidateCaches(matching: ["bff:domain:receivables", "bff:financial-moment:", "bff:joint:"])
     }
@@ -390,7 +410,7 @@ public struct BFFClient: Sendable {
         var body: [String: Any] = [
             "id": expense.id,
             "description": expense.description,
-            "original_description": expense.description,
+            "original_description": expense.originalDescription ?? expense.baseDescription,
             "amount": NSDecimalNumber(decimal: expense.amount.amount).doubleValue,
             "date": expense.date.isoString,
             "category": expense.category ?? "Other",
@@ -400,8 +420,17 @@ public struct BFFClient: Sendable {
             "is_recurring": expense.isRecurring,
             "is_continuous": expense.isContinuous,
         ]
-        if let accountId = expense.accountId {
+        if let accountId = expense.accountId, accountId != "manual" {
             body["account_id"] = accountId
+        }
+        if let parentId = expense.parentId {
+            body["parent_id"] = parentId
+        }
+        if let frequency = expense.frequency {
+            body["frequency"] = frequency
+        }
+        if let paidAt = expense.paidAt {
+            body["paid_at"] = paidAt.isoString
         }
         let data = try await domainWriteReturning(
             path: "v1/domain/manual-transactions",

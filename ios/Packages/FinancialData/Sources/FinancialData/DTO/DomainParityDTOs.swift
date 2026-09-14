@@ -134,28 +134,61 @@ struct DomainGoalRowDTO: Decodable, Sendable {
     }
 }
 
+struct DomainReceivableInstallmentDTO: Decodable, Sendable {
+    let installmentNumber: Int?
+    let amount: Decimal?
+    let dueDate: String?
+    let paidAt: String?
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        installmentNumber = try c.decodeIfPresent(Int.self, forKey: .installmentNumber)
+        amount = FlexibleDecimal.decode(c, forKey: .amount)
+        dueDate = try c.decodeIfPresent(String.self, forKey: .dueDate)
+        paidAt = try c.decodeIfPresent(String.self, forKey: .paidAt)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case installmentNumber, amount, dueDate, paidAt
+    }
+}
+
 struct DomainReceivableRowDTO: Decodable, Sendable {
     let id: String
     let personName: String?
+    let personColor: String?
     let description: String?
     let totalAmount: Decimal
+    let originalTotalAmount: Decimal?
     let installments: Int?
     let paidInstallments: Int?
     let isContinuous: Bool?
+    let linkedTransactionId: String?
+    let linkedBillForecastDate: String?
+    let notes: String?
+    let installmentHistory: [DomainReceivableInstallmentDTO]?
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decodeIfPresent(String.self, forKey: .id) ?? UUID().uuidString
         personName = try c.decodeIfPresent(String.self, forKey: .personName)
+        personColor = try c.decodeIfPresent(String.self, forKey: .personColor)
         description = try c.decodeIfPresent(String.self, forKey: .description)
         totalAmount = FlexibleDecimal.decode(c, forKey: .totalAmount) ?? 0
+        originalTotalAmount = FlexibleDecimal.decode(c, forKey: .originalTotalAmount)
         installments = try c.decodeIfPresent(Int.self, forKey: .installments)
         paidInstallments = try c.decodeIfPresent(Int.self, forKey: .paidInstallments)
         isContinuous = try c.decodeIfPresent(Bool.self, forKey: .isContinuous)
+        linkedTransactionId = try c.decodeIfPresent(String.self, forKey: .linkedTransactionId)
+        linkedBillForecastDate = try c.decodeIfPresent(String.self, forKey: .linkedBillForecastDate)
+        notes = try c.decodeIfPresent(String.self, forKey: .notes)
+        installmentHistory = try c.decodeIfPresent([DomainReceivableInstallmentDTO].self, forKey: .installmentHistory)
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, personName, description, totalAmount, installments, paidInstallments, isContinuous
+        case id, personName, personColor, description, totalAmount, originalTotalAmount
+        case installments, paidInstallments, isContinuous
+        case linkedTransactionId, linkedBillForecastDate, notes, installmentHistory
     }
 }
 
@@ -169,6 +202,10 @@ struct DomainManualRowDTO: Decodable, Sendable {
     let isPaid: Bool?
     let isRecurring: Bool?
     let isContinuous: Bool?
+    let parentId: String?
+    let originalDescription: String?
+    let frequency: String?
+    let paidAt: String?
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -181,10 +218,15 @@ struct DomainManualRowDTO: Decodable, Sendable {
         isPaid = try c.decodeIfPresent(Bool.self, forKey: .isPaid)
         isRecurring = try c.decodeIfPresent(Bool.self, forKey: .isRecurring)
         isContinuous = try c.decodeIfPresent(Bool.self, forKey: .isContinuous)
+        parentId = try c.decodeIfPresent(String.self, forKey: .parentId)
+        originalDescription = try c.decodeIfPresent(String.self, forKey: .originalDescription)
+        frequency = try c.decodeIfPresent(String.self, forKey: .frequency)
+        paidAt = try c.decodeIfPresent(String.self, forKey: .paidAt)
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, description, amount, date, category, accountId, isPaid, isRecurring, isContinuous
+        case id, description, amount, date, category, accountId
+        case isPaid, isRecurring, isContinuous, parentId, originalDescription, frequency, paidAt
     }
 }
 

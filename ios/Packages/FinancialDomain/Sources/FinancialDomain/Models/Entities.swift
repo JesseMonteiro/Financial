@@ -19,6 +19,19 @@ public struct Account: Sendable, Identifiable, Hashable, Codable {
     public var connectorId: String?
     public var isHidden: Bool
     public var currencyCode: String
+    /// Open Finance account / card last digits.
+    public var number: String?
+    public var marketingName: String?
+    public var isManual: Bool
+    public var updatedAt: Date?
+    public var ownerLabel: String?
+    public var iconKey: String?
+    /// Credit card current bill (absolute). Nil for bank accounts.
+    public var billAmount: Money?
+    public var creditLimit: Money?
+    public var availableCreditLimit: Money?
+    /// Sum of Open Finance “caixinhas” / reserved balances.
+    public var reservedBalance: Money
 
     public init(
         id: String,
@@ -28,7 +41,17 @@ public struct Account: Sendable, Identifiable, Hashable, Codable {
         institutionName: String? = nil,
         connectorId: String? = nil,
         isHidden: Bool = false,
-        currencyCode: String = "BRL"
+        currencyCode: String = "BRL",
+        number: String? = nil,
+        marketingName: String? = nil,
+        isManual: Bool = false,
+        updatedAt: Date? = nil,
+        ownerLabel: String? = nil,
+        iconKey: String? = nil,
+        billAmount: Money? = nil,
+        creditLimit: Money? = nil,
+        availableCreditLimit: Money? = nil,
+        reservedBalance: Money = .zero
     ) {
         self.id = id
         self.name = name
@@ -38,6 +61,29 @@ public struct Account: Sendable, Identifiable, Hashable, Codable {
         self.connectorId = connectorId
         self.isHidden = isHidden
         self.currencyCode = currencyCode
+        self.number = number
+        self.marketingName = marketingName
+        self.isManual = isManual
+        self.updatedAt = updatedAt
+        self.ownerLabel = ownerLabel
+        self.iconKey = iconKey
+        self.billAmount = billAmount
+        self.creditLimit = creditLimit
+        self.availableCreditLimit = availableCreditLimit
+        self.reservedBalance = reservedBalance
+    }
+
+    public var isCreditCard: Bool { type == .credit }
+
+    public var isBankAccount: Bool { !isCreditCard }
+
+    /// Display amount: available balance for banks, current bill for cards.
+    public var displayAmount: Money {
+        if isCreditCard {
+            let raw = billAmount ?? balance
+            return Money(amount: abs(raw.amount), currencyCode: raw.currencyCode)
+        }
+        return balance
     }
 }
 
@@ -218,6 +264,28 @@ public struct Goal: Sendable, Identifiable, Hashable, Codable {
     }
 }
 
+public struct ReceivableInstallment: Sendable, Identifiable, Hashable, Codable {
+    public var installmentNumber: Int
+    public var amount: Money
+    public var dueDate: InstantDate
+    public var paidAt: InstantDate?
+
+    public var id: Int { installmentNumber }
+    public var isPaid: Bool { paidAt != nil }
+
+    public init(
+        installmentNumber: Int,
+        amount: Money,
+        dueDate: InstantDate,
+        paidAt: InstantDate? = nil
+    ) {
+        self.installmentNumber = installmentNumber
+        self.amount = amount
+        self.dueDate = dueDate
+        self.paidAt = paidAt
+    }
+}
+
 public struct Receivable: Sendable, Identifiable, Hashable, Codable {
     public let id: String
     public var description: String
@@ -228,6 +296,12 @@ public struct Receivable: Sendable, Identifiable, Hashable, Codable {
     public var installments: Int
     public var paidInstallments: Int
     public var isContinuous: Bool
+    public var personColor: String?
+    public var originalTotalAmount: Money?
+    public var linkedTransactionId: String?
+    public var linkedBillForecastDate: String?
+    public var notes: String?
+    public var installmentHistory: [ReceivableInstallment]
 
     public init(
         id: String,
@@ -238,7 +312,13 @@ public struct Receivable: Sendable, Identifiable, Hashable, Codable {
         counterparty: String? = nil,
         installments: Int = 1,
         paidInstallments: Int = 0,
-        isContinuous: Bool = false
+        isContinuous: Bool = false,
+        personColor: String? = nil,
+        originalTotalAmount: Money? = nil,
+        linkedTransactionId: String? = nil,
+        linkedBillForecastDate: String? = nil,
+        notes: String? = nil,
+        installmentHistory: [ReceivableInstallment] = []
     ) {
         self.id = id
         self.description = description
@@ -249,6 +329,47 @@ public struct Receivable: Sendable, Identifiable, Hashable, Codable {
         self.installments = max(1, installments)
         self.paidInstallments = paidInstallments
         self.isContinuous = isContinuous
+        self.personColor = personColor
+        self.originalTotalAmount = originalTotalAmount
+        self.linkedTransactionId = linkedTransactionId
+        self.linkedBillForecastDate = linkedBillForecastDate
+        self.notes = notes
+        self.installmentHistory = installmentHistory
+    }
+
+    public var personName: String {
+        let name = counterparty?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return name.isEmpty ? "Sem pessoa" : name
+    }
+
+    public var pendingAmount: Money {
+        installmentHistory
+            .filter { !$0.isPaid }
+            .reduce(Money.zero) { $0.adding($1.amount) }
+    }
+
+    public var receivedAmount: Money {
+        installmentHistory
+            .filter(\.isPaid)
+            .reduce(Money.zero) { $0.adding($1.amount) }
+    }
+
+    public var nextPendingDue: InstantDate? {
+        installmentHistory
+            .filter { !$0.isPaid }
+            .sorted { $0.dueDate < $1.dueDate }
+            .first?
+            .dueDate
+    }
+
+    public var progressPercent: Int {
+        let total = isContinuous
+            ? (installmentHistory.first?.amount.amount ?? 0) * 24
+            : amount.amount
+        guard total > 0 else { return 100 }
+        let paid = receivedAmount.amount
+        let ratio = NSDecimalNumber(decimal: (paid / total) * 100).doubleValue
+        return min(100, max(0, Int(ratio.rounded())))
     }
 }
 
@@ -262,6 +383,11 @@ public struct ManualExpense: Sendable, Identifiable, Hashable, Codable {
     public var isPaid: Bool
     public var isRecurring: Bool
     public var isContinuous: Bool
+    /// Shared id for installment / recurrence series.
+    public var parentId: String?
+    public var originalDescription: String?
+    public var frequency: String?
+    public var paidAt: InstantDate?
 
     public init(
         id: String,
@@ -272,7 +398,11 @@ public struct ManualExpense: Sendable, Identifiable, Hashable, Codable {
         accountId: String? = nil,
         isPaid: Bool = false,
         isRecurring: Bool = false,
-        isContinuous: Bool = false
+        isContinuous: Bool = false,
+        parentId: String? = nil,
+        originalDescription: String? = nil,
+        frequency: String? = nil,
+        paidAt: InstantDate? = nil
     ) {
         self.id = id
         self.description = description
@@ -283,6 +413,24 @@ public struct ManualExpense: Sendable, Identifiable, Hashable, Codable {
         self.isPaid = isPaid
         self.isRecurring = isRecurring
         self.isContinuous = isContinuous
+        self.parentId = parentId
+        self.originalDescription = originalDescription
+        self.frequency = frequency
+        self.paidAt = paidAt
+    }
+
+    public var groupKey: String { parentId ?? id }
+
+    public var baseDescription: String {
+        if let originalDescription, !originalDescription.isEmpty { return originalDescription }
+        var text = description
+        if let range = text.range(of: #" \(\d+/\d+\)$"#, options: .regularExpression) {
+            text.removeSubrange(range)
+        }
+        if let range = text.range(of: #" \(Recorrente\)$"#, options: .regularExpression) {
+            text.removeSubrange(range)
+        }
+        return text
     }
 }
 

@@ -7,62 +7,38 @@ import { errorResponse, jsonResponse } from "../middleware/http.ts";
 import { serializeMoment } from "./financialMoment.ts";
 import {
   buildFinancialMomentMonthList,
+  buildCreditBillPeriodByCardId,
   computeFinancialMomentMonth,
+  computeFinancialMomentMonthsStatus,
 } from "../utils/financialMomentMonth.ts";
 import {
   getMonthlySalaries,
   resolveMonthSalary,
   withSavedMonthSalary,
 } from "../utils/monthSalary.ts";
-import { asItemIdList, pluggyJson, PLUGGY_API, getPluggyApiKey } from "./pluggy.ts";
+import { asItemIdList, pluggyJson } from "./pluggy.ts";
 
 type AnyRec = Record<string, unknown>;
 
-function shiftYm(ym: string, delta: number): string {
-  const [y0, m0] = ym.split("-").map(Number);
-  const total = y0 * 12 + (m0 - 1) + delta;
-  const y = Math.floor(total / 12);
-  const m = (total % 12) + 1;
-  return `${y}-${String(m).padStart(2, "0")}`;
-}
+type FaceOverlay = {
+  key?: string;
+  facePath?: string;
+  face_path?: string;
+  faceUrl?: string;
+  face_url?: string;
+};
 
-function dateInWindow(dateVal: unknown, minYm: string): boolean {
-  const d = String(dateVal || "").slice(0, 7);
-  if (!/^\d{4}-\d{2}$/.test(d)) return false;
-  return d >= minYm;
-}
-
-/** First page of transactions only — enough for moment window, keeps CPU under Edge limits. */
-async function fetchTransactionsPage(
-  creds: { clientId: string; clientSecret: string },
-  accountId: string,
-  fromYm: string,
-): Promise<AnyRec[]> {
-  try {
-    const apiKey = await getPluggyApiKey(creds.clientId, creds.clientSecret);
-    const from = `${fromYm}-01`;
-    const url =
-      `${PLUGGY_API}/v2/transactions?accountId=${encodeURIComponent(accountId)}` +
-      `&from=${encodeURIComponent(from)}&pageSize=500`;
-    const res = await fetch(url, {
-      headers: { "X-API-KEY": apiKey, Accept: "application/json" },
-    });
-    if (!res.ok) return [];
-    const data = await res.json() as { results?: AnyRec[] };
-    return (data.results || []).map((t) => ({ ...t, accountId: t.accountId || accountId }));
-  } catch (e) {
-    console.warn("[joint-moment] txs", accountId, e);
-    return [];
-  }
-}
-
+/**
+ * Lean Pluggy load for Edge joint moment (avoids HTTP 546).
+ * Credit: 1 page/account (projections). Bank: 1 page/account (auto-debits).
+ * Skips /items connector round-trips used only for face styling.
+ */
 async function loadMemberPluggyBundle(
   profile: {
-  pluggy_item_ids?: unknown;
-  pluggy_client_id?: string | null;
-  pluggy_client_secret?: string | null;
+    pluggy_item_ids?: unknown;
+    pluggy_client_id?: string | null;
+    pluggy_client_secret?: string | null;
   },
-  fromYm: string,
 ): Promise<{
   accounts: AnyRec[];
   transactions: AnyRec[];
@@ -81,7 +57,10 @@ async function loadMemberPluggyBundle(
       const d = await pluggyJson(creds, "/accounts", { params: { itemId } }) as {
         results?: AnyRec[];
       };
-      return (d.results || []).map((acc) => ({ ...acc, itemId: acc.itemId || itemId }));
+      return (d.results || []).map((acc) => ({
+        ...acc,
+        itemId: acc.itemId || itemId,
+      }));
     } catch (e) {
       console.warn("[joint-moment] accounts", itemId, e);
       return [] as AnyRec[];
@@ -92,34 +71,45 @@ async function loadMemberPluggyBundle(
   const creditAccounts = accounts.filter((a) => String(a.type).toUpperCase() === "CREDIT");
   const bankAccounts = accounts.filter((a) => String(a.type).toUpperCase() === "BANK");
 
-  const [txChunks, billEntries] = await Promise.all([
+  const [txLists, billEntries] = await Promise.all([
     Promise.all(
-      [...bankAccounts, ...creditAccounts].map((acc) => {
-    const accountId = String(acc.id || "");
-        if (!accountId) return Promise.resolve([] as AnyRec[]);
-        return fetchTransactionsPage(creds, accountId, fromYm);
+      [...creditAccounts, ...bankAccounts].map(async (acc) => {
+        const accountId = String(acc.id || "");
+        if (!accountId) return [] as AnyRec[];
+        try {
+          const d = await pluggyJson(creds, "/v2/transactions", {
+            params: { accountId },
+          }) as { results?: AnyRec[] };
+          return (d.results || []).map((t) => ({
+            ...t,
+            accountId: String(t.accountId || accountId),
+          }));
+        } catch (e) {
+          console.warn("[joint-moment] txs", accountId, e);
+          return [] as AnyRec[];
+        }
       }),
     ),
     Promise.all(creditAccounts.map(async (acc) => {
-    const accountId = String(acc.id || "");
+      const accountId = String(acc.id || "");
       if (!accountId) return [accountId, [] as AnyRec[]] as const;
-    try {
-      const d = await pluggyJson(creds, "/bills", { params: { accountId } }) as {
-        results?: AnyRec[];
-      } | AnyRec[];
-      const list = Array.isArray(d) ? d : (d.results || []);
+      try {
+        const d = await pluggyJson(creds, "/bills", { params: { accountId } }) as {
+          results?: AnyRec[];
+        } | AnyRec[];
+        const list = Array.isArray(d) ? d : (d.results || []);
         return [
           accountId,
-          list.map((b) => ({ ...b, accountId: b.accountId || accountId })),
+          list.map((b) => ({ ...b, accountId: String(b.accountId || accountId) })),
         ] as const;
-    } catch (e) {
-      console.warn("[joint-moment] bills", accountId, e);
+      } catch (e) {
+        console.warn("[joint-moment] bills", accountId, e);
         return [accountId, [] as AnyRec[]] as const;
       }
     })),
   ]);
 
-  const transactions = txChunks.flat().filter((t) => dateInWindow(t.date, fromYm));
+  const transactions = txLists.flat();
   const billsByAccount: Record<string, AnyRec[]> = {};
   for (const [id, bills] of billEntries) {
     if (id) billsByAccount[id] = bills;
@@ -134,6 +124,87 @@ function lastFour(account: AnyRec): string {
   const digits = raw.replace(/\D/g, "");
   if (digits.length >= 4) return digits.slice(-4);
   return "****";
+}
+
+async function signFacePaths(
+  service: SupabaseClient,
+  icons: Record<string, FaceOverlay>,
+): Promise<Record<string, string>> {
+  const paths = [...new Set(
+    Object.values(icons)
+      .map((o) => o?.facePath || o?.face_path)
+      .filter((p): p is string => Boolean(p)),
+  )];
+  const signed: Record<string, string> = {};
+  await Promise.all(paths.map(async (path) => {
+    try {
+      const { data } = await service.storage
+        .from("account-icons")
+        .createSignedUrl(path, 60 * 60 * 24 * 7);
+      if (data?.signedUrl) signed[path] = data.signedUrl;
+    } catch (e) {
+      console.warn("[joint-moment] sign face", path, e);
+    }
+  }));
+  return signed;
+}
+
+function buildJointCardFaceMeta(
+  creditCards: AnyRec[],
+  iconOverlays: Record<string, FaceOverlay>,
+  signed: Record<string, string>,
+): Record<string, {
+  lastFour: string;
+  institutionName: string;
+  marketingName: string | null;
+  connectorName: string | null;
+  iconKey: string | null;
+  cardFaceUrl: string | null;
+}> {
+  const meta: Record<string, {
+    lastFour: string;
+    institutionName: string;
+    marketingName: string | null;
+    connectorName: string | null;
+    iconKey: string | null;
+    cardFaceUrl: string | null;
+  }> = {};
+
+  for (const card of creditCards) {
+    const id = String(card.id || "");
+    if (!id) continue;
+    const overlay = iconOverlays[id] || {};
+    const facePath = overlay.facePath || overlay.face_path || null;
+    const cardFaceUrl = overlay.faceUrl || overlay.face_url
+      || (facePath ? signed[facePath] : null)
+      || null;
+    const connector = card._connector ? String(card._connector) : null;
+    meta[id] = {
+      lastFour: lastFour(card),
+      institutionName: connector
+        || String(
+          (card.creditData as { institutionName?: string } | undefined)?.institutionName
+            || card.name
+            || "",
+        ),
+      marketingName: card.marketingName ? String(card.marketingName) : null,
+      connectorName: connector,
+      iconKey: overlay.key ? String(overlay.key) : null,
+      cardFaceUrl: cardFaceUrl ? String(cardFaceUrl) : null,
+    };
+  }
+
+  // Same product face shared across members / cards with the same catalog key
+  const faceByKey = new Map<string, string>();
+  for (const m of Object.values(meta)) {
+    if (m.iconKey && m.cardFaceUrl) faceByKey.set(m.iconKey, m.cardFaceUrl);
+  }
+  for (const m of Object.values(meta)) {
+    if (!m.cardFaceUrl && m.iconKey && faceByKey.has(m.iconKey)) {
+      m.cardFaceUrl = faceByKey.get(m.iconKey)!;
+    }
+  }
+  return meta;
 }
 
 function serviceClient(): SupabaseClient {
@@ -166,8 +237,7 @@ async function handleJointFinancialMomentInner(
     return errorResponse("Parâmetro month obrigatório no formato YYYY-MM", 400);
   }
 
-  // Keep window tight — Edge CPU budget (~2s) for buildCreditCardBills + monthsStatus.
-  const fromYm = shiftYm(month, -13);
+  // Same aggregation inputs as web JointFinancialMoment (moment-data + client compute).
 
   const { data: link, error: linkError } = await supabaseClient.rpc("get_my_joint_link");
   if (linkError) return errorResponse(linkError.message, 500);
@@ -185,10 +255,10 @@ async function handleJointFinancialMomentInner(
     receivablesRes,
   ] = await Promise.all([
     service
-    .from("profiles")
-    .select(
-      "id, display_name, pluggy_item_ids, pluggy_client_id, pluggy_client_secret, monthly_salaries, custom_account_names, custom_account_icons",
-    )
+      .from("profiles")
+      .select(
+        "id, display_name, pluggy_item_ids, pluggy_client_id, pluggy_client_secret, monthly_salaries, custom_account_names, custom_account_icons",
+      )
       .in("id", memberIds),
     service.from("manual_transactions").select("*").in("user_id", memberIds),
     service.from("manual_accounts").select("*").in("user_id", memberIds),
@@ -206,7 +276,7 @@ async function handleJointFinancialMomentInner(
   }));
   const labelById = Object.fromEntries(members.map((m) => [m.id, m.displayName]));
 
-  // Parallel Pluggy loads for both members
+  // Parallel Pluggy loads for both members — same bundle shape as web moment-data.
   const bundles = await Promise.all(memberIds.map(async (id) => {
     const label = labelById[id] || "Usuário";
     const profile = profileById[id] || {};
@@ -216,7 +286,7 @@ async function handleJointFinancialMomentInner(
     const names = (profile.custom_account_names && typeof profile.custom_account_names === "object")
       ? profile.custom_account_names as Record<string, string>
       : {};
-    const bundle = await loadMemberPluggyBundle(profile, fromYm);
+    const bundle = await loadMemberPluggyBundle(profile);
     return { id, label, icons, names, bundle };
   }));
 
@@ -247,7 +317,7 @@ async function handleJointFinancialMomentInner(
     for (const [accId, bills] of Object.entries(bundle.billsByAccount)) {
       billsByAccount[accId] = bills.map((b) => ({
         ...b,
-        accountId: b.accountId || accId,
+        accountId: String(b.accountId || accId),
         ownerUserId: id,
         ownerLabel: label,
       }));
@@ -325,18 +395,16 @@ async function handleJointFinancialMomentInner(
   const cardBills: AnyRec[] = [];
   for (const card of creditCards) {
     const list = billsByAccount[String(card.id)] || [];
-    cardBills.push(...list.map((b) => ({ ...b, accountId: b.accountId || card.id })));
+    cardBills.push(...list.map((b) => ({ ...b, accountId: String(b.accountId || card.id) })));
   }
 
   const cardIds = new Set(creditCards.map((c) => String(c.id)));
-  // Cap card txs — buildCreditCardBills is CPU-heavy
-  const cardTransactions = pluggyTxs
-    .filter((t) => cardIds.has(String(t.accountId)) && dateInWindow(t.date, fromYm))
-    .slice(0, 2000);
+  const cardTransactions = pluggyTxs.filter((t) =>
+    cardIds.has(String(t.accountId))
+  );
 
-  const manualsNorm = ((manualsRes.data || []) as AnyRec[])
-    .filter((row) => dateInWindow(row.date, fromYm))
-    .map((row) => ({
+  // Match web jointStore: all manuals (no date window) + camelCase installment history.
+  const manualsNorm = ((manualsRes.data || []) as AnyRec[]).map((row) => ({
     id: row.id,
     description: row.description,
     amount: row.amount,
@@ -350,16 +418,30 @@ async function handleJointFinancialMomentInner(
     ownerLabel: labelById[String(row.user_id)] || "Usuário",
   }));
 
-  const receivablesNorm = ((receivablesRes.data || []) as AnyRec[]).map((row) => ({
-    ...row,
-    ownerUserId: row.user_id,
-    ownerLabel: labelById[String(row.user_id)] || "Usuário",
-  }));
+  const receivablesNorm = ((receivablesRes.data || []) as AnyRec[]).map((row) => {
+    const historyRaw = row.installment_history || row.installmentHistory || [];
+    const installmentHistory = Array.isArray(historyRaw)
+      ? historyRaw.map((inst: AnyRec) => ({
+        ...inst,
+        dueDate: inst.dueDate || inst.due_date,
+        amount: Number(inst.amount) || 0,
+        installmentNumber: inst.installmentNumber || inst.installment_number,
+        paidAt: inst.paidAt || inst.paid_at || null,
+      }))
+      : [];
+    return {
+      ...row,
+      personName: row.person_name || row.personName,
+      personColor: row.person_color || row.personColor,
+      installments: row.installments,
+      installmentHistory,
+      ownerUserId: row.user_id,
+      ownerLabel: labelById[String(row.user_id)] || "Usuário",
+    };
+  });
 
-  const bankTxs = pluggyTxs.filter((t) =>
-    bankAccountIds.includes(String(t.accountId)) && dateInWindow(t.date, fromYm)
-  );
-  const allTransactions = [...bankTxs, ...manualsNorm];
+  // Match web: all Pluggy txs + manuals (automaticDebits filters to bankAccountIds).
+  const allTransactions = [...pluggyTxs, ...manualsNorm];
 
   const combinedSalary = members.reduce(
     (sum, m) => sum + resolveMonthSalary(m.monthlySalaries || {}, month),
@@ -376,6 +458,15 @@ async function handleJointFinancialMomentInner(
   }
   salariesByMonth[month] = combinedSalary;
 
+  // Same as web JointFinancialMoment: one period per card. A shared
+  // selectedCardId:'all' mix collides installment series (Amazon/Inter of both
+  // members) and drops ~R$16k of future bills — chips stay too high every month.
+  const periodByCardId = buildCreditBillPeriodByCardId(
+    creditCards,
+    cardTransactions,
+    cardBills,
+  );
+
   const moment = computeFinancialMomentMonth({
     selectedMonth: month,
     salary: combinedSalary,
@@ -387,22 +478,27 @@ async function handleJointFinancialMomentInner(
     cardTransactions,
     bankAccountIds,
     bankAccountNameById,
+    periodByCardId,
   });
 
   if (!moment) {
     return errorResponse("Não foi possível calcular o momento financeiro conjunto", 500);
   }
 
-  // Full monthsStatus over joint (2×) datasets often exceeds Edge CPU (HTTP 546).
-  // Chips reload on month change, so selected-month status is enough for the active chip.
-  const monthsStatus: Record<string, { isPositive: boolean; net: number }> = {
-    [month]: {
-      isPositive: (Number(moment.netBalance) || 0) >= 0,
-      net: Number(moment.netBalance) || 0,
-    },
-  };
+  const monthsStatus = computeFinancialMomentMonthsStatus({
+    monthList,
+    salaries: salariesByMonth,
+    receivables: receivablesNorm,
+    transactions: allTransactions,
+    creditCards,
+    cardBills,
+    cardTransactions,
+    bankAccountIds,
+    periodByCardId,
+  });
 
-  const cardFaceMeta: Record<string, {
+  // Face signing is nice-to-have — never block the moment payload on storage.
+  let cardFaceMeta: Record<string, {
     lastFour: string;
     institutionName: string;
     marketingName: string | null;
@@ -410,24 +506,20 @@ async function handleJointFinancialMomentInner(
     iconKey: string | null;
     cardFaceUrl: string | null;
   }> = {};
-  for (const card of creditCards) {
-    const id = String(card.id || "");
-    if (!id) continue;
-    const overlay = iconOverlays[id] || {};
-    cardFaceMeta[id] = {
-      lastFour: lastFour(card),
-      institutionName: String(
-        (card.creditData as { institutionName?: string } | undefined)?.institutionName
-          || card.name
-          || "",
-      ),
-      marketingName: card.marketingName ? String(card.marketingName) : null,
-      connectorName: card._connector ? String(card._connector) : null,
-      iconKey: overlay.key ? String(overlay.key) : null,
-      cardFaceUrl: (overlay.faceUrl || overlay.face_url)
-        ? String(overlay.faceUrl || overlay.face_url)
-        : null,
-    };
+  try {
+    const signedFaces = await signFacePaths(service, iconOverlays as Record<string, FaceOverlay>);
+    cardFaceMeta = buildJointCardFaceMeta(
+      creditCards,
+      iconOverlays as Record<string, FaceOverlay>,
+      signedFaces,
+    );
+  } catch (e) {
+    console.warn("[joint-moment] card faces", e);
+    cardFaceMeta = buildJointCardFaceMeta(
+      creditCards,
+      iconOverlays as Record<string, FaceOverlay>,
+      {},
+    );
   }
 
   const serialized = serializeMoment(month, moment, monthsStatus, cardFaceMeta);

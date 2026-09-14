@@ -49,14 +49,26 @@ public final class CreditCardsViewModel {
         screen?.period(for: selectedCardId) ?? CreditBillPeriod(openDueKey: nil, bills: [])
     }
 
+    /// Calendar month focus for the bill strip (e.g. September), even when that
+    /// cycle is already paid. Distinct from `openDueKey`, which is the next unpaid due month.
+    public var currentMonthBillKey: String? {
+        preferredBillKey(matching: YearMonth(from: Date()).key)
+    }
+
+    public var isViewingCurrentMonthBill: Bool {
+        guard let current = currentMonthBillKey else { return true }
+        return activeBillKey == current
+    }
+
     public var activeBillKey: String {
         if let selectedBillKey, period.bills.contains(where: { $0.dueMonth == selectedBillKey }) {
             return selectedBillKey
         }
-        if let open = period.openDueKey, period.bills.contains(where: { $0.dueMonth == open }) {
-            return open
-        }
-        return period.bills.first(where: { $0.type == .currentOpen })?.dueMonth
+        return currentMonthBillKey
+            ?? period.openDueKey.flatMap { key in
+                period.bills.contains(where: { $0.dueMonth == key }) ? key : nil
+            }
+            ?? period.bills.first(where: { $0.type == .currentOpen })?.dueMonth
             ?? period.bills.last?.dueMonth
             ?? ""
     }
@@ -161,8 +173,9 @@ public final class CreditCardsViewModel {
                !loaded.cards.contains(where: { $0.id == selectedCardId }) {
                 selectedCardId = CreditCardsScreen.allCardsId
             }
-            selectedBillKey = loaded.period(for: selectedCardId).openDueKey
-                ?? loaded.period(for: selectedCardId).bills.first(where: { $0.type == .currentOpen })?.dueMonth
+            selectedBillKey = preferredBillKey(
+                for: loaded.period(for: selectedCardId)
+            )
             state = .loaded(loaded)
             lastLoadedAt = Date()
             lastCacheKey = cacheKey
@@ -179,13 +192,42 @@ public final class CreditCardsViewModel {
     public func selectCard(_ id: String) {
         selectedCardId = id
         searchText = ""
-        selectedBillKey = period.openDueKey
-            ?? period.bills.first(where: { $0.type == .currentOpen })?.dueMonth
+        selectedBillKey = preferredBillKey(for: period)
     }
 
     public func selectBill(_ key: String) {
         selectedBillKey = key
         searchText = ""
+    }
+
+    public func selectCurrentMonthBill() {
+        guard let key = currentMonthBillKey else { return }
+        selectBill(key)
+    }
+
+    /// Prefer calendar-month bill; else the closest due month in the strip.
+    private func preferredBillKey(for period: CreditBillPeriod? = nil) -> String? {
+        preferredBillKey(matching: YearMonth(from: Date()).key, in: period ?? self.period)
+    }
+
+    private func preferredBillKey(matching calendarKey: String, in period: CreditBillPeriod? = nil) -> String? {
+        let period = period ?? self.period
+        let bills = period.bills
+        guard !bills.isEmpty else { return nil }
+        if bills.contains(where: { $0.dueMonth == calendarKey }) {
+            return calendarKey
+        }
+        // Closest month to calendar (avoids jumping to the list tail when Sept is missing).
+        return bills.min(by: {
+            monthDistance($0.dueMonth, calendarKey) < monthDistance($1.dueMonth, calendarKey)
+        })?.dueMonth
+    }
+
+    private func monthDistance(_ a: String, _ b: String) -> Int {
+        guard let left = YearMonth(key: a), let right = YearMonth(key: b) else {
+            return Int.max
+        }
+        return abs((left.year * 12 + left.month) - (right.year * 12 + right.month))
     }
 
     public func addPurchase() async {

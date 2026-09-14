@@ -17,7 +17,7 @@ public struct AgendaView: View {
         Group {
             switch viewModel.state {
             case .idle, .loading:
-                BrandLoadingView()
+                PageLoadingSkeleton(style: .summaryList)
             case .empty:
                 EmptyState(
                     title: "Agenda vazia",
@@ -30,7 +30,7 @@ public struct AgendaView: View {
                 content
             }
         }
-        .navigationTitle("Agenda")
+        .financialPageTitle("Agenda")
         .refreshable { await viewModel.load(force: true) }
         .task(id: viewModel.selectedMonth.key) { await viewModel.load() }
     }

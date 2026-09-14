@@ -26,26 +26,41 @@ struct RootView: View {
     @Bindable var composition: AppCompositionRoot
     @State private var biometric = BiometricLock()
     @State private var isBiometricallyLocked = false
+    @State private var showSplash = true
 
     var body: some View {
-        Group {
-            if composition.isAuthenticated {
-                if isBiometricallyLocked {
-                    biometricGate
+        ZStack {
+            Group {
+                if composition.hasBootstrapped {
+                    if composition.isAuthenticated {
+                        if isBiometricallyLocked {
+                            biometricGate
+                        } else {
+                            AdaptiveShell(composition: composition)
+                        }
+                    } else {
+                        AuthenticationView(viewModel: composition.authViewModel) {
+                            composition.isAuthenticated = true
+                            Task {
+                                await composition.refreshJointNav()
+                                await composition.refreshWidgetSnapshot(force: true)
+                            }
+                            if composition.env.featureFlags.biometricLockEnabled {
+                                isBiometricallyLocked = true
+                            }
+                        }
+                    }
                 } else {
-                    AdaptiveShell(composition: composition)
+                    FinancialColors.bgPrimary.ignoresSafeArea()
                 }
-            } else {
-                AuthenticationView(viewModel: composition.authViewModel) {
-                    composition.isAuthenticated = true
-                    Task {
-                        await composition.refreshJointNav()
-                        await composition.refreshWidgetSnapshot(force: true)
-                    }
-                    if composition.env.featureFlags.biometricLockEnabled {
-                        isBiometricallyLocked = true
-                    }
+            }
+
+            if showSplash {
+                LaunchSplashView(isReady: composition.hasBootstrapped) {
+                    showSplash = false
                 }
+                .transition(.identity)
+                .zIndex(1)
             }
         }
         .task {
@@ -56,9 +71,7 @@ struct RootView: View {
         }
         .overlay(alignment: .top) {
             if composition.isOffline {
-                // Prefer the design system banner when accessible; otherwise use a local fallback
                 #if canImport(FinancialDesignSystem)
-                    // If OfflineBanner is public, this will compile; if not, fallback below keeps the build green
                     OfflineBannerFallback()
                 #else
                     OfflineBannerFallback()

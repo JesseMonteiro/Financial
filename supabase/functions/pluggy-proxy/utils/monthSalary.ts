@@ -36,12 +36,12 @@ export async function saveMonthlySalaries(
   userId: string,
   salaries: Record<string, number>,
 ): Promise<void> {
-    const { error } = await supabase
+  const { error } = await supabase
     .from("profiles")
     .update({ monthly_salaries: salaries })
     .eq("id", userId);
 
-    if (error) {
+  if (error) {
     console.error("[monthSalary] Failed to save:", error);
     throw error;
   }
@@ -53,11 +53,11 @@ export function resolveMonthSalary(
   fallback = SALARY_DEFAULT_FALLBACK,
 ): number {
   if (!ym) return fallback;
-  
+
   if (salaries[ym] !== undefined && salaries[ym] !== null && salaries[ym] !== ("" as unknown)) {
     return Number(salaries[ym]) || 0;
   }
-  
+
   if (
     salaries._default !== undefined &&
     salaries._default !== null &&
@@ -65,15 +65,15 @@ export function resolveMonthSalary(
   ) {
     return Number(salaries._default) || 0;
   }
-  
+
   const prior = Object.keys(salaries)
     .filter((k) => /^\d{4}-\d{2}$/.test(k) && k < ym)
     .sort();
-    
+
   if (prior.length) {
     return Number(salaries[prior[prior.length - 1]]) || 0;
   }
-  
+
   return fallback;
 }
 
