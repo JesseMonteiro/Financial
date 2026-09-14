@@ -26,6 +26,15 @@ supabase/.temp/
 # Graphify knowledge graph output
 graphify-out/
 
+# iOS / SwiftPM
+ios/.build/
+ios/*.xcodeproj/
+ios/*.xcworkspace/
+ios/DerivedData/
+**/xcuserdata/
+ios/FinancialApp/Config/Secrets.xcconfig
+
+
 # Editor directories and OS files
 .vscode/*
 !.vscode/extensions.json

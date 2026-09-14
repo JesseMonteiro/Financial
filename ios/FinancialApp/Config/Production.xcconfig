@@ -1,0 +1,10 @@
+PRODUCT_BUNDLE_IDENTIFIER = com.financehub.financial
+PRODUCT_NAME = Financial
+APP_DISPLAY_NAME = Financial
+INFOPLIST_KEY_CFBundleDisplayName = Financial
+
+SUPABASE_URL = https:/$()/tslzhkbxabbhrmbefhrj.supabase.co
+API_BASE_URL = https:/$()/tslzhkbxabbhrmbefhrj.supabase.co/functions/v1/pluggy-proxy
+SUPABASE_ANON_KEY = REPLACE_ME
+
+#include? "Secrets.xcconfig"

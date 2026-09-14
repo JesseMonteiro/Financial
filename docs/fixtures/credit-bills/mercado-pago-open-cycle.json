@@ -1,0 +1,39 @@
+{
+  "connectorProfileId": "mercado-pago",
+  "calculationVersion": "2026.09.1",
+  "officialBills": [
+    {
+      "id": "bill-mp1",
+      "dueDate": "2026-08-15",
+      "totalAmount": "620.00",
+      "status": "PAID"
+    },
+    {
+      "id": "bill-mp2",
+      "dueDate": "2026-09-15",
+      "totalAmount": "410.22",
+      "status": "OPEN"
+    }
+  ],
+  "expected": {
+    "summarizeCardOpenBill": {
+      "openDueKey": "2026-09",
+      "openTotal": 410.22,
+      "lastPaidKey": "2026-08"
+    }
+  },
+  "fixtureId": "mercado-pago-open-cycle",
+  "card": {
+    "id": "cc-mp",
+    "type": "CREDIT",
+    "name": "Mercado Pago",
+    "balance": 1900.0,
+    "currencyCode": "BRL",
+    "creditData": {
+      "creditLimit": 5000.0,
+      "availableCreditLimit": 3100.0
+    }
+  },
+  "status": "stub"
+}
+

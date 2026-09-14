@@ -1,0 +1,34 @@
+{
+  "connectorProfileId": "carrefour",
+  "calculationVersion": "2026.09.1",
+  "notes": "PENDING stale historical purchases must not inflate open bill.",
+  "officialBills": [
+    {
+      "id": "bill-cf1",
+      "dueDate": "2026-09-05",
+      "totalAmount": "355.80",
+      "status": "OPEN"
+    }
+  ],
+  "expected": {
+    "summarizeCardOpenBill": {
+      "openDueKey": "2026-09",
+      "openTotal": 355.8,
+      "lastPaidKey": null
+    }
+  },
+  "fixtureId": "carrefour-open-cycle",
+  "card": {
+    "id": "cc-carrefour",
+    "type": "CREDIT",
+    "name": "Carrefour",
+    "balance": 900.0,
+    "currencyCode": "BRL",
+    "creditData": {
+      "creditLimit": 3000.0,
+      "availableCreditLimit": 2100.0
+    }
+  },
+  "status": "stub"
+}
+

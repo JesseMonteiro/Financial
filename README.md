@@ -1,16 +1,36 @@
-# React + Vite
+# FinanceHub (Financial)
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+App web (React) + **app nativo iOS** (SwiftUI / iOS 26 / Liquid Glass).
 
-Currently, two official plugins are available:
+## Web
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+```bash
+npm install
+npm run dev
+```
 
-## React Compiler
+## iOS
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+Ver [ios/README.md](ios/README.md).
 
-## Expanding the Oxlint configuration
+```bash
+cd ios && swift test
+# opcional: xcodegen generate && open FinanceHub.xcodeproj
+```
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+## Qualidade
+
+```bash
+npm run lint
+npm run test:fixtures
+npm run test:ios
+```
+
+## Documentação
+
+- Paridade web→iOS: [docs/ios/parity-inventory.md](docs/ios/parity-inventory.md)
+- Arquitetura iOS: [docs/ios/architecture.md](docs/ios/architecture.md)
+- OpenAPI BFF `/v1`: [docs/api/openapi-v1.yaml](docs/api/openapi-v1.yaml)
+- Threat model: [docs/security/threat-model.md](docs/security/threat-model.md)
+- Launch runbook: [docs/ios/launch-runbook.md](docs/ios/launch-runbook.md)
+- Conectores de cartão: [docs/connectors/README.md](docs/connectors/README.md)

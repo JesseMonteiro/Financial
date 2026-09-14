@@ -1,0 +1,138 @@
+name: FinanceHub
+options:
+  bundleIdPrefix: com.financehub
+  deploymentTarget:
+    iOS: "26.0"
+  xcodeVersion: "26.0"
+  createIntermediateGroups: true
+  # XcodeGen omits package= backlinks for local SPM; Xcode then shows Missing package product.
+  postGenCommand: python3 scripts/fix-local-package-backlinks.py
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    TARGETED_DEVICE_FAMILY: "1,2"
+    IPHONEOS_DEPLOYMENT_TARGET: "26.0"
+packages:
+  Financial:
+    path: .
+targets:
+  FinanceHub:
+    type: application
+    platform: iOS
+    sources:
+      - path: FinancialApp
+        excludes:
+          - "Config/**"
+          - "*.entitlements"
+    dependencies:
+      - target: FinanceHubWidgets
+        embed: true
+      - package: Financial
+        product: FinancialCore
+      - package: Financial
+        product: FinancialDomain
+      - package: Financial
+        product: FinancialData
+      - package: Financial
+        product: FinancialDesignSystem
+      - package: Financial
+        product: Authentication
+      - package: Financial
+        product: Dashboard
+      - package: Financial
+        product: Accounts
+      - package: Financial
+        product: Transactions
+      - package: Financial
+        product: CreditCards
+      - package: Financial
+        product: Investments
+      - package: Financial
+        product: Loans
+      - package: Financial
+        product: Budget
+      - package: Financial
+        product: Goals
+      - package: Financial
+        product: Receivables
+      - package: Financial
+        product: ManualExpenses
+      - package: Financial
+        product: FinancialMoment
+      - package: Financial
+        product: JointFinance
+      - package: Financial
+        product: Subscriptions
+      - package: Financial
+        product: Agenda
+      - package: Financial
+        product: Reports
+      - package: Financial
+        product: BankConnections
+      - package: Financial
+        product: Settings
+    entitlements:
+      path: FinancialApp/FinanceHub.entitlements
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.financehub.financial
+        CODE_SIGN_ENTITLEMENTS: FinancialApp/FinanceHub.entitlements
+        INFOPLIST_FILE: FinancialApp/Resources/Info.plist
+        INFOPLIST_KEY_CFBundleDisplayName: FinanceHub
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+        GENERATE_INFOPLIST_FILE: NO
+        CURRENT_PROJECT_VERSION: 1
+        MARKETING_VERSION: "1.0.0"
+    configFiles:
+      Debug: FinancialApp/Config/Debug.xcconfig
+      Release: FinancialApp/Config/Production.xcconfig
+  FinanceHubTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: FinancialTests
+    dependencies:
+      - target: FinanceHub
+      - package: Financial
+        product: FinancialDomain
+      - package: Financial
+        product: FinancialCore
+      - package: Financial
+        product: FinancialData
+      - package: Financial
+        product: FinancialDesignSystem
+  FinanceHubWidgets:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: FinancialWidgets
+        excludes:
+          - Info.plist
+          - "*.entitlements"
+    dependencies:
+      - package: Financial
+        product: FinancialCore
+    entitlements:
+      path: FinancialWidgets/FinanceHubWidgets.entitlements
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.financehub.financial.widgets
+        CODE_SIGN_ENTITLEMENTS: FinancialWidgets/FinanceHubWidgets.entitlements
+        INFOPLIST_FILE: FinancialWidgets/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_KEY_CFBundleDisplayName: FinanceHub Widgets
+        CURRENT_PROJECT_VERSION: 1
+        MARKETING_VERSION: "1.0.0"
+schemes:
+  FinanceHub:
+    build:
+      targets:
+        FinanceHub: all
+        FinanceHubWidgets: all
+    test:
+      targets:
+        - FinanceHubTests
+    run:
+      config: Debug

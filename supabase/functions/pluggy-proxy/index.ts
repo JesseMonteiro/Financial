@@ -1,351 +1,37 @@
 // Pluggy Proxy — Supabase Edge Function (multi-user via profiles.pluggy_item_ids)
+// Modular BFF: middleware + handlers + /v1 router; legacy unversioned paths preserved.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.39.8";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.8";
 import { summarizeCardOpenBill } from "./creditBillPeriod.ts";
-
-const PLUGGY_API = 'https://api.pluggy.ai';
-
-interface CachedToken {
-  token: string;
-  expiresAt: number;
-}
-const tokenCache = new Map<string, CachedToken>();
-
-const CORS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'GET, POST, PATCH, DELETE, OPTIONS',
-};
-
-function jsonResponse(data: unknown, status = 200): Response {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { ...CORS, 'Content-Type': 'application/json' },
-  });
-}
-
-function errorResponse(message: string, status = 500): Response {
-  console.error(`[pluggy-proxy] Error Response (${status}): ${message}`);
-  return jsonResponse({ error: message }, status);
-}
-
-function asItemIdList(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  return value.filter((id): id is string => typeof id === 'string' && id.length > 0);
-}
-
-interface PluggyClient {
-  clientId: string;
-  clientSecret: string;
-  itemIds: string[];
-  userId: string;
-  supabase: SupabaseClient;
-}
-
-async function getPluggyApiKey(clientId: string, clientSecret: string): Promise<string> {
-  const cached = tokenCache.get(clientId);
-  if (cached && Date.now() < cached.expiresAt - 5 * 60 * 1000) {
-    return cached.token;
-  }
-  const res = await fetch(`${PLUGGY_API}/auth`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ clientId, clientSecret }),
-  });
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Pluggy auth failed: ${err}`);
-  }
-  const data = await res.json();
-  tokenCache.set(clientId, { token: data.apiKey, expiresAt: Date.now() + 7200 * 1000 });
-  return data.apiKey;
-}
-
-async function pluggyFetch(
-  client: { clientId: string; clientSecret: string },
-  path: string,
-  options: { method?: string; body?: unknown; params?: Record<string, string | undefined> } = {}
-): Promise<Response> {
-  const apiKey = await getPluggyApiKey(client.clientId, client.clientSecret);
-  let url = `${PLUGGY_API}${path}`;
-  if (options.params) {
-    const qs = new URLSearchParams();
-    for (const [k, v] of Object.entries(options.params)) {
-      if (v !== undefined && v !== null) qs.set(k, String(v));
-    }
-    const qStr = qs.toString();
-    if (qStr) url += '?' + qStr;
-  }
-  const fetchOpts: RequestInit = {
-    method: options.method || 'GET',
-    headers: { 'Content-Type': 'application/json', 'X-API-KEY': apiKey },
-  };
-  if (options.body) fetchOpts.body = JSON.stringify(options.body);
-  return fetch(url, fetchOpts);
-}
-
-async function pluggyJson(
-  client: { clientId: string; clientSecret: string },
-  path: string,
-  options?: { method?: string; body?: unknown; params?: Record<string, string | undefined> }
-): Promise<unknown> {
-  const res = await pluggyFetch(client, path, options);
-  if (!res.ok) {
-    const errText = await res.text();
-    let parsed: { message?: string; codeDescription?: string; code?: number; data?: unknown } | null = null;
-    try {
-      parsed = JSON.parse(errText);
-    } catch {
-      parsed = null;
-    }
-    const err = new Error(
-      parsed?.message || `Pluggy API ${path} failed (${res.status}): ${errText}`
-    ) as Error & {
-      status?: number;
-      codeDescription?: string;
-      pluggyCode?: number;
-      pluggyData?: unknown;
-    };
-    err.status = res.status;
-    err.codeDescription = parsed?.codeDescription;
-    err.pluggyCode = parsed?.code;
-    err.pluggyData = parsed?.data;
-    throw err;
-  }
-  return res.json();
-}
-
-/** Resolve a pasted UUID to a Pluggy Item id (rejects bare Account UUIDs unless remapped). */
-async function resolvePluggyItemId(
-  client: { clientId: string; clientSecret: string },
-  id: string,
-): Promise<{ itemId: string; remappedFromAccount?: string; accountName?: string }> {
-  try {
-    const item = await pluggyJson(client, `/items/${id}`) as { id?: string };
-    if (item?.id) return { itemId: item.id };
-  } catch (e) {
-    const err = e as { status?: number };
-    if (err.status && err.status !== 404) throw e;
-  }
-
-  try {
-    const account = await pluggyJson(client, `/accounts/${id}`) as {
-      id?: string;
-      itemId?: string;
-      name?: string;
-    };
-    if (account?.itemId) {
-      return {
-        itemId: account.itemId,
-        remappedFromAccount: account.id,
-        accountName: account.name,
-      };
-    }
-  } catch (e) {
-    const err = e as { status?: number };
-    if (err.status && err.status !== 404) throw e;
-  }
-
-  const err = new Error('Conexão Pluggy não encontrada para este ID.') as Error & { status?: number };
-  err.status = 404;
-  throw err;
-}
-
-function ownedItemIds(client: PluggyClient, requested?: string | null): string[] {
-  if (requested) {
-    return client.itemIds.includes(requested) ? [requested] : [];
-  }
-  return client.itemIds;
-}
-
-async function handleAccounts(client: PluggyClient, url: URL, id?: string): Promise<Response> {
-  if (id) {
-    const account = await pluggyJson(client, `/accounts/${id}`) as { itemId?: string };
-    if (!account?.itemId || !client.itemIds.includes(account.itemId)) {
-      return errorResponse('Acesso negado para esta conta', 403);
-    }
-    return jsonResponse(account);
-  }
-
-  const itemId = url.searchParams.get('itemId');
-  const type = url.searchParams.get('type') ?? undefined;
-  const targetItemIds = ownedItemIds(client, itemId);
-  if (itemId && targetItemIds.length === 0) {
-    return errorResponse('Acesso negado para este item ID', 403);
-  }
-  if (targetItemIds.length === 0) {
-    return jsonResponse({ results: [], total: 0 });
-  }
-
-  const all: unknown[] = [];
-  for (const iid of targetItemIds) {
-    try {
-      const params: Record<string, string | undefined> = { itemId: iid };
-      if (type) params.type = type;
-      const d = await pluggyJson(client, '/accounts', { params }) as { results?: unknown[] };
-      all.push(...(d.results || []));
-    } catch (e) {
-      console.error(`[pluggy-proxy] Error fetching accounts for item ${iid}:`, e);
-    }
-  }
-  return jsonResponse({ results: all, total: all.length });
-}
-
-async function handleTransactions(client: PluggyClient, url: URL, method: string, id?: string): Promise<Response> {
-  if (method === 'PATCH' && id) return jsonResponse({ message: 'patch not supported in proxy mode' });
-  if (id) return jsonResponse(await pluggyJson(client, `/transactions/${id}`));
-  const accountId = url.searchParams.get('accountId');
-  const from = url.searchParams.get('from') ?? undefined;
-  const to = url.searchParams.get('to') ?? undefined;
-  const cursor = url.searchParams.get('cursor') ?? undefined;
-  if (client.itemIds.length === 0) return jsonResponse({ results: [], total: 0 });
-
-  let accountIds = accountId ? [accountId] : [];
-  if (!accountId) {
-    for (const iid of client.itemIds) {
-      try {
-        const d = await pluggyJson(client, '/accounts', { params: { itemId: iid } }) as { results?: { id: string }[] };
-        accountIds.push(...(d.results || []).map(a => a.id));
-      } catch (_) {}
-    }
-  }
-  const all: unknown[] = [];
-  for (const accId of accountIds) {
-    try {
-      const params: Record<string, string | undefined> = { accountId: accId, from, to, cursor };
-      const d = await pluggyJson(client, '/v2/transactions', { params }) as { results?: unknown[] };
-      all.push(...(d.results || []));
-    } catch (_) {}
-  }
-  return jsonResponse({ results: all, total: all.length });
-}
-
-async function handleInvestments(client: PluggyClient, url: URL, id?: string): Promise<Response> {
-  if (id) return jsonResponse(await pluggyJson(client, `/investments/${id}`));
-  const itemId = url.searchParams.get('itemId');
-  const type = url.searchParams.get('type') ?? undefined;
-  const targetItemIds = ownedItemIds(client, itemId);
-  if (itemId && targetItemIds.length === 0) return errorResponse('Acesso negado para este item ID', 403);
-  if (targetItemIds.length === 0) return jsonResponse({ results: [], total: 0 });
-  const all: unknown[] = [];
-  for (const iid of targetItemIds) {
-    try {
-      const params: Record<string, string | undefined> = { itemId: iid };
-      if (type) params.type = type;
-      const d = await pluggyJson(client, '/investments', { params }) as { results?: unknown[] };
-      all.push(...(d.results || []));
-    } catch (_) {}
-  }
-  return jsonResponse({ results: all, total: all.length });
-}
-
-async function handleLoans(client: PluggyClient, url: URL, id?: string): Promise<Response> {
-  if (id) return jsonResponse(await pluggyJson(client, `/loans/${id}`));
-  const itemId = url.searchParams.get('itemId');
-  const targetItemIds = ownedItemIds(client, itemId);
-  if (itemId && targetItemIds.length === 0) return errorResponse('Acesso negado para este item ID', 403);
-  if (targetItemIds.length === 0) return jsonResponse({ results: [], total: 0 });
-  const all: unknown[] = [];
-  for (const iid of targetItemIds) {
-    try {
-      const d = await pluggyJson(client, '/loans', { params: { itemId: iid } }) as { results?: unknown[] };
-      all.push(...(d.results || []));
-    } catch (_) {}
-  }
-  return jsonResponse({ results: all, total: all.length });
-}
-
-async function handleBills(client: PluggyClient, url: URL, id?: string, subPath?: string): Promise<Response> {
-  if (id && subPath === 'transactions') return jsonResponse(await pluggyJson(client, `/bills/${id}/transactions`));
-  if (id) return jsonResponse(await pluggyJson(client, `/bills/${id}`));
-  const accountId = url.searchParams.get('accountId') ?? undefined;
-  return jsonResponse(await pluggyJson(client, '/bills', { params: accountId ? { accountId } : {} }));
-}
-
-async function handleConnectors(client: PluggyClient, url: URL, id?: string): Promise<Response> {
-  if (id) return jsonResponse(await pluggyJson(client, `/connectors/${id}`));
-  const name = url.searchParams.get('name') ?? undefined;
-  const countries = url.searchParams.get('countries') ?? 'BR';
-  return jsonResponse(await pluggyJson(client, '/connectors', { params: { countries, name } }));
-}
-
-async function saveItemIds(client: PluggyClient, nextIds: string[]): Promise<void> {
-  const { error } = await client.supabase
-    .from('profiles')
-    .upsert({ id: client.userId, pluggy_item_ids: nextIds }, { onConflict: 'id' });
-  if (error) throw new Error(error.message);
-  client.itemIds = nextIds;
-}
-
-async function handleItems(client: PluggyClient, url: URL, method: string, body: unknown, idOrAction?: string): Promise<Response> {
-  if (idOrAction === 'connect-token' && method === 'POST') {
-    const itemId = (body as { itemId?: string })?.itemId;
-    if (itemId && !client.itemIds.includes(itemId)) {
-      return errorResponse('Acesso negado para este item ID', 403);
-    }
-
-    // clientUserId tags the Pluggy Item with the FinanceHub user for multi-tenant isolation
-    const payload: Record<string, unknown> = {
-      options: { clientUserId: client.userId },
-    };
-    if (itemId) payload.itemId = itemId;
-
-    return jsonResponse(await pluggyJson(client, '/connect_token', { method: 'POST', body: payload }));
-  }
-
-  const id = idOrAction;
-  if (id && method === 'PATCH') {
-    if (!client.itemIds.includes(id)) return errorResponse('Acesso negado para este item ID', 403);
-    return jsonResponse(await pluggyJson(client, `/items/${id}`, { method: 'PATCH', body }));
-  }
-  if (id && method === 'DELETE') {
-    if (!client.itemIds.includes(id)) return errorResponse('Acesso negado para este item ID', 403);
-    try {
-      await pluggyFetch(client, `/items/${id}`, { method: 'DELETE' });
-    } catch (e) {
-      console.warn(`[pluggy-proxy] Failed deleting item ${id} from Pluggy:`, e);
-    }
-    const nextIds = client.itemIds.filter((item) => item !== id);
-    await saveItemIds(client, nextIds);
-    return jsonResponse({ success: true, message: 'Conexão removida com sucesso' });
-  }
-  if (id) {
-    if (!client.itemIds.includes(id)) return errorResponse('Acesso negado para este item ID', 403);
-    return jsonResponse(await pluggyJson(client, `/items/${id}`));
-  }
-
-  const itemIds = client.itemIds;
-  if (itemIds.length === 0) return jsonResponse({ results: [], total: 0 });
-  const results: unknown[] = [];
-  for (const iid of itemIds) {
-    try {
-      const d = await pluggyJson(client, `/items/${iid}`);
-      results.push(d);
-    } catch (e) {
-      console.error(`[pluggy-proxy] Failed to fetch item ${iid}:`, e);
-    }
-  }
-  return jsonResponse({ results, total: results.length });
-}
-
-async function handleWebhooks(client: PluggyClient, url: URL, method: string, body: unknown, action?: string): Promise<Response> {
-  if (method === 'GET' && action === 'list') {
-    return jsonResponse(await pluggyJson(client, '/webhooks'));
-  }
-  if (method === 'GET' && action === 'history') {
-    return jsonResponse([]);
-  }
-  if (method === 'POST' && action === 'register') {
-    const { url: webhookUrl, event = 'all' } = body as { url?: string; event?: string };
-    if (!webhookUrl) return errorResponse('URL é obrigatória', 400);
-    return jsonResponse(await pluggyJson(client, '/webhooks', { method: 'POST', body: { url: webhookUrl, event } }));
-  }
-  if (method === 'DELETE' && action) {
-    await pluggyFetch(client, `/webhooks/${action}`, { method: 'DELETE' });
-    return jsonResponse({ success: true });
-  }
-  return errorResponse('Invalid webhook action', 400);
-}
+import {
+  CORS,
+  correlationId,
+  errorResponse,
+  featureFlags,
+  jsonResponse,
+} from "./middleware/http.ts";
+import { verifyPluggyWebhook, verifyTelegramSecret } from "./middleware/webhooks.ts";
+import { handleV1 } from "./v1/router.ts";
+import {
+  asItemIdList,
+  getPluggyApiKey,
+  handleAccounts,
+  handleBills,
+  handleConnectors,
+  handleInvestments,
+  handleItems,
+  handleLoans,
+  handleTransactions,
+  handleWebhooks,
+  PLUGGY_API,
+  pluggyJson,
+  resolvePluggyItemId,
+  type PluggyClient,
+} from "./handlers/pluggy.ts";
+import { handleCreditCards } from "./handlers/creditCards.ts";
+import { handleFinancialMoment, handleSaveSalary, handleGetCurrentSalary, handleToggleManualExpensePaid } from "./handlers/financialMoment.ts";
+import { handleDashboard } from "./handlers/dashboard.ts";
+import { handleJointFinancialMoment, handleJointMemberSalary } from "./handlers/jointMoment.ts";
 
 // ─── Telegram chatbot (per-user context via profiles.telegram_chat_id) ───
 
@@ -1276,17 +962,35 @@ async function loadMemberInvestmentsBundleEdge(profile: {
   return { accounts, investments };
 }
 
+function normalizeJointLink(data: unknown): Record<string, unknown> | null {
+  if (!data || typeof data !== 'object') return null;
+  const row = data as Record<string, unknown>;
+  return {
+    id: String(row.id || ''),
+    status: String(row.status || ''),
+    partnerId: row.partner_id ? String(row.partner_id) : (row.partnerId ? String(row.partnerId) : null),
+    partnerDisplayName: row.partner_display_name
+      ? String(row.partner_display_name)
+      : (row.partnerDisplayName ? String(row.partnerDisplayName) : null),
+    inviteToken: row.invite_token
+      ? String(row.invite_token)
+      : (row.inviteToken ? String(row.inviteToken) : null),
+    inviteExpiresAt: row.invite_expires_at || row.inviteExpiresAt || null,
+  };
+}
+
 async function handleJoint(
   supabaseClient: SupabaseClient,
   userId: string,
   method: string,
   actionOrId: string | undefined,
-  body: unknown
+  body: unknown,
+  url: URL,
 ): Promise<Response> {
   if (method === 'GET' && (!actionOrId || actionOrId === 'status')) {
     const { data, error } = await supabaseClient.rpc('get_my_joint_link');
     if (error) return errorResponse(error.message, 500);
-    return jsonResponse({ link: data || null });
+    return jsonResponse({ link: normalizeJointLink(data) });
   }
 
   if (method === 'POST' && actionOrId === 'invite') {
@@ -1311,6 +1015,14 @@ async function handleJoint(
     if (error) return errorResponse(error.message, 400);
     if (!data?.success) return errorResponse(data?.message || 'Falha ao desvincular', 400);
     return jsonResponse(data);
+  }
+
+  if (method === 'GET' && actionOrId === 'financial-moment') {
+    return await handleJointFinancialMoment(supabaseClient, userId, url);
+  }
+
+  if (method === 'POST' && actionOrId === 'member-salary') {
+    return await handleJointMemberSalary(supabaseClient, userId, body);
   }
 
   if (method === 'GET' && actionOrId === 'moment-data') {
@@ -1544,6 +1256,7 @@ async function handleJoint(
 // ─── Main router ───
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
+  const requestId = correlationId(req);
   const url = new URL(req.url);
   let path = url.pathname.replace(/^\/pluggy-proxy/, '');
   if (!path.startsWith('/')) path = '/' + path;
@@ -1554,11 +1267,22 @@ Deno.serve(async (req: Request) => {
   const subPath = segments[2];
   const method = req.method;
 
+  // Versioned API — envelope responses under /v1/*
+  if (resource === 'v1') {
+    const pathAfterV1 = '/' + segments.slice(1).join('/');
+    const v1Res = await handleV1(req, pathAfterV1, { requestId });
+    if (v1Res) return v1Res;
+    return errorResponse(`Route /v1${pathAfterV1 === '/' ? '' : pathAfterV1} not found`, 404);
+  }
+
   if (resource === 'chatbot') {
     const action = segments[2];
 
     // Public Telegram webhook — resolve FinanceHub user by telegram_chat_id
     if (segments[1] === 'telegram' && action === 'webhook' && method === 'POST') {
+      if (!verifyTelegramSecret(req)) {
+        return errorResponse('Invalid Telegram webhook secret', 401);
+      }
       try {
         const payload = await req.json();
         await handleTelegramWebhook(payload);
@@ -1589,6 +1313,7 @@ Deno.serve(async (req: Request) => {
   }
 
   if (resource === 'webhooks' && method === 'POST' && !actionOrId) {
+    verifyPluggyWebhook(req);
     return jsonResponse({ received: true });
   }
 
@@ -1599,6 +1324,11 @@ Deno.serve(async (req: Request) => {
       timestamp: new Date().toISOString(),
       pluggyConfigured: configured,
     });
+  }
+
+  // Legacy root feature flags (same payload as /v1/feature-flags data)
+  if (resource === 'feature-flags' && method === 'GET') {
+    return jsonResponse(featureFlags());
   }
 
   const authHeader = req.headers.get('authorization');
@@ -1622,7 +1352,7 @@ Deno.serve(async (req: Request) => {
 
   // Joint account routes (no Pluggy credentials required for invite/status)
   if (resource === 'joint') {
-    return await handleJoint(supabaseClient, user.id, method, actionOrId, body);
+    return await handleJoint(supabaseClient, user.id, method, actionOrId, body, url);
   }
 
   if ((resource === 'parse-bill' || resource === 'parsebill') && method === 'POST') {
@@ -1761,6 +1491,20 @@ Deno.serve(async (req: Request) => {
       case 'investments':  return await handleInvestments(clientConfig, url, actionOrId);
       case 'loans':        return await handleLoans(clientConfig, url, actionOrId);
       case 'bills':        return await handleBills(clientConfig, url, actionOrId, subPath);
+      case 'credit-cards': return await handleCreditCards(clientConfig);
+      case 'dashboard':    return await handleDashboard(clientConfig, url);
+      case 'financial-moment':
+        if (actionOrId === 'salary') {
+          if (method === 'GET') return await handleGetCurrentSalary(clientConfig, url);
+          if (method === 'POST') return await handleSaveSalary(clientConfig, req);
+          return errorResponse('Method not allowed', 405);
+        }
+        if (actionOrId === 'toggle-manual-expense') {
+          if (method !== 'POST') return errorResponse('Method not allowed', 405);
+          return await handleToggleManualExpensePaid(clientConfig, req);
+        }
+        if (method !== 'GET') return errorResponse('Method not allowed', 405);
+        return await handleFinancialMoment(clientConfig, url);
       case 'connectors':   return await handleConnectors(clientConfig, url, actionOrId);
       case 'items':        return await handleItems(clientConfig, url, method, body, actionOrId);
       case 'webhooks':     return await handleWebhooks(clientConfig, url, method, body, actionOrId);

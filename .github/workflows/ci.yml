@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx oxlint .
+      - run: npm run build
+
+  ios-package:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Swift package tests
+        working-directory: ios
+        run: swift test
+
+  secrets-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Block committed secrets patterns
+        run: |
+          set -euo pipefail
+          if rg -n --glob '!.env.example' --glob '!node_modules/**' --glob '!docs/**' --glob '!supabase/functions/**' \
+            -e 'sk_live_[A-Za-z0-9]+' \
+            -e 'BEGIN PRIVATE KEY' \
+            -e 'SUPABASE_SERVICE_ROLE_KEY=ey' \
+            .; then
+            echo "Potential secret found"; exit 1;
+          fi
+          echo "OK"
+
+  fixtures:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node scripts/validate-credit-fixtures.mjs

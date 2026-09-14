@@ -1,0 +1,39 @@
+{
+  "connectorProfileId": "santander",
+  "calculationVersion": "2026.09.1",
+  "officialBills": [
+    {
+      "id": "bill-s1",
+      "dueDate": "2026-08-10",
+      "totalAmount": "1450.00",
+      "status": "PAID"
+    },
+    {
+      "id": "bill-s2",
+      "dueDate": "2026-09-10",
+      "totalAmount": "980.40",
+      "status": "OPEN"
+    }
+  ],
+  "expected": {
+    "summarizeCardOpenBill": {
+      "openDueKey": "2026-09",
+      "openTotal": 980.4,
+      "lastPaidKey": "2026-08"
+    }
+  },
+  "fixtureId": "santander-open-cycle",
+  "card": {
+    "id": "cc-santander",
+    "type": "CREDIT",
+    "name": "Santander SX",
+    "balance": 2800.0,
+    "currencyCode": "BRL",
+    "creditData": {
+      "creditLimit": 10000.0,
+      "availableCreditLimit": 7200.0
+    }
+  },
+  "status": "stub"
+}
+
