@@ -1,6 +1,7 @@
 import SwiftUI
-import FinancialDesignSystem
-import FinancialDomain
+import MeuFluxDesignSystem
+import MeuFluxDomain
+import MeuFluxIntelligence
 
 public struct SettingsView: View {
     @State private var viewModel: SettingsViewModel
@@ -8,12 +9,16 @@ public struct SettingsView: View {
     @State private var showUnlinkConfirm = false
     private let onSignOut: (() -> Void)?
     private let onJointChanged: (() -> Void)?
+    private let notificationImportDestination: AnyView?
+    private let siriShortcutsTip: AnyView?
 
     public init(
         jointRepository: (any JointFinanceRepository)? = nil,
         settingsRepository: (any SettingsRepository)? = nil,
         onSignOut: (() -> Void)? = nil,
-        onJointChanged: (() -> Void)? = nil
+        onJointChanged: (() -> Void)? = nil,
+        notificationImportDestination: AnyView? = nil,
+        siriShortcutsTip: AnyView? = nil
     ) {
         _viewModel = State(wrappedValue: SettingsViewModel(
             jointRepository: jointRepository,
@@ -21,6 +26,8 @@ public struct SettingsView: View {
         ))
         self.onSignOut = onSignOut
         self.onJointChanged = onJointChanged
+        self.notificationImportDestination = notificationImportDestination
+        self.siriShortcutsTip = siriShortcutsTip
     }
 
     public init() {
@@ -36,7 +43,7 @@ public struct SettingsView: View {
                 settingsForm
             }
         }
-        .financialPageTitle("Configurações")
+        .meuFluxPageTitle("Configurações")
         .task { await viewModel.load() }
         .confirmationDialog("Desvincular conta conjunta?", isPresented: $showUnlinkConfirm) {
             Button("Desvincular", role: .destructive) {
@@ -82,10 +89,20 @@ public struct SettingsView: View {
                 Task { await viewModel.persistAppearance() }
             }
 
+            if let notificationImportDestination {
+                Section("Contas sem Open Finance") {
+                    NavigationLink {
+                        notificationImportDestination
+                    } label: {
+                        Label("Leitor de notificações", systemImage: "bell.badge")
+                    }
+                }
+            }
+
             Section("Telegram") {
                 if viewModel.settings.telegramLinked {
                     Label("Vinculado", systemImage: "checkmark.seal.fill")
-                        .foregroundStyle(FinancialColors.success)
+                        .foregroundStyle(MeuFluxColors.success)
                     Button("Desconectar Telegram", role: .destructive) {
                         Task { await viewModel.disconnectTelegram() }
                     }
@@ -117,7 +134,7 @@ public struct SettingsView: View {
                     if let error = viewModel.errorMessage {
                         Text(error)
                             .font(.caption)
-                            .foregroundStyle(FinancialColors.danger)
+                            .foregroundStyle(MeuFluxColors.danger)
                     }
                     TextField("Código do convite", text: $inviteCode)
                     #if os(iOS)
@@ -134,10 +151,23 @@ public struct SettingsView: View {
                 }
             }
 
+            Section("Apple Intelligence") {
+                LabeledContent(
+                    "Neste iPhone",
+                    value: AppleIntelligenceAvailability.isAvailable ? "Disponível" : "Indisponível"
+                )
+                if let siriShortcutsTip {
+                    siriShortcutsTip
+                }
+                Text("Depois de instalar, abra a Visão Geral uma vez. Se a Siri recusar, apague o app, instale de novo pelo Xcode e fale exatamente: “Qual meu saldo no MeuFlux?”.")
+                    .font(.caption)
+                    .foregroundStyle(MeuFluxColors.textSecondary)
+            }
+
             Section("Privacidade") {
                 Text("Exportar e excluir conta ainda estão disponíveis na versão web.")
                     .font(.caption)
-                    .foregroundStyle(FinancialColors.textSecondary)
+                    .foregroundStyle(MeuFluxColors.textSecondary)
             }
 
             Section("Sessão") {
@@ -152,6 +182,8 @@ public struct SettingsView: View {
                 LabeledContent("Cálculo de faturas", value: "1.0.0")
             }
         }
+        .scrollContentBackground(.hidden)
+        .background(MeuFluxColors.bgPrimary)
     }
 }
 

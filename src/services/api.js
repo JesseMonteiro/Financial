@@ -20,6 +20,10 @@ api.interceptors.request.use(async (config) => {
     if (session?.access_token) {
       config.headers.Authorization = `Bearer ${session.access_token}`;
     }
+    const anon = import.meta.env.VITE_SUPABASE_ANON_KEY;
+    if (anon) {
+      config.headers.apikey = anon;
+    }
   } catch (error) {
     console.error('[API Interceptor Error] Falha ao obter sessão do Supabase:', error);
   }
@@ -94,6 +98,12 @@ export async function fetchTransactions(params = {}, { force = false } = {}) {
   );
 }
 
+export async function patchTransactionCategory(id, categoryId) {
+  const res = await api.patch(`/transactions/${id}`, { categoryId });
+  clearApiCache();
+  return res.data;
+}
+
 export async function fetchBills(accountId, { force = false } = {}) {
   const scope = await cacheScope();
   const key = cacheKey(scope, ['bills', accountId || 'all']);
@@ -163,15 +173,14 @@ export async function fetchCategories({ force = false } = {}) {
   return cachedFetch(
     key,
     async () => {
-      try {
-        const res = await api.get('/categories');
-        const data = res.data;
-        return data?.results || data || [];
-      } catch (err) {
-        return [];
-      }
+      const res = await api.get('/categories');
+      const data = res.data;
+      if (Array.isArray(data?.results)) return data.results;
+      if (Array.isArray(data?.data?.results)) return data.data.results;
+      if (Array.isArray(data)) return data;
+      return [];
     },
-    { force }
+    { force, skipCache: (list) => !Array.isArray(list) || list.length === 0 }
   );
 }
 

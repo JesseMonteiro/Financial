@@ -25,6 +25,8 @@ import { useAccountStore } from '../stores/accountStore';
 import { fetchTransactions } from '../services/api';
 import { formatCurrency, formatDate } from '../utils/formatters';
 import { isInitialEmpty } from '../utils/loading';
+import { ItemDetailSheet } from '../components/ItemDetailSheet';
+import { fromReceivable } from '../utils/lineItemDetail';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HELPERS
@@ -72,7 +74,7 @@ function sortReceivablesByDue(list = []) {
 // MODAL (Combined Add & Edit)
 // ─────────────────────────────────────────────────────────────────────────────
 
-function ReceivableModal({ onClose, onSave, creditTransactions, editingReceivable, prefilledPersonName }) {
+export function ReceivableModal({ onClose, onSave, creditTransactions, editingReceivable, prefilledPersonName, prefilledTransaction }) {
   const [personName, setPersonName] = useState('');
   const [description, setDescription] = useState('');
   const [type, setType] = useState('avulso'); // 'cartao' | 'avulso'
@@ -123,10 +125,17 @@ function ReceivableModal({ onClose, onSave, creditTransactions, editingReceivabl
       } else {
         setType('avulso');
       }
+    } else if (prefilledTransaction) {
+      setType('cartao');
+      setSelectedTx(prefilledTransaction);
+      setTxSearch(prefilledTransaction.description || '');
+      setDescription(prefilledTransaction.description || '');
+      const amt = Math.abs(Number(prefilledTransaction.amountInAccountCurrency ?? prefilledTransaction.amount) || 0);
+      if (amt) setTotalAmount(String(amt));
     } else if (prefilledPersonName) {
       setPersonName(prefilledPersonName);
     }
-  }, [editingReceivable, prefilledPersonName, creditTransactions]);
+  }, [editingReceivable, prefilledPersonName, prefilledTransaction, creditTransactions]);
 
   const filteredTxs = useMemo(() => {
     if (!txSearch) return creditTransactions.slice(0, 20);
@@ -463,7 +472,7 @@ function ReceivableModal({ onClose, onSave, creditTransactions, editingReceivabl
 // PERSON CARD
 // ─────────────────────────────────────────────────────────────────────────────
 
-function PersonCard({ personName, personColor, receivables, onMarkPaid, onDelete, onEdit, onAddForPerson, pending = {} }) {
+function PersonCard({ personName, personColor, receivables, onMarkPaid, onDelete, onEdit, onAddForPerson, onOpenItem, pending = {} }) {
   const [expanded, setExpanded] = useState(true);
   const [expandedReceivableId, setExpandedReceivableId] = useState(null);
 
@@ -582,7 +591,7 @@ function PersonCard({ personName, personColor, receivables, onMarkPaid, onDelete
                   cursor: 'pointer',
                   flexWrap: 'wrap',
                 }}
-                  onClick={() => setExpandedReceivableId(isExpanded ? null : rec.id)}
+                  onClick={() => onOpenItem?.(rec)}
                 >
                   <div style={{ flex: '1 1 12rem', minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
@@ -670,7 +679,15 @@ function PersonCard({ personName, personColor, receivables, onMarkPaid, onDelete
                         justifyContent: 'space-between',
                         flexWrap: 'wrap',
                       }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: '1 1 8rem', minWidth: 0, flexWrap: 'wrap' }}>
+                        <div
+                          style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: '1 1 8rem', minWidth: 0, flexWrap: 'wrap', cursor: 'pointer' }}
+                          onClick={() => onOpenItem?.(rec, inst)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') onOpenItem?.(rec, inst);
+                          }}
+                          role="button"
+                          tabIndex={0}
+                        >
                           <span style={{ fontSize: 'var(--font-size-xs)', fontWeight: 600, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
                             Parcela {inst.installmentNumber}/{total}
                           </span>
@@ -733,6 +750,8 @@ export function Receivables() {
   const [prefilledPersonName, setPrefilledPersonName] = useState('');
   const [creditTransactions, setCreditTransactions] = useState([]);
   const [loadingTxs, setLoadingTxs] = useState(false);
+  const [selectedItem, setSelectedItem] = useState(null);
+  const [sheetBusy, setSheetBusy] = useState(false);
 
   // Load basic data
   useEffect(() => {
@@ -1008,6 +1027,7 @@ export function Receivables() {
               onDelete={handleDelete}
               onEdit={handleEditClick}
               onAddForPerson={handleAddForPersonClick}
+              onOpenItem={(rec, inst) => setSelectedItem(fromReceivable(rec, inst))}
               pending={pending}
             />
           ))}
@@ -1022,6 +1042,37 @@ export function Receivables() {
           creditTransactions={creditTransactions}
           editingReceivable={editingReceivable}
           prefilledPersonName={prefilledPersonName}
+        />
+      )}
+      {selectedItem && (
+        <ItemDetailSheet
+          item={selectedItem}
+          busy={sheetBusy}
+          onClose={() => setSelectedItem(null)}
+          onTogglePaid={async () => {
+            if (!selectedItem.installmentNumber) return;
+            setSheetBusy(true);
+            try {
+              await markInstallmentPaid(selectedItem.sourceId, selectedItem.installmentNumber, new Date().toISOString());
+            } finally {
+              setSheetBusy(false);
+              setSelectedItem(null);
+            }
+          }}
+          onEdit={() => {
+            const rec = receivables.find((r) => r.id === selectedItem.sourceId);
+            if (rec) handleEditClick(rec);
+            setSelectedItem(null);
+          }}
+          onDelete={async () => {
+            setSheetBusy(true);
+            try {
+              await deleteReceivable(selectedItem.sourceId);
+            } finally {
+              setSheetBusy(false);
+              setSelectedItem(null);
+            }
+          }}
         />
       )}
     </div>

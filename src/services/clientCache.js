@@ -4,7 +4,7 @@
  */
 
 export const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
-const STORAGE_PREFIX = 'fh_api_cache_v1:';
+const STORAGE_PREFIX = 'mf_api_cache_v1:';
 
 /** @type {Map<string, { data: unknown, expiresAt: number }>} */
 const memory = new Map();
@@ -71,7 +71,7 @@ export function cacheRemove(key) {
   }
 }
 
-/** Clear all FinanceHub API cache entries (memory + localStorage). */
+/** Clear all MeuFlux API cache entries (memory + localStorage). */
 export function cacheClearAll() {
   memory.clear();
   try {
@@ -95,12 +95,14 @@ export function cacheClearAll() {
  * @returns {Promise<T>}
  */
 export async function cachedFetch(key, fetcher, opts = {}) {
-  const { force = false, ttlMs = CACHE_TTL_MS } = opts;
+  const { force = false, ttlMs = CACHE_TTL_MS, skipCache } = opts;
   if (!force) {
     const hit = cacheGet(key);
-    if (hit) return hit.data;
+    if (hit && !skipCache?.(hit.data)) return hit.data;
   }
   const data = await fetcher();
-  cacheSet(key, data, ttlMs);
+  if (!skipCache?.(data)) {
+    cacheSet(key, data, ttlMs);
+  }
   return data;
 }

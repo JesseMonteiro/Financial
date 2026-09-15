@@ -79,7 +79,7 @@ export async function handleDashboard(
     return errorResponse("Parâmetro month inválido (YYYY-MM)", 400);
   }
 
-  const [pluggyAccounts, investmentsRaw, loans, profileRes, budgetsRes, manualsRes, manualAccountsRes] =
+  const [pluggyAccounts, investmentsRaw, loans, profileRes, budgetsRes, manualsRes, manualAccountsRes, mealBenefitsRes, mealPurchasesRes] =
     await Promise.all([
       fetchAccountsWithConnectors(client),
       fetchInvestments(client),
@@ -92,6 +92,8 @@ export async function handleDashboard(
       client.supabase.from("budgets").select("*").eq("user_id", client.userId),
       client.supabase.from("manual_transactions").select("*").eq("user_id", client.userId),
       client.supabase.from("manual_accounts").select("*").eq("user_id", client.userId),
+      client.supabase.from("meal_benefits").select("*").eq("user_id", client.userId),
+      client.supabase.from("meal_benefit_purchases").select("*").eq("user_id", client.userId),
     ]);
 
   const accounts = [...pluggyAccounts];
@@ -149,10 +151,19 @@ export async function handleDashboard(
     id: String(b.id || ""),
     category: String(b.category || ""),
     limit: Number(b.limit) || 0,
+    period: String(b.period || "monthly"),
   }));
   const officialBills = Object.values(billsByAccount).flat();
   const creditIds = new Set(creditCards.map((c) => String(c.id)));
-  const budgetRows = buildBudgetRows(transactions, budgets, ym, officialBills, creditIds);
+  const budgetRows = buildBudgetRows(
+    transactions,
+    budgets,
+    ym,
+    officialBills,
+    creditIds,
+    mealBenefitsRes.data || [],
+    mealPurchasesRes.data || [],
+  );
   const budgetCategories = budgetRows
     .filter((r) => r.spent > 0 || r.hasLimit)
     .slice(0, 6)
@@ -179,6 +190,7 @@ export async function handleDashboard(
       id: String(tx.id || `${tx.accountId}-${tx.date}-${amount}`),
       description: String(tx.description || "Lançamento"),
       category: translateCategory(tx.category),
+      categoryId: tx.categoryId ? String(tx.categoryId) : null,
       date: String(tx.date || "").slice(0, 10),
       dateRelative: formatRelativeDate(String(tx.date || "")),
       amount: Math.abs(amount),

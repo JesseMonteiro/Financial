@@ -6,7 +6,7 @@ export const CALCULATION_VERSION = "2026.09.2";
 export const CORS: Record<string, string> = {
   "Access-Control-Allow-Origin": "*", // TODO: tighten for web origins in production
   "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, x-request-id",
+    "authorization, x-client-info, apikey, content-type, x-request-id, x-correlation-id",
   "Access-Control-Allow-Methods": "GET, POST, PATCH, PUT, DELETE, OPTIONS",
 };
 

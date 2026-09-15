@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { useJointStore } from '../stores/jointStore';
+import { useCategoryStore } from '../stores/categoryStore';
 import { saveMonthlySalaries, saveStoredManualTransaction } from '../services/storage';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
@@ -32,6 +33,15 @@ import {
 import { AccountIcon, accountById } from '../components/AccountIcon';
 import { MomentBillStrip } from '../components/MomentBillStrip';
 import { MealBenefitMomentCards } from '../components/MealBenefitMomentCards';
+import { ItemDetailSheet } from '../components/ItemDetailSheet';
+import {
+  fromAutomaticDebit,
+  fromManualExpense,
+  fromMomentReceivable,
+  rowActivateProps,
+  categoryOptionsForItem,
+  applyingCategory,
+} from '../utils/lineItemDetail';
 import { momentItemsFor } from '../utils/mealBenefits';
 import { useAccountStore } from '../stores/accountStore';
 import { decorateAccountWithIcon, decorateAccountsWithIcons } from '../utils/accountIcons';
@@ -68,9 +78,12 @@ export function JointFinancialMoment() {
     error,
   } = useJointStore();
   const { accounts: myAccounts, loadAccounts, connectors, itemsById, customAccountIcons } = useAccountStore();
+  const { categories, loadCategories } = useCategoryStore();
   const isMobile = useIsMobile();
 
   const [selectedMonth, setSelectedMonth] = useState('');
+  const [selectedItem, setSelectedItem] = useState(null);
+  const [sheetBusy, setSheetBusy] = useState(false);
   const [salaryInputs, setSalaryInputs] = useState({});
   const [savingSalaryIds, setSavingSalaryIds] = useState({});
   const timelineRef = useRef(null);
@@ -86,6 +99,7 @@ export function JointFinancialMoment() {
       }
     })();
     loadAccounts();
+    loadCategories();
   }, [loadStatus, loadMomentData, loadAccounts]);
 
   const accounts = useMemo(
@@ -447,7 +461,14 @@ export function JointFinancialMoment() {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.5rem' }}>
           {activeMonthData.activeReceivables.map((r, i) => (
-            <div key={i} className="list-row" style={{ padding: '0.65rem 0.75rem' }}>
+            <div
+              key={r.id || i}
+              {...rowActivateProps(() => setSelectedItem({
+                ...fromMomentReceivable(r),
+                capabilities: { togglePaid: false, edit: false, delete: false, createReceivable: false },
+              }))}
+              style={{ padding: '0.65rem 0.75rem' }}
+            >
               <div className="list-row-main" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '0.15rem' }}>
                 <span style={{ fontWeight: 600, fontSize: 'var(--font-size-xs)' }}>{r.description}</span>
                 <div className="list-row-meta" style={{ gap: '0.4rem' }}>
@@ -511,7 +532,11 @@ export function JointFinancialMoment() {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.5rem' }}>
           {activeMonthData.activeAutomaticDebits.map((t) => (
-            <div key={t.id} className="list-row" style={{ padding: '0.65rem 0.75rem' }}>
+            <div
+              key={t.id}
+              {...rowActivateProps(() => setSelectedItem(fromAutomaticDebit(t, t.accountName)))}
+              style={{ padding: '0.65rem 0.75rem' }}
+            >
               <div className="list-row-main" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '0.15rem' }}>
                 <span style={{ fontWeight: 600, fontSize: 'var(--font-size-xs)' }}>{t.description || t.merchant?.name}</span>
                 <div className="list-row-meta" style={{ gap: '0.4rem' }}>
@@ -556,7 +581,10 @@ export function JointFinancialMoment() {
           {activeMonthData.activeManual.map((m) => (
             <div
               key={m.id}
-              className="list-row"
+              {...rowActivateProps(() => setSelectedItem({
+                ...fromManualExpense(m),
+                capabilities: { togglePaid: true, edit: false, delete: false, createReceivable: false },
+              }))}
               style={{
                 gap: '0.75rem',
                 padding: '0.65rem 0.75rem',
@@ -591,12 +619,14 @@ export function JointFinancialMoment() {
                 <span style={{ fontWeight: 700, fontSize: 'var(--font-size-xs)', color: 'var(--danger)' }}>
                   - {formatCurrency(Math.abs(m.amount))}
                 </span>
-                <PaidCheckbox
-                  checked={Boolean(m.isPaid)}
-                  busy={Boolean(pending[m.id])}
-                  size={18}
-                  onChange={(v) => handleManualPaid(m, v)}
-                />
+                <span onClick={(e) => e.stopPropagation()} role="presentation">
+                  <PaidCheckbox
+                    checked={Boolean(m.isPaid)}
+                    busy={Boolean(pending[m.id])}
+                    size={18}
+                    onChange={(v) => handleManualPaid(m, v)}
+                  />
+                </span>
               </div>
             </div>
           ))}
@@ -808,6 +838,36 @@ export function JointFinancialMoment() {
             </>
           )}
         </>
+      )}
+      {selectedItem && (
+        <ItemDetailSheet
+          item={selectedItem}
+          busy={sheetBusy}
+          onClose={() => setSelectedItem(null)}
+          onTogglePaid={selectedItem.kind === 'manualExpense' ? async () => {
+            const raw = selectedItem.raw;
+            if (!raw) return;
+            setSheetBusy(true);
+            try {
+              await handleManualPaid(raw, !selectedItem.isPaid);
+            } finally {
+              setSheetBusy(false);
+              setSelectedItem(null);
+            }
+          } : undefined}
+          categoryOptions={categoryOptionsForItem(selectedItem, [], categories)}
+          onChangeCategory={selectedItem.kind === 'manualExpense' ? async (option) => {
+            const raw = selectedItem.raw;
+            if (!raw) return;
+            setSheetBusy(true);
+            try {
+              await saveStoredManualTransaction({ ...raw, category: option.value });
+              setSelectedItem(applyingCategory(selectedItem, option));
+            } finally {
+              setSheetBusy(false);
+            }
+          } : undefined}
+        />
       )}
     </div>
   );

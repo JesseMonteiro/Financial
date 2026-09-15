@@ -1,4 +1,4 @@
-# FinanceHub iOS
+# MeuFlux iOS
 
 App nativo universal (iPhone + iPad), mínimo **iOS/iPadOS 26**, SwiftUI + Liquid Glass.
 
@@ -19,7 +19,7 @@ npm run ios:secrets
 
 No Xcode:
 
-1. Confirme que o target usa `FinancialApp/Config/Debug.xcconfig`
+1. Confirme que o target usa `MeuFluxApp/Config/Debug.xcconfig`
 2. Confirme que `Info.plist` tem `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `API_BASE_URL`
 3. Clean Build Folder → Run
 4. Entre com o **mesmo e-mail/senha** do web
@@ -32,7 +32,7 @@ Se ainda vier vazio depois do login OK: no web, em **Conexões Bancárias**, con
 cd ios
 swift test
 # regenera o .xcodeproj (já aplica o patch de SPM local):
-brew install xcodegen && xcodegen generate && open FinanceHub.xcodeproj
+brew install xcodegen && xcodegen generate && open MeuFlux.xcodeproj
 ```
 
 Se o Xcode mostrar **Missing package product**, rode `xcodegen generate` de novo em `ios/` (o `postGenCommand` corrige o backlink dos pacotes locais).

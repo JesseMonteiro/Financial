@@ -1,7 +1,7 @@
 import Foundation
 import Observation
-import FinancialDomain
-import FinancialDesignSystem
+import MeuFluxDomain
+import MeuFluxDesignSystem
 
 @Observable
 @MainActor
@@ -11,11 +11,17 @@ public final class DashboardViewModel {
     public var errorMessage: String?
 
     private let loadDashboard: any LoadDashboardUseCase
+    private let transactions: (any TransactionsRepository)?
     private var lastLoadedAt: Date?
     private var lastCacheKey: String?
+    public private(set) var categoryOptions: [LineItemCategoryOption] = []
 
-    public init(loadDashboard: any LoadDashboardUseCase) {
+    public init(
+        loadDashboard: any LoadDashboardUseCase,
+        transactions: (any TransactionsRepository)? = nil
+    ) {
         self.loadDashboard = loadDashboard
+        self.transactions = transactions
         self.selectedMonth = YearMonth(from: Date())
     }
 
@@ -27,6 +33,7 @@ public final class DashboardViewModel {
             lastCacheKey: lastCacheKey,
             cacheKey: cacheKey
         ) {
+            if categoryOptions.isEmpty { await loadCategories(force: true) }
             return
         }
 
@@ -44,11 +51,30 @@ public final class DashboardViewModel {
             }
             lastLoadedAt = Date()
             lastCacheKey = cacheKey
+            await loadCategories(force: force)
         } catch {
             errorMessage = (error as? FinancialError)?.messagePT ?? error.localizedDescription
             if !state.hasContent {
             state = .failed(errorMessage ?? "Erro ao carregar visão geral.")
             }
+        }
+    }
+
+    public func changeCategory(id: String, option: LineItemCategoryOption) async {
+        guard let transactions else { return }
+        do {
+            try await transactions.updateCategory(id: id, categoryId: option.id)
+            await load(force: true)
+        } catch {
+            errorMessage = (error as? FinancialError)?.messagePT ?? error.localizedDescription
+        }
+    }
+
+    private func loadCategories(force: Bool) async {
+        guard let transactions else { return }
+        let cats = (try? await transactions.fetchCategories(force: force)) ?? []
+        if !cats.isEmpty {
+            categoryOptions = LineItemCategoryOption.pluggyOptions(cats)
         }
     }
 }

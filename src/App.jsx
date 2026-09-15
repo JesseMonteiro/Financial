@@ -16,6 +16,7 @@ import { ConnectBank } from './pages/ConnectBank';
 import { Settings } from './pages/Settings';
 import { Receivables } from './pages/Receivables';
 import { ManualExpenses } from './pages/ManualExpenses';
+import { Categories } from './pages/Categories';
 import { FinancialMoment } from './pages/FinancialMoment';
 import { JointFinancialMoment } from './pages/JointFinancialMoment';
 import { Subscriptions } from './pages/Subscriptions';
@@ -46,6 +47,7 @@ export default function App() {
           <Route path="meal-vouchers" element={<MealVouchers />} />
           <Route path="receivables" element={<Receivables />} />
           <Route path="manual-expenses" element={<ManualExpenses />} />
+          <Route path="categories" element={<Categories />} />
           <Route path="financial-moment" element={<FinancialMoment />} />
           <Route path="joint-account" element={<JointFinancialMoment />} />
           <Route path="subscriptions" element={<Subscriptions />} />

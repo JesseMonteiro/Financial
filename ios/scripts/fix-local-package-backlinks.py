@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-PBXPROJ = ROOT / "FinanceHub.xcodeproj" / "project.pbxproj"
+PBXPROJ = ROOT / "MeuFlux.xcodeproj" / "project.pbxproj"
 
 
 def main() -> int:

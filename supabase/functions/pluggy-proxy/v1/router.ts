@@ -11,6 +11,7 @@ import {
   handleItems,
   handleLoans,
   handleTransactions,
+  handleCategories,
   handleWebhooks,
   type PluggyClient,
 } from "../handlers/pluggy.ts";
@@ -123,7 +124,10 @@ export async function handleV1(
         legacy = await handleAccounts(clientConfig, url, actionOrId);
         break;
       case "transactions":
-        legacy = await handleTransactions(clientConfig, url, method, actionOrId);
+        legacy = await handleTransactions(clientConfig, url, method, actionOrId, body);
+        break;
+      case "categories":
+        legacy = await handleCategories(clientConfig);
         break;
       case "investments":
         legacy = await handleInvestments(clientConfig, url, actionOrId);

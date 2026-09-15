@@ -119,7 +119,7 @@ function MobileMoreDrawer({ open, onClose }) {
               <ShieldCheck size={20} />
             </div>
             <div>
-              <strong style={{ display: 'block', fontSize: 'var(--font-size-base)' }}>FinanceHub</strong>
+              <strong style={{ display: 'block', fontSize: 'var(--font-size-base)' }}>MeuFlux</strong>
               <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                 Menu
               </span>

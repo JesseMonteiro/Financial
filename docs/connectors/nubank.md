@@ -28,7 +28,7 @@
 - Parcelas seguintes costumam vir como `PENDING` com `installmentNumber/totalInstallments`.
 - Se faltar uma (ex.: Samsung 20/24 ausente mas 19/24 POSTED), **projetar** a partir da maior parcela vista.
 - Pluggy também pode **pular o meio da série** (ex.: Globoplay 4/12 e 7/12 sem 5–6). Preencher o buraco relativo à maior parcela conhecida e só nos ciclos ≥ aberto — caso validado (Lucas, set/2026): Globoplay 6/12, Samsung **21/24**, Vivoeasy **12/12**; CSV do app **R$ 521,74**.
-- **Não** aplicar `projectionAnchorDue` (slide para a aberta). Nubank não publica a fatura oficial até o fechamento — o slide joga na aberta parcelas já cobradas no ciclo pago (ex.: Rede Pharma 4/4 → Financial **R$ 524,06** vs app **R$ 521,74**).
+- **Não** aplicar `projectionAnchorDue` (slide para a aberta). Nubank não publica a fatura oficial até o fechamento — o slide joga na aberta parcelas já cobradas no ciclo pago (ex.: Rede Pharma 4/4 → MeuFlux **R$ 524,06** vs app **R$ 521,74**).
 - Não projetar `N/M` se já existir transação real com o mesmo `N/M`.
 
 ## Armadilhas

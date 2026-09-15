@@ -21,6 +21,10 @@ import { useReceivableStore } from '../stores/receivableStore';
 import { useCreditDataStore } from '../stores/creditDataStore';
 import { useTransactionStore } from '../stores/transactionStore';
 import { PurchaseModal } from './ManualExpenses';
+import { ReceivableModal } from './Receivables';
+import { ItemDetailSheet } from '../components/ItemDetailSheet';
+import { fromCreditPurchase, rowActivateProps, categoryOptionsForItem, applyingCategory } from '../utils/lineItemDetail';
+import { fetchCategories, patchTransactionCategory } from '../services/api';
 import { formatCurrency, formatDate } from '../utils/formatters';
 import { translateCategory } from '../utils/categories';
 import { getCategoryColor } from '../utils/colors';
@@ -53,19 +57,23 @@ function purchaseTimestamp(tx) {
 
 export function CreditCards() {
   const { accounts, loadAccounts, setCardFace, pending, loading: accountsLoading, lastUpdated: accountsUpdatedAt } = useAccountStore();
-  const { receivables, loadReceivables } = useReceivableStore();
+  const { receivables, loadReceivables, addReceivable } = useReceivableStore();
   const {
     loadForAccounts,
     loading: creditLoading,
     lastUpdatedByAccount,
     transactionsByAccount,
     billsByAccount,
+    updateTransactionCategory,
   } = useCreditDataStore();
   const { addManualTransaction } = useTransactionStore();
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [purchaseAccount, setPurchaseAccount] = useState(null);
   const [savingPurchase, setSavingPurchase] = useState(false);
+  const [selectedItem, setSelectedItem] = useState(null);
+  const [prefilledReceivableTx, setPrefilledReceivableTx] = useState(null);
+  const [pluggyCategories, setPluggyCategories] = useState([]);
 
   // Multi-card selection state ('all' or specific card.id)
   const [selectedCardId, setSelectedCardId] = useState('all');
@@ -79,7 +87,7 @@ export function CreditCards() {
   selectedCardIdRef.current = selectedCardId;
 
   // ── Accounts & Receivables ──────────────────────────────────────────────────
-  useEffect(() => { loadAccounts(); loadReceivables(); }, []);
+  useEffect(() => { loadAccounts(); loadReceivables(); fetchCategories({ force: true }).then((list) => setPluggyCategories(Array.isArray(list) ? list : [])).catch(() => setPluggyCategories([])); }, []);
 
   const creditCards = useMemo(() => accounts.filter(a => a.type === 'CREDIT'), [accounts]);
   const activeCard = selectedCardId === 'all'
@@ -779,7 +787,17 @@ export function CreditCards() {
                   tx.amountInAccountCurrency != null &&
                   Math.abs(Number(tx.amount) || 0) !== billingAmt;
                 return (
-                  <div key={tx.id || idx} className="list-row" style={{ padding: '0.75rem 0.85rem' }}>
+                  <div
+                    key={tx.id || idx}
+                    {...rowActivateProps(() => {
+                      const linked = receivables.find((r) => r.linkedTransactionId === tx.id);
+                      setSelectedItem(fromCreditPurchase(tx, {
+                        accountName: cardObj?.name,
+                        canCreateReceivable: !linked && !isPayment && !isCredit,
+                      }));
+                    })}
+                    style={{ padding: '0.75rem 0.85rem' }}
+                  >
                     <div className="list-row-main" style={{ gap: '0.75rem' }}>
                       <div style={{
                         width: 36, height: 36, borderRadius: '50%',
@@ -911,6 +929,37 @@ export function CreditCards() {
           onClose={() => { if (!savingPurchase) setPurchaseAccount(null); }}
           onSave={handlePurchaseSave}
           saving={savingPurchase}
+        />
+      )}
+      {selectedItem && (
+        <ItemDetailSheet
+          item={selectedItem}
+          categoryOptions={categoryOptionsForItem(selectedItem, pluggyCategories)}
+          onClose={() => setSelectedItem(null)}
+          onCreateReceivable={() => {
+            setPrefilledReceivableTx(selectedItem.raw);
+            setSelectedItem(null);
+          }}
+          onChangeCategory={async (option) => {
+            const updated = await patchTransactionCategory(selectedItem.sourceId, option.value);
+            updateTransactionCategory(
+              selectedItem.sourceId,
+              option.value,
+              updated?.category || option.label
+            );
+            setSelectedItem(applyingCategory(selectedItem, option));
+          }}
+        />
+      )}
+      {prefilledReceivableTx && (
+        <ReceivableModal
+          onClose={() => setPrefilledReceivableTx(null)}
+          onSave={async (data) => {
+            await addReceivable(data);
+            setPrefilledReceivableTx(null);
+          }}
+          creditTransactions={[prefilledReceivableTx]}
+          prefilledTransaction={prefilledReceivableTx}
         />
       )}
     </div>

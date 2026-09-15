@@ -18,11 +18,20 @@ export async function handleBudgetScreen(client: PluggyClient, url: URL): Promis
     return errorResponse("Parâmetro month obrigatório no formato YYYY-MM", 400);
   }
 
-  const [pluggyAccounts, manuals, budgetsRes, manualAccountsRes] = await Promise.all([
+  const [
+    pluggyAccounts,
+    manuals,
+    budgetsRes,
+    manualAccountsRes,
+    mealBenefitsRes,
+    mealPurchasesRes,
+  ] = await Promise.all([
     fetchAccountsWithConnectors(client),
     loadManualTransactions(client),
     client.supabase.from("budgets").select("*").eq("user_id", client.userId),
     client.supabase.from("manual_accounts").select("*").eq("user_id", client.userId),
+    client.supabase.from("meal_benefits").select("*").eq("user_id", client.userId),
+    client.supabase.from("meal_benefit_purchases").select("*").eq("user_id", client.userId),
   ]);
 
   const accounts = [
@@ -44,7 +53,16 @@ export async function handleBudgetScreen(client: PluggyClient, url: URL): Promis
     id: String(b.id || ""),
     category: String(b.category || ""),
     limit: Number(b.limit) || 0,
+    period: String(b.period || "monthly"),
   }));
-  const rows = buildBudgetRows(transactions, budgets, month, officialBills, creditIds);
+  const rows = buildBudgetRows(
+    transactions,
+    budgets,
+    month,
+    officialBills,
+    creditIds,
+    mealBenefitsRes.data || [],
+    mealPurchasesRes.data || [],
+  );
   return jsonResponse({ month, categories: rows });
 }

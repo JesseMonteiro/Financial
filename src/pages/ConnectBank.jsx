@@ -102,7 +102,7 @@ export function ConnectBank() {
               await loadRealItems();
             } catch (err) {
               console.error('[ConnectBank] Falha ao registrar itemId no servidor:', err);
-              alert('Erro ao registrar a conexão no seu perfil do FinanceHub.');
+              alert('Erro ao registrar a conexão no seu perfil do MeuFlux.');
             }
           },
           onError: (error) => {

@@ -1,6 +1,6 @@
-name: FinanceHub
+name: MeuFlux
 options:
-  bundleIdPrefix: com.financehub
+  bundleIdPrefix: com.meuflux
   deploymentTarget:
     iOS: "26.0"
   xcodeVersion: "26.0"
@@ -13,128 +13,136 @@ settings:
     TARGETED_DEVICE_FAMILY: "1,2"
     IPHONEOS_DEPLOYMENT_TARGET: "26.0"
 packages:
-  Financial:
+  MeuFlux:
     path: .
 targets:
-  FinanceHub:
+  MeuFlux:
     type: application
     platform: iOS
     sources:
-      - path: FinancialApp
+      - path: MeuFluxApp
         excludes:
           - "Config/**"
           - "*.entitlements"
     dependencies:
-      - target: FinanceHubWidgets
+      - target: MeuFluxWidgets
         embed: true
-      - package: Financial
-        product: FinancialCore
-      - package: Financial
-        product: FinancialDomain
-      - package: Financial
-        product: FinancialData
-      - package: Financial
-        product: FinancialDesignSystem
-      - package: Financial
+      - package: MeuFlux
+        product: MeuFluxCore
+      - package: MeuFlux
+        product: MeuFluxDomain
+      - package: MeuFlux
+        product: MeuFluxData
+      - package: MeuFlux
+        product: MeuFluxDesignSystem
+      - package: MeuFlux
         product: Authentication
-      - package: Financial
+      - package: MeuFlux
         product: Dashboard
-      - package: Financial
+      - package: MeuFlux
         product: Accounts
-      - package: Financial
+      - package: MeuFlux
         product: Transactions
-      - package: Financial
+      - package: MeuFlux
         product: CreditCards
-      - package: Financial
+      - package: MeuFlux
         product: Investments
-      - package: Financial
+      - package: MeuFlux
         product: Loans
-      - package: Financial
+      - package: MeuFlux
         product: Budget
-      - package: Financial
+      - package: MeuFlux
         product: Goals
-      - package: Financial
+      - package: MeuFlux
+        product: Categories
+      - package: MeuFlux
         product: MealVouchers
-      - package: Financial
+      - package: MeuFlux
         product: Receivables
-      - package: Financial
+      - package: MeuFlux
         product: ManualExpenses
-      - package: Financial
+      - package: MeuFlux
         product: FinancialMoment
-      - package: Financial
+      - package: MeuFlux
         product: JointFinance
-      - package: Financial
+      - package: MeuFlux
         product: Subscriptions
-      - package: Financial
+      - package: MeuFlux
         product: Agenda
-      - package: Financial
+      - package: MeuFlux
         product: Reports
-      - package: Financial
+      - package: MeuFlux
         product: BankConnections
-      - package: Financial
+      - package: MeuFlux
         product: Settings
+      - package: MeuFlux
+        product: NotificationImport
+      - package: MeuFlux
+        product: MeuFluxIntelligence
     entitlements:
-      path: FinancialApp/FinanceHub.entitlements
+      path: MeuFluxApp/MeuFlux.entitlements
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.financehub.financial
-        CODE_SIGN_ENTITLEMENTS: FinancialApp/FinanceHub.entitlements
-        INFOPLIST_FILE: FinancialApp/Resources/Info.plist
-        INFOPLIST_KEY_CFBundleDisplayName: FinanceHub
+        PRODUCT_BUNDLE_IDENTIFIER: com.meuflux.app
+        CODE_SIGN_ENTITLEMENTS: MeuFluxApp/MeuFlux.entitlements
+        INFOPLIST_FILE: MeuFluxApp/Resources/Info.plist
+        INFOPLIST_KEY_CFBundleDisplayName: MeuFlux
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
-        INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         GENERATE_INFOPLIST_FILE: NO
         CURRENT_PROJECT_VERSION: 1
         MARKETING_VERSION: "1.0.0"
     configFiles:
-      Debug: FinancialApp/Config/Debug.xcconfig
-      Release: FinancialApp/Config/Production.xcconfig
-  FinanceHubTests:
+      Debug: MeuFluxApp/Config/Debug.xcconfig
+      Release: MeuFluxApp/Config/Production.xcconfig
+  MeuFluxTests:
     type: bundle.unit-test
     platform: iOS
     sources:
-      - path: FinancialTests
+      - path: MeuFluxTests
     dependencies:
-      - target: FinanceHub
-      - package: Financial
-        product: FinancialDomain
-      - package: Financial
-        product: FinancialCore
-      - package: Financial
-        product: FinancialData
-      - package: Financial
-        product: FinancialDesignSystem
-  FinanceHubWidgets:
+      - target: MeuFlux
+      - package: MeuFlux
+        product: MeuFluxDomain
+      - package: MeuFlux
+        product: MeuFluxCore
+      - package: MeuFlux
+        product: MeuFluxData
+      - package: MeuFlux
+        product: MeuFluxDesignSystem
+      - package: MeuFlux
+        product: MeuFluxIntelligence
+  MeuFluxWidgets:
     type: app-extension
     platform: iOS
     sources:
-      - path: FinancialWidgets
+      - path: MeuFluxWidgets
         excludes:
           - Info.plist
           - "*.entitlements"
     dependencies:
-      - package: Financial
-        product: FinancialCore
+      - package: MeuFlux
+        product: MeuFluxCore
     entitlements:
-      path: FinancialWidgets/FinanceHubWidgets.entitlements
+      path: MeuFluxWidgets/MeuFluxWidgets.entitlements
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.financehub.financial.widgets
-        CODE_SIGN_ENTITLEMENTS: FinancialWidgets/FinanceHubWidgets.entitlements
-        INFOPLIST_FILE: FinancialWidgets/Info.plist
+        PRODUCT_BUNDLE_IDENTIFIER: com.meuflux.app.widgets
+        CODE_SIGN_ENTITLEMENTS: MeuFluxWidgets/MeuFluxWidgets.entitlements
+        INFOPLIST_FILE: MeuFluxWidgets/Info.plist
         GENERATE_INFOPLIST_FILE: NO
-        INFOPLIST_KEY_CFBundleDisplayName: FinanceHub Widgets
+        INFOPLIST_KEY_CFBundleDisplayName: MeuFlux Widgets
         CURRENT_PROJECT_VERSION: 1
         MARKETING_VERSION: "1.0.0"
 schemes:
-  FinanceHub:
+  MeuFlux:
     build:
       targets:
-        FinanceHub: all
-        FinanceHubWidgets: all
+        MeuFlux: all
+        MeuFluxWidgets: all
     test:
       targets:
-        - FinanceHubTests
+        - MeuFluxTests
     run:
       config: Debug

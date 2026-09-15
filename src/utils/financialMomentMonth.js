@@ -162,6 +162,7 @@ export function computeFinancialMomentMonth({
     (r.installmentHistory || []).forEach((inst) => {
       if ((inst.dueDate || '').startsWith(selectedMonth)) {
         activeReceivables.push({
+          id: r.id,
           personName: r.personName,
           personColor: r.personColor,
           description: r.description,

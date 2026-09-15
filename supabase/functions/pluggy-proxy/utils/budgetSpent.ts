@@ -8,6 +8,8 @@ import {
   isBillPayment,
 } from "../creditBillPeriod.ts";
 import { translateCategory } from "./dashboardAnalytics.ts";
+import { asOfForBudgetMonth, mergeBudgetRows, type BudgetInput } from "./budgetPeriod.ts";
+import { mealSpendByCategory } from "./mealBenefits.ts";
 
 // deno-lint-ignore no-explicit-any
 type AnyRec = Record<string, any>;
@@ -53,56 +55,26 @@ export function spendingByCategoryForMonth(
 
 export function buildBudgetRows(
   transactions: AnyRec[] = [],
-  budgets: { id?: string; category: string; limit: number }[] = [],
+  budgets: BudgetInput[] = [],
   ym: string,
   officialBills: AnyRec[] = [],
   creditAccountIds: Set<string> = new Set(),
+  mealBenefits: AnyRec[] = [],
+  mealPurchases: AnyRec[] = [],
+  asOfDate?: string,
 ) {
-  const spentMap = spendingByCategoryForMonth(
+  const spentBankMap = spendingByCategoryForMonth(
     transactions,
     ym,
     officialBills,
     creditAccountIds,
   );
-  const rows: Record<string, {
-    id: string;
-    category: string;
-    spent: number;
-    limit: number;
-    hasLimit: boolean;
-  }> = {};
-
-  Object.entries(spentMap).forEach(([cat, spent]) => {
-    rows[cat] = { id: cat, category: cat, spent, limit: 0, hasLimit: false };
+  const spentMealMap = mealSpendByCategory(mealBenefits, mealPurchases, ym);
+  return mergeBudgetRows({
+    spentBankMap,
+    spentMealMap,
+    budgets,
+    ym,
+    asOfDate: asOfDate || asOfForBudgetMonth(ym),
   });
-  budgets.forEach((b) => {
-    const cat = String(b.category || "");
-    if (!cat) return;
-    if (rows[cat]) {
-      rows[cat].id = String(b.id || cat);
-      rows[cat].limit = Number(b.limit) || 0;
-      rows[cat].hasLimit = true;
-    } else {
-      rows[cat] = {
-        id: String(b.id || cat),
-        category: cat,
-        spent: 0,
-        limit: Number(b.limit) || 0,
-        hasLimit: true,
-      };
-    }
-  });
-
-  return Object.values(rows)
-    .map((row) => ({
-      ...row,
-      spent: Number(row.spent.toFixed(2)),
-      percent: row.limit > 0 ? Math.min(100, Math.round((row.spent / row.limit) * 100)) : 0,
-    }))
-    .sort((a, b) => {
-      const aOver = a.hasLimit && a.spent > a.limit;
-      const bOver = b.hasLimit && b.spent > b.limit;
-      if (aOver !== bOver) return aOver ? -1 : 1;
-      return b.spent - a.spent;
-    });
 }

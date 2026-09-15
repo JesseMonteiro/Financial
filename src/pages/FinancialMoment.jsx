@@ -4,6 +4,7 @@ import { useTransactionStore } from '../stores/transactionStore';
 import { useReceivableStore } from '../stores/receivableStore';
 import { useMealBenefitStore } from '../stores/mealBenefitStore';
 import { useCreditDataStore } from '../stores/creditDataStore';
+import { useCategoryStore } from '../stores/categoryStore';
 import { MealBenefitMomentCards } from '../components/MealBenefitMomentCards';
 import { momentItemsFor } from '../utils/mealBenefits';
 import { getLocalSetting, setLocalSetting, getMonthlySalaries, saveMonthlySalaries } from '../services/storage';
@@ -37,6 +38,16 @@ import {
 } from 'lucide-react';
 import { AccountIcon, accountById } from '../components/AccountIcon';
 import { MomentBillStrip } from '../components/MomentBillStrip';
+import { ItemDetailSheet } from '../components/ItemDetailSheet';
+import { ReceivableModal } from './Receivables';
+import {
+  fromAutomaticDebit,
+  fromManualExpense,
+  fromMomentReceivable,
+  rowActivateProps,
+  categoryOptionsForItem,
+  applyingCategory,
+} from '../utils/lineItemDetail';
 
 function currentMonthYm(now = new Date()) {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -44,8 +55,8 @@ function currentMonthYm(now = new Date()) {
 
 export function FinancialMoment() {
   const { accounts, loadAccounts, loading: accountsLoading, lastUpdated: accountsUpdatedAt } = useAccountStore();
-  const { transactions, loadTransactions, setManualPaid, pending } = useTransactionStore();
-  const { receivables, loadReceivables } = useReceivableStore();
+  const { transactions, loadTransactions, setManualPaid, deleteManualTransaction, updateManualCategory, pending } = useTransactionStore();
+  const { receivables, loadReceivables, markInstallmentPaid, deleteReceivable, updateReceivable } = useReceivableStore();
   const { benefits: mealBenefits, purchases: mealPurchases, loadMealBenefits } = useMealBenefitStore();
   const {
     loadForAccounts,
@@ -54,9 +65,13 @@ export function FinancialMoment() {
     transactionsByAccount,
     billsByAccount,
   } = useCreditDataStore();
+  const { categories, loadCategories } = useCategoryStore();
   const isMobile = useIsMobile();
 
   const [selectedMonth, setSelectedMonth] = useState('');
+  const [selectedItem, setSelectedItem] = useState(null);
+  const [sheetBusy, setSheetBusy] = useState(false);
+  const [editingReceivable, setEditingReceivable] = useState(null);
 
   // Salary state
   const [salaries, setSalaries] = useState({});
@@ -74,6 +89,7 @@ export function FinancialMoment() {
     loadTransactions();
     loadReceivables();
     loadMealBenefits();
+    loadCategories();
 
     (async () => {
       const stored = await getMonthlySalaries();
@@ -356,7 +372,11 @@ export function FinancialMoment() {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.5rem' }}>
           {activeMonthData.activeReceivables.map((r, i) => (
-            <div key={i} className="list-row" style={{ padding: '0.65rem 0.75rem' }}>
+            <div
+              key={r.id || i}
+              {...rowActivateProps(() => setSelectedItem(fromMomentReceivable(r)))}
+              style={{ padding: '0.65rem 0.75rem' }}
+            >
               <div className="list-row-main" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '0.15rem' }}>
                 <span style={{ fontWeight: 600, fontSize: 'var(--font-size-xs)' }}>
                   {r.description}
@@ -421,7 +441,7 @@ export function FinancialMoment() {
           {activeMonthData.activeAutomaticDebits.map((t) => (
             <div
               key={t.id}
-              className="list-row"
+              {...rowActivateProps(() => setSelectedItem(fromAutomaticDebit(t, t.accountName)))}
               style={{
                 padding: '0.65rem 0.75rem',
                 backgroundColor: t.isPending ? 'var(--bg-tertiary)' : undefined,
@@ -475,7 +495,7 @@ export function FinancialMoment() {
           {activeMonthData.activeManual.map((m) => (
             <div
               key={m.id}
-              className="list-row"
+              {...rowActivateProps(() => setSelectedItem(fromManualExpense(m)))}
               style={{
                 gap: '0.75rem',
                 padding: '0.65rem 0.75rem',
@@ -507,12 +527,18 @@ export function FinancialMoment() {
                 <span style={{ fontWeight: 700, fontSize: 'var(--font-size-xs)', color: 'var(--danger)' }}>
                   - {formatCurrency(Math.abs(m.amount))}
                 </span>
-                <PaidCheckbox
-                  checked={Boolean(m.isPaid)}
-                  busy={Boolean(pending[m.id])}
-                  size={18}
-                  onChange={(v) => setManualPaid(m.id, v)}
-                />
+                <span
+                  onClick={(e) => e.stopPropagation()}
+                  onKeyDown={(e) => e.stopPropagation()}
+                  role="presentation"
+                >
+                  <PaidCheckbox
+                    checked={Boolean(m.isPaid)}
+                    busy={Boolean(pending[m.id])}
+                    size={18}
+                    onChange={(v) => setManualPaid(m.id, v)}
+                  />
+                </span>
               </div>
             </div>
           ))}
@@ -726,6 +752,65 @@ export function FinancialMoment() {
         </>
       )}
       </>
+      )}
+      {selectedItem && (
+        <ItemDetailSheet
+          item={selectedItem}
+          busy={sheetBusy}
+          onClose={() => setSelectedItem(null)}
+          onTogglePaid={async () => {
+            setSheetBusy(true);
+            try {
+              if (selectedItem.kind === 'manualExpense') {
+                await setManualPaid(selectedItem.sourceId, !selectedItem.isPaid);
+              } else if (selectedItem.kind === 'receivable' && selectedItem.installmentNumber) {
+                await markInstallmentPaid(selectedItem.sourceId, selectedItem.installmentNumber, new Date().toISOString());
+              }
+            } finally {
+              setSheetBusy(false);
+              setSelectedItem(null);
+            }
+          }}
+          onEdit={selectedItem.kind === 'receivable' ? () => {
+            const rec = receivables.find((r) => r.id === selectedItem.sourceId);
+            if (rec) setEditingReceivable(rec);
+            setSelectedItem(null);
+          } : undefined}
+          onDelete={async () => {
+            setSheetBusy(true);
+            try {
+              if (selectedItem.kind === 'manualExpense') {
+                await deleteManualTransaction(selectedItem.sourceId);
+              } else if (selectedItem.kind === 'receivable') {
+                await deleteReceivable(selectedItem.sourceId);
+              }
+            } finally {
+              setSheetBusy(false);
+              setSelectedItem(null);
+            }
+          }}
+          categoryOptions={categoryOptionsForItem(selectedItem, [], categories)}
+          onChangeCategory={selectedItem.kind === 'manualExpense' ? async (option) => {
+            setSheetBusy(true);
+            try {
+              await updateManualCategory(selectedItem.sourceId, option.value);
+              setSelectedItem(applyingCategory(selectedItem, option));
+            } finally {
+              setSheetBusy(false);
+            }
+          } : undefined}
+        />
+      )}
+      {editingReceivable && (
+        <ReceivableModal
+          onClose={() => setEditingReceivable(null)}
+          onSave={async (data) => {
+            await updateReceivable(editingReceivable.id, data);
+            setEditingReceivable(null);
+          }}
+          creditTransactions={[]}
+          editingReceivable={editingReceivable}
+        />
       )}
     </div>
   );

@@ -40,7 +40,7 @@ export function Sidebar({ collapsed, onToggle }) {
               <ShieldCheck size={22} />
             </div>
             <div>
-              <h2 style={{ fontSize: 'var(--font-size-base)', fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.2 }}>FinanceHub</h2>
+              <h2 style={{ fontSize: 'var(--font-size-base)', fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.2 }}>MeuFlux</h2>
               <span style={{ fontSize: '10px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Pluggy.ai MCP</span>
             </div>
           </div>

@@ -98,7 +98,11 @@ async function fetchCreditAccounts(client: PluggyClient): Promise<Record<string,
   return [...pluggy, ...manuals];
 }
 
-function serializeItem(tx: Record<string, unknown>, cardsById: Map<string, Record<string, unknown>>) {
+function serializeItem(
+  tx: Record<string, unknown>,
+  cardsById: Map<string, Record<string, unknown>>,
+  displayNameById?: Map<string, string>,
+) {
   const payment = isBillPayment(tx);
   const signed = Number(signedTxAmount(tx)) || 0;
   const billing = Math.abs(Number(txBillingAmount(tx)) || 0);
@@ -106,10 +110,11 @@ function serializeItem(tx: Record<string, unknown>, cardsById: Map<string, Recor
   const installmentTotal = Number(installmentTotalOf(tx)) || 0;
   const accountId = String(tx.accountId || "");
   const card = cardsById.get(accountId);
+  const displayName = displayNameById?.get(accountId);
   return {
     id: String(tx.id || `${accountId}-${tx.date}-${billing}`),
     accountId,
-    accountName: String(card?.marketingName || card?.name || ""),
+    accountName: String(displayName || card?.marketingName || card?.name || ""),
     description: String(tx.description || "Lançamento"),
     amount: money(billing),
     isCredit: payment || String(tx.type).toUpperCase() === "CREDIT" || signed < 0,
@@ -117,6 +122,7 @@ function serializeItem(tx: Record<string, unknown>, cardsById: Map<string, Recor
     isProjected: Boolean(tx.isProjected),
     isPending: String(tx.status || "").toUpperCase() === "PENDING",
     category: tx.category ? String(tx.category) : null,
+    categoryId: tx.categoryId ? String(tx.categoryId) : null,
     purchaseDate: resolvePurchaseDate(tx) ? String(resolvePurchaseDate(tx)).slice(0, 10) : null,
     installmentNumber: installmentNum > 0 ? installmentNum : null,
     installmentTotal: installmentTotal > 1 ? installmentTotal : null,
@@ -141,6 +147,7 @@ function serializePeriod(
   },
   cardsById: Map<string, Record<string, unknown>>,
   selectedCardId: string,
+  displayNameById?: Map<string, string>,
 ) {
   const bills = (built.sortedDueKeys || []).flatMap((key) => {
     const bill = built.bills[key];
@@ -158,7 +165,7 @@ function serializePeriod(
       dueDateShort: formatDueMonthShort(key, bill.dueDate),
       isPaid: Boolean(bill.isPaid),
       hasOfficial: Boolean(bill.hasOfficial),
-      items: items.map((t) => serializeItem(t, cardsById)),
+      items: items.map((t) => serializeItem(t, cardsById, displayNameById)),
     }];
   });
   return {
@@ -247,6 +254,8 @@ export async function handleCreditCards(client: PluggyClient): Promise<Response>
     }
   }
 
+  const displayNameById = new Map(cards.map((c) => [c.id, c.name]));
+
   const outstandingTotal = creditCards.reduce((sum, c) => sum + Math.abs(Number(c.balance) || 0), 0);
   const creditLimitTotal = creditCards.reduce((sum, c) => {
     const limit = Number((c.creditData as { creditLimit?: number } | undefined)?.creditLimit) || 0;
@@ -271,6 +280,7 @@ export async function handleCreditCards(client: PluggyClient): Promise<Response>
       }),
       cardsById,
       "all",
+      displayNameById,
     ),
   };
 
@@ -285,6 +295,7 @@ export async function handleCreditCards(client: PluggyClient): Promise<Response>
       }),
       cardsById,
       id,
+      displayNameById,
     );
   }
 

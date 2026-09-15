@@ -121,6 +121,85 @@ export async function deleteStoredGoal(goalId) {
   }
 }
 
+const DEFAULT_PURCHASE_CATEGORY_SEED = [
+  { key: 'Food', label: 'Alimentação', color: '#f97316', sortOrder: 0 },
+  { key: 'Groceries', label: 'Supermercado', color: '#fb923c', sortOrder: 1 },
+  { key: 'Rent', label: 'Aluguel / Habitação', color: '#a855f7', sortOrder: 2 },
+  { key: 'Utilities', label: 'Contas de Consumo (Água, Luz)', color: '#c084fc', sortOrder: 3 },
+  { key: 'Transport', label: 'Transporte', color: '#0ea5e9', sortOrder: 4 },
+  { key: 'Entertainment', label: 'Lazer / Entretenimento', color: '#ec4899', sortOrder: 5 },
+  { key: 'Health', label: 'Saúde', color: '#10b981', sortOrder: 6 },
+  { key: 'Education', label: 'Educação', color: '#eab308', sortOrder: 7 },
+  { key: 'Other', label: 'Outros', color: '#64748b', sortOrder: 8 },
+];
+
+async function seedPurchaseCategories(userId) {
+  const rows = DEFAULT_PURCHASE_CATEGORY_SEED.map((row) => ({
+    user_id: userId,
+    key: row.key,
+    label: row.label,
+    color: row.color,
+    sort_order: row.sortOrder,
+  }));
+  const { data, error } = await supabase.from('purchase_categories').insert(rows).select('*');
+  if (!error) return (data || []).map(toCamelCase);
+  const { data: retry, error: retryError } = await supabase
+    .from('purchase_categories')
+    .select('*')
+    .eq('user_id', userId)
+    .order('sort_order', { ascending: true });
+  if (retryError) {
+    console.error('Error seeding purchase categories:', retryError);
+    return [];
+  }
+  return (retry || []).map(toCamelCase);
+}
+
+export async function getStoredPurchaseCategories() {
+  const userId = await getCurrentUserId();
+  if (!userId) return [];
+  const { data, error } = await supabase
+    .from('purchase_categories')
+    .select('*')
+    .eq('user_id', userId)
+    .order('sort_order', { ascending: true });
+  if (error) {
+    console.error('Error fetching purchase categories:', error);
+    return [];
+  }
+  if (!data?.length) return seedPurchaseCategories(userId);
+  return data.map(toCamelCase);
+}
+
+export async function saveStoredPurchaseCategory(category) {
+  const userId = await getCurrentUserId();
+  if (!userId) return;
+  const snake = toSnakeCase(category);
+  snake.user_id = userId;
+  delete snake.updated_at;
+  const { error } = await supabase
+    .from('purchase_categories')
+    .upsert(snake, { onConflict: 'id' });
+  if (error) {
+    console.error('Error saving purchase category:', error);
+    throw error;
+  }
+}
+
+export async function deleteStoredPurchaseCategory(categoryId) {
+  const userId = await getCurrentUserId();
+  if (!userId) return;
+  const { error } = await supabase
+    .from('purchase_categories')
+    .delete()
+    .eq('user_id', userId)
+    .eq('id', categoryId);
+  if (error) {
+    console.error('Error deleting purchase category:', error);
+    throw error;
+  }
+}
+
 // --- Receivables ---
 export async function getStoredReceivables() {
   const userId = await getCurrentUserId();
@@ -378,9 +457,17 @@ export async function getCustomAccountNames() {
   return fromDb;
 }
 
+function readLocalRaw(newKey, oldKey) {
+  try {
+    return localStorage.getItem(newKey) ?? localStorage.getItem(oldKey);
+  } catch {
+    return null;
+  }
+}
+
 function readLocalCustomAccountNames() {
   try {
-    const raw = localStorage.getItem('financehub_custom_account_names');
+    const raw = readLocalRaw('meuflux_custom_account_names', 'financehub_custom_account_names');
     if (!raw) return {};
     const parsed = JSON.parse(raw);
     return parsed && typeof parsed === 'object' ? parsed : {};
@@ -392,7 +479,7 @@ function readLocalCustomAccountNames() {
 export async function saveCustomAccountNames(names) {
   const safe = names && typeof names === 'object' ? names : {};
   try {
-    localStorage.setItem('financehub_custom_account_names', JSON.stringify(safe));
+    localStorage.setItem('meuflux_custom_account_names', JSON.stringify(safe));
   } catch (_) { /* ignore quota */ }
 
   const userId = await getCurrentUserId();
@@ -409,11 +496,11 @@ export async function saveCustomAccountNames(names) {
 }
 
 // --- Custom account icons ---
-const LOCAL_ICONS_KEY = 'financehub_custom_account_icons';
+const LOCAL_ICONS_KEY = 'meuflux_custom_account_icons';
 
 function readLocalCustomAccountIcons() {
   try {
-    const raw = localStorage.getItem(LOCAL_ICONS_KEY);
+    const raw = readLocalRaw(LOCAL_ICONS_KEY, 'financehub_custom_account_icons');
     if (!raw) return {};
     const parsed = JSON.parse(raw);
     return parsed && typeof parsed === 'object' ? parsed : {};
@@ -565,7 +652,7 @@ export async function deleteAccountIconFile(path) {
 // --- Monthly salaries (Momento Financeiro) ---
 function readLocalMonthlySalaries() {
   try {
-    const raw = localStorage.getItem('financehub_monthly_salaries');
+    const raw = readLocalRaw('meuflux_monthly_salaries', 'financehub_monthly_salaries');
     if (!raw) return {};
     const parsed = JSON.parse(raw);
     return parsed && typeof parsed === 'object' ? parsed : {};
@@ -619,7 +706,7 @@ export async function saveMonthlySalaries(salaries, opts = {}) {
   // Only cache locally when saving own salaries
   if (targetUserId === currentUserId) {
     try {
-      localStorage.setItem('financehub_monthly_salaries', JSON.stringify(safe));
+      localStorage.setItem('meuflux_monthly_salaries', JSON.stringify(safe));
     } catch (_) { /* ignore */ }
   }
 
@@ -873,6 +960,7 @@ export async function saveStoredMealBenefitPurchase(purchase) {
     amount: purchase.amount ?? 0,
     purchased_at: purchase.purchasedAt ?? purchase.purchased_at,
     description: purchase.description ?? '',
+    category: purchase.category ?? null,
     updated_at: new Date().toISOString(),
   };
   if (purchase.createdAt || purchase.created_at) {

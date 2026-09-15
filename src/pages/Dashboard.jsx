@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Wallet,
   TrendingUp,
@@ -24,6 +24,7 @@ import { useAccountStore } from '../stores/accountStore';
 import { useTransactionStore } from '../stores/transactionStore';
 import { useInvestmentStore } from '../stores/investmentStore';
 import { useBudgetStore } from '../stores/budgetStore';
+import { useMealBenefitStore } from '../stores/mealBenefitStore';
 import { useAuthStore } from '../stores/authStore';
 import { formatCurrency, formatDateRelative } from '../utils/formatters';
 import { translateCategory } from '../utils/categories';
@@ -41,19 +42,30 @@ import {
 import { calculateNetWorth, sumOpenBillsTotal } from '../utils/calculations';
 import { isInitialEmpty } from '../utils/loading';
 import { Link } from 'react-router-dom';
+import { ItemDetailSheet } from '../components/ItemDetailSheet';
+import { fromTransaction, rowActivateProps, categoryOptionsForItem, applyingCategory } from '../utils/lineItemDetail';
+import { fetchCategories } from '../services/api';
+import { accountById } from '../components/AccountIcon';
+import { asOfForBudgetMonth, mergeBudgetRows } from '../utils/budgetPeriod';
+import { mealSpendByCategory } from '../utils/mealBenefits';
 
 export function Dashboard() {
   const { loadAccounts, accounts, loans, loading: accLoading, lastUpdated: accAt } = useAccountStore();
-  const { loadTransactions, transactions, loading: txLoading, lastUpdated: txAt } = useTransactionStore();
+  const { loadTransactions, transactions, loading: txLoading, lastUpdated: txAt, updateOpenFinanceCategory } = useTransactionStore();
   const { loadInvestments, investments, getTotalInvested } = useInvestmentStore();
   const { loadBudgets, budgets } = useBudgetStore();
+  const { loadMealBenefits, benefits: mealBenefits, purchases: mealPurchases } = useMealBenefitStore();
   const user = useAuthStore((s) => s.user);
+  const [selectedItem, setSelectedItem] = useState(null);
+  const [pluggyCategories, setPluggyCategories] = useState([]);
 
   useEffect(() => {
     loadAccounts();
     loadTransactions();
     loadInvestments();
     loadBudgets();
+    loadMealBenefits();
+    fetchCategories({ force: true }).then((list) => setPluggyCategories(Array.isArray(list) ? list : [])).catch(() => setPluggyCategories([]));
   }, []);
 
   const summary = useMemo(
@@ -92,16 +104,26 @@ export function Dashboard() {
         map[catLabel] = (map[catLabel] || 0) + Math.abs(t.amount);
       }
     });
-
-    return Object.entries(map)
-      .map(([category, spent]) => {
-        const existingBudget = budgets.find((b) => b.category === category);
-        const limit = existingBudget ? existingBudget.limit : Math.max(1000, Math.ceil(spent * 1.25));
-        return { category, spent: Number(spent.toFixed(2)), limit };
-      })
+    const mealMap = mealSpendByCategory(mealBenefits, mealPurchases, ym);
+    const rows = mergeBudgetRows({
+      spentBankMap: map,
+      spentMealMap: mealMap,
+      budgets,
+      ym,
+      asOfDate: asOfForBudgetMonth(ym),
+    });
+    return rows
+      .map((row) => ({
+        category: row.category,
+        spent: row.spent,
+        limit: row.hasLimit ? row.limit : Math.max(1000, Math.ceil(row.spent * 1.25)),
+        hasLimit: row.hasLimit,
+        period: row.period,
+        spentMeal: row.spentMeal,
+      }))
       .sort((a, b) => b.spent - a.spent)
       .slice(0, 6);
-  }, [transactions, budgets, ym]);
+  }, [transactions, budgets, ym, mealBenefits, mealPurchases]);
 
   const bankCount = accounts.filter((a) => a.type === 'BANK').length;
   const creditCount = accounts.filter((a) => a.type === 'CREDIT').length;
@@ -337,7 +359,11 @@ export function Dashboard() {
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '0.5rem' }}>
               {transactions.slice(0, 5).map((tx) => (
-                <div key={tx.id} className="list-row" style={{ padding: '0.6rem 0.85rem' }}>
+                <div
+                  key={tx.id}
+                  {...rowActivateProps(() => setSelectedItem(fromTransaction(tx, accountById(accounts, tx.accountId)?.name)))}
+                  style={{ padding: '0.6rem 0.85rem' }}
+                >
                   <div className="list-row-main" style={{ gap: '0.75rem' }}>
                     <div
                       style={{
@@ -393,10 +419,10 @@ export function Dashboard() {
       {dynamicCategoryBudgets.length > 0 && (
         <Card
           title="Resumo do Orçamento"
-          subtitle="Gastos do mês por categoria"
+          subtitle="Gasto do mês (banco/cartão e VA/VR) contra a verba já liberada"
           action={
             <Link to="/budget" style={{ fontSize: 'var(--font-size-xs)', color: 'var(--primary)', textDecoration: 'none', fontWeight: 600 }}>
-              Gerenciar Limites →
+              Gerenciar metas →
             </Link>
           }
         >
@@ -424,7 +450,10 @@ export function Dashboard() {
                     </span>
                   </div>
                   <ProgressBar percent={pct} color={color} height={8} />
-                  <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{pct}% do teto utilizado</span>
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                    {pct}% da verba{b.hasLimit ? ' liberada' : ''}
+                    {b.spentMeal > 0 ? ` · ${formatCurrency(b.spentMeal)} VA/VR` : ''}
+                  </span>
                 </div>
               );
             })}
@@ -460,6 +489,17 @@ export function Dashboard() {
           </div>
         </Card>
       </div>
+      {selectedItem && (
+        <ItemDetailSheet
+          item={selectedItem}
+          categoryOptions={categoryOptionsForItem(selectedItem, pluggyCategories)}
+          onChangeCategory={async (option) => {
+            await updateOpenFinanceCategory(selectedItem.sourceId, option.value, option.label);
+            setSelectedItem(applyingCategory(selectedItem, option));
+          }}
+          onClose={() => setSelectedItem(null)}
+        />
+      )}
     </div>
   );
 }

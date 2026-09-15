@@ -1,7 +1,7 @@
 import Foundation
 import Observation
-import FinancialDomain
-import FinancialDesignSystem
+import MeuFluxDomain
+import MeuFluxDesignSystem
 
 @Observable
 @MainActor
@@ -21,11 +21,16 @@ public final class AgendaViewModel {
     public var errorMessage: String?
 
     private let repository: (any AgendaRepository)?
+    private let togglePaid: (any ToggleManualExpensePaidUseCase)?
     private var lastLoadedAt: Date?
     private var lastCacheKey: String?
 
-    public init(repository: (any AgendaRepository)? = nil) {
+    public init(
+        repository: (any AgendaRepository)? = nil,
+        togglePaid: (any ToggleManualExpensePaidUseCase)? = nil
+    ) {
         self.repository = repository
+        self.togglePaid = togglePaid
     }
 
     public var filtered: [AgendaItem] {
@@ -70,4 +75,17 @@ public final class AgendaViewModel {
     }
 
     public func retry() async { await load(force: true) }
+
+    public func toggleCustomPaid(_ item: AgendaItem) async {
+        guard item.kind == .custom, let togglePaid else { return }
+        do {
+            try await togglePaid.execute(
+                expenseId: LineItemDetail.agendaSourceId(item),
+                isPaid: !item.isCompleted
+            )
+            await load(force: true)
+        } catch {
+            errorMessage = (error as? FinancialError)?.messagePT ?? error.localizedDescription
+        }
+    }
 }

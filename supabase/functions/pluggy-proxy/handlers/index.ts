@@ -12,6 +12,7 @@ export {
   ownedItemIds,
   handleAccounts,
   handleTransactions,
+  handleCategories,
   handleInvestments,
   handleLoans,
   handleBills,

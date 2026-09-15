@@ -1,4 +1,4 @@
-# FinanceHub (Financial)
+# MeuFlux
 
 App web (React) + **app nativo iOS** (SwiftUI / iOS 26 / Liquid Glass).
 
@@ -15,7 +15,7 @@ Ver [ios/README.md](ios/README.md).
 
 ```bash
 cd ios && swift test
-# opcional: xcodegen generate && open FinanceHub.xcodeproj
+# opcional: xcodegen generate && open MeuFlux.xcodeproj
 ```
 
 ## Qualidade

@@ -9,7 +9,8 @@ type DomainTable =
   | "manual_transactions"
   | "manual_accounts"
   | "meal_benefits"
-  | "meal_benefit_purchases";
+  | "meal_benefit_purchases"
+  | "purchase_categories";
 
 const TABLE_MAP: Record<string, DomainTable> = {
   budgets: "budgets",
@@ -19,7 +20,46 @@ const TABLE_MAP: Record<string, DomainTable> = {
   "manual-accounts": "manual_accounts",
   "meal-benefits": "meal_benefits",
   "meal-benefit-purchases": "meal_benefit_purchases",
+  "purchase-categories": "purchase_categories",
 };
+
+const DEFAULT_PURCHASE_CATEGORIES = [
+  { key: "Food", label: "Alimentação", color: "#f97316", sort_order: 0 },
+  { key: "Groceries", label: "Supermercado", color: "#fb923c", sort_order: 1 },
+  { key: "Rent", label: "Aluguel / Habitação", color: "#a855f7", sort_order: 2 },
+  { key: "Utilities", label: "Contas de Consumo (Água, Luz)", color: "#c084fc", sort_order: 3 },
+  { key: "Transport", label: "Transporte", color: "#0ea5e9", sort_order: 4 },
+  { key: "Entertainment", label: "Lazer / Entretenimento", color: "#ec4899", sort_order: 5 },
+  { key: "Health", label: "Saúde", color: "#10b981", sort_order: 6 },
+  { key: "Education", label: "Educação", color: "#eab308", sort_order: 7 },
+  { key: "Other", label: "Outros", color: "#64748b", sort_order: 8 },
+];
+
+async function listPurchaseCategories(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<{ data: unknown[] | null; error: { message: string } | null }> {
+  const listed = await supabase
+    .from("purchase_categories")
+    .select("*")
+    .eq("user_id", userId)
+    .order("sort_order", { ascending: true });
+  if (listed.error) return listed;
+  if (listed.data && listed.data.length > 0) return listed;
+
+  const rows = DEFAULT_PURCHASE_CATEGORIES.map((row) => ({ ...row, user_id: userId }));
+  const inserted = await supabase.from("purchase_categories").insert(rows).select("*");
+  if (!inserted.error) {
+    return { data: inserted.data ?? [], error: null };
+  }
+
+  const retry = await supabase
+    .from("purchase_categories")
+    .select("*")
+    .eq("user_id", userId)
+    .order("sort_order", { ascending: true });
+  return retry;
+}
 
 export async function handleDomainV1(
   req: Request,
@@ -53,6 +93,11 @@ export async function handleDomainV1(
   const body = ["POST", "PATCH", "PUT"].includes(method) ? await safeJson(req) : null;
 
   if (method === "GET" && !id) {
+    if (table === "purchase_categories") {
+      const { data, error } = await listPurchaseCategories(auth.supabase, auth.user.id);
+      if (error) return v1Err(error.message, 500, req);
+      return v1Ok(data ?? [], req);
+    }
     const { data, error } = await auth.supabase.from(table).select("*").eq("user_id", auth.user.id);
     if (error) return v1Err(error.message, 500, req);
     return v1Ok(data ?? [], req);
@@ -67,6 +112,20 @@ export async function handleDomainV1(
 
   if (method === "POST") {
     const row = { ...(body as Record<string, unknown>), user_id: auth.user.id };
+    if (table === "budgets") {
+      delete row.id;
+      const period = String(row.period || "monthly");
+      row.period = ["daily", "weekly", "biweekly", "monthly"].includes(period)
+        ? period
+        : "monthly";
+      const { data, error } = await auth.supabase
+        .from(table)
+        .upsert(row, { onConflict: "user_id,category" })
+        .select("*")
+        .single();
+      if (error) return v1Err(error.message, 500, req);
+      return v1Ok(data, req, 201);
+    }
     const { data, error } = await auth.supabase
       .from(table)
       .upsert(row, { onConflict: "id" })
@@ -77,9 +136,14 @@ export async function handleDomainV1(
   }
 
   if ((method === "PATCH" || method === "PUT") && id) {
+    const patch = { ...(body as Record<string, unknown>) };
+    if (table === "purchase_categories") {
+      delete patch.key;
+      delete patch.user_id;
+    }
     const { data, error } = await auth.supabase
       .from(table)
-      .update(body as Record<string, unknown>)
+      .update(patch)
       .eq("id", id)
       .eq("user_id", auth.user.id)
       .select("*")

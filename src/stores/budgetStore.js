@@ -31,15 +31,19 @@ export const useBudgetStore = create((set, get) => ({
     }
   },
 
-  updateBudget: async (category, limit) => {
+  updateBudget: async (category, limit, period = 'monthly') => {
     const { budgets, pending } = get();
     if (pending[category]) return;
 
     const existing = budgets.find(b => b.category === category);
-    const updated = { category, limit: parseFloat(limit) };
+    const updated = {
+      category,
+      limit: parseFloat(limit),
+      period: period || existing?.period || 'monthly',
+    };
     const snapshot = budgets;
     const newBudgets = existing
-      ? budgets.map(b => b.category === category ? updated : b)
+      ? budgets.map(b => b.category === category ? { ...existing, ...updated } : b)
       : [...budgets, updated];
 
     set((state) => ({

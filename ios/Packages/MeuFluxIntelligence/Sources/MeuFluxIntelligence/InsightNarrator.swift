@@ -1,0 +1,169 @@
+import Foundation
+import MeuFluxCore
+import MeuFluxDomain
+
+public struct NarratedInsights: Sendable {
+    public var items: [DashboardInsight]
+    public var usedOnDeviceModel: Bool
+
+    public init(items: [DashboardInsight], usedOnDeviceModel: Bool) {
+        self.items = items
+        self.usedOnDeviceModel = usedOnDeviceModel
+    }
+}
+
+public struct InsightNarrator: Sendable {
+    private let generator: any OnDeviceGenerating
+
+    public init(generator: (any OnDeviceGenerating)? = nil) {
+        self.generator = generator ?? OnDeviceGeneratorFactory.make()
+    }
+
+    public func narrate(_ snapshot: DashboardSnapshot) async -> NarratedInsights {
+        var items = snapshot.insights
+        items.append(contentsOf: Self.budgetPressureInsights(from: snapshot))
+        guard generator.isAvailable, !items.isEmpty else {
+            return NarratedInsights(items: items, usedOnDeviceModel: false)
+        }
+
+        let facts = Self.factTokens(from: snapshot, insights: items)
+        let prompt = items.enumerated().map { index, insight in
+            "\(index + 1). (\(insight.type)) \(insight.text)"
+        }.joined(separator: "\n")
+
+        let instructions = """
+        Reescreva cada insight financeiro em português do Brasil, tom de coach, uma frase por linha numerada.
+        NÃO invente números. Cada linha DEVE repetir os valores monetários e percentuais originais (ex.: R$ 1.234,56 ou 20%).
+        Não adicione linhas extras.
+        """
+
+        guard let raw = try? await generator.generateText(instructions: instructions, prompt: prompt) else {
+            return NarratedInsights(items: items, usedOnDeviceModel: false)
+        }
+
+        let lines = Self.parseNumberedLines(raw, expected: items.count)
+        guard lines.count == items.count else {
+            return NarratedInsights(items: items, usedOnDeviceModel: false)
+        }
+
+        var rewritten: [DashboardInsight] = []
+        rewritten.reserveCapacity(items.count)
+        for (item, line) in zip(items, lines) {
+            if Self.containsRequiredFacts(line, original: item.text, allFacts: facts) {
+                rewritten.append(
+                    DashboardInsight(id: item.id, type: item.type, text: line, generatedOnDevice: true)
+                )
+            } else {
+                rewritten.append(item)
+            }
+        }
+        return NarratedInsights(items: rewritten, usedOnDeviceModel: rewritten.contains(where: \.generatedOnDevice))
+    }
+
+    public static func budgetPressureInsights(from snapshot: DashboardSnapshot) -> [DashboardInsight] {
+        snapshot.budgetCategories
+            .filter { $0.percent >= 90 }
+            .prefix(1)
+            .map { budget in
+                DashboardInsight(
+                    id: "budget-pressure-\(budget.category)",
+                    type: "warning",
+                    text: "Você já usou \(budget.percent)% da verba de \(budget.category) (\(budget.spent.formatted()) de \(budget.limit.formatted())).",
+                    generatedOnDevice: false
+                )
+            }
+    }
+
+    public static func containsRequiredFacts(_ candidate: String, original: String, allFacts: [String]) -> Bool {
+        let originalFacts = allFacts.filter { original.contains($0) }
+        if originalFacts.isEmpty { return true }
+        return originalFacts.allSatisfy { candidate.contains($0) }
+    }
+
+    public static func factTokens(from snapshot: DashboardSnapshot, insights: [DashboardInsight]) -> [String] {
+        var tokens: [String] = []
+        tokens.append(snapshot.weeklyRecap.total.formatted())
+        tokens.append(snapshot.cashflow.expense.formatted())
+        tokens.append(snapshot.summary.bankBalance.formatted())
+        tokens.append(contentsOf: insights.flatMap { extractNumericTokens(from: $0.text) })
+        tokens.append(contentsOf: snapshot.budgetCategories.flatMap {
+            [$0.spent.formatted(), $0.limit.formatted(), "\($0.percent)%"]
+        })
+        return Array(Set(tokens.filter { !$0.isEmpty }))
+    }
+
+    public static func extractNumericTokens(from text: String) -> [String] {
+        var tokens: [String] = []
+        if let regex = try? NSRegularExpression(pattern: #"R\$\s*\d{1,3}(?:\.\d{3})*(?:,\d{2})?"#) {
+            let ns = text as NSString
+            let range = NSRange(location: 0, length: ns.length)
+            for match in regex.matches(in: text, options: [], range: range) {
+                tokens.append(ns.substring(with: match.range))
+            }
+        }
+        if let regex = try? NSRegularExpression(pattern: #"-?\d+(?:[.,]\d+)?%"#) {
+            let ns = text as NSString
+            let range = NSRange(location: 0, length: ns.length)
+            for match in regex.matches(in: text, options: [], range: range) {
+                tokens.append(ns.substring(with: match.range))
+            }
+        }
+        return tokens
+    }
+
+    public static func parseNumberedLines(_ raw: String, expected: Int) -> [String] {
+        let lines = raw
+            .split(whereSeparator: \.isNewline)
+            .map { line -> String in
+                var text = String(line).trimmingCharacters(in: .whitespacesAndNewlines)
+                if let regex = try? NSRegularExpression(pattern: #"^\d+[\.\)]\s*"#) {
+                    let ns = text as NSString
+                    text = regex.stringByReplacingMatches(in: text, options: [], range: NSRange(location: 0, length: ns.length), withTemplate: "")
+                }
+                return text.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            .filter { !$0.isEmpty }
+        if lines.count >= expected {
+            return Array(lines.prefix(expected))
+        }
+        return lines
+    }
+}
+
+public enum SiriSnapshotMapper {
+    public static func make(from snapshot: DashboardSnapshot, now: Date = Date()) -> SiriFinanceSnapshot {
+        SiriFinanceSnapshot(
+            displayName: snapshot.displayName,
+            monthKey: snapshot.selectedMonth.key,
+            bankBalanceLabel: snapshot.summary.bankBalance.formatted(),
+            netWorthLabel: snapshot.summary.netWorth.formatted(),
+            weeklySpendLabel: snapshot.weeklyRecap.total.formatted(),
+            weeklyDeltaPct: snapshot.weeklyRecap.deltaPct,
+            weeklyTopCategory: snapshot.weeklyRecap.topCategoryName,
+            openBillsLabel: snapshot.summary.openBillsTotal.formatted(),
+            creditCount: snapshot.summary.creditCount,
+            insights: snapshot.insights.map {
+                .init(id: $0.id, type: $0.type, text: $0.text, generatedOnDevice: $0.generatedOnDevice)
+            },
+            budgets: snapshot.budgetCategories.map {
+                .init(
+                    category: $0.category,
+                    spentLabel: $0.spent.formatted(),
+                    limitLabel: $0.limit.formatted(),
+                    percent: $0.percent
+                )
+            },
+            recentTransactions: snapshot.recentTransactions.prefix(40).map {
+                .init(
+                    id: $0.id,
+                    description: $0.description,
+                    category: $0.category,
+                    amountLabel: $0.amount.formatted(),
+                    dateRelative: $0.dateRelative,
+                    isCredit: $0.isCredit
+                )
+            },
+            updatedAt: now
+        )
+    }
+}

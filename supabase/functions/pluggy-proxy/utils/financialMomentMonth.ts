@@ -219,6 +219,7 @@ export function computeFinancialMomentMonth(opts: FinancialMomentMonthOptions) {
       const due = String(inst.dueDate || inst.due_date || "");
       if (due.startsWith(selectedMonth)) {
         activeReceivables.push({
+          receivableId: String(r.id || r.receivableId || ""),
           personName: r.personName || r.person_name || "",
           personColor: r.personColor || r.person_color || "#6366f1",
           description: r.description || "",

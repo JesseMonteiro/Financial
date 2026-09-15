@@ -3,7 +3,7 @@
 ## Identificação
 
 - Connector / institution contendo `Inter`
-- No app FinanceHub o cartão pode ter nome customizado (ex.: **Inter Prime**); o `account.name` da Pluggy pode ser só o titular (`JESSE M FERREIRA`) + final do cartão
+- No app MeuFlux o cartão pode ter nome customizado (ex.: **Inter Prime**); o `account.name` da Pluggy pode ser só o titular (`JESSE M FERREIRA`) + final do cartão
 
 ## Campos
 

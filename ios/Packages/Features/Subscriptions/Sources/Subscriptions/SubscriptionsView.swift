@@ -1,6 +1,6 @@
 import SwiftUI
-import FinancialDesignSystem
-import FinancialDomain
+import MeuFluxDesignSystem
+import MeuFluxDomain
 
 public struct SubscriptionsView: View {
     @State private var viewModel: SubscriptionsViewModel
@@ -30,7 +30,7 @@ public struct SubscriptionsView: View {
                 content
             }
         }
-        .financialPageTitle("Assinaturas")
+        .meuFluxPageTitle("Assinaturas")
         .refreshable { await viewModel.load(force: true) }
         .task { await viewModel.load() }
     }
@@ -46,7 +46,7 @@ public struct SubscriptionsView: View {
                         Text(sub.name).font(.headline)
                         Text([sub.category, sub.billingDay.map { "Dia \($0)" }].compactMap { $0 }.joined(separator: " · "))
                             .font(.caption)
-                            .foregroundStyle(FinancialColors.textSecondary)
+                            .foregroundStyle(MeuFluxColors.textSecondary)
                     }
                     Spacer()
                     Text(sub.amount.formatted())

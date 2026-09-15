@@ -269,6 +269,7 @@ export function serializeMoment(
         totalInstallments: Number(r.totalInstallments) || 1,
         isPaid: Boolean(r.isPaid || r.paidAt),
         ownerLabel: r.ownerLabel ? String(r.ownerLabel) : null,
+        receivableId: r.receivableId || r.id ? String(r.receivableId || r.id) : null,
       })),
       total: Number(moment.receivablesTotal) || 0,
     },

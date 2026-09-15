@@ -1,10 +1,11 @@
 import SwiftUI
-import FinancialDesignSystem
-import FinancialDomain
+import MeuFluxDesignSystem
+import MeuFluxDomain
 
 public struct TransactionsView: View {
     @State private var viewModel: TransactionsViewModel
     @State private var showFilters = false
+    @State private var selectedDetail: LineItemDetail?
 
     public init(
         transactions: any TransactionsRepository,
@@ -43,10 +44,10 @@ public struct TransactionsView: View {
                 }
             }
         }
-        .financialPageTitle("Transações")
+        .meuFluxPageTitle("Transações")
         .searchable(text: $viewModel.searchText, prompt: "Buscar descrição ou categoria")
         .refreshable { await viewModel.load(force: true) }
-        .task(id: "\(viewModel.selectedMonth?.key ?? "all")-\(viewModel.selectedAccountId ?? "all")") {
+        .task(id: viewModel.selectedAccountId ?? "all") {
             await viewModel.load()
         }
         .toolbar {
@@ -95,52 +96,69 @@ public struct TransactionsView: View {
                         Button("Aplicar") {
                             viewModel.refreshCSV()
                             showFilters = false
-                            Task { await viewModel.load(force: true) }
                         }
                     }
                 }
             }
+        }
+        .sheet(item: $selectedDetail) { item in
+            LineItemDetailSheet(
+                item: item,
+                categoryOptions: viewModel.categoryOptions,
+                onChangeCategory: { option in
+                    Task {
+                        await viewModel.changeCategory(transactionId: item.sourceId, option: option)
+                        selectedDetail = item.applyingCategory(option: option)
+                    }
+                }
+            )
         }
     }
 
     @ViewBuilder
     private var content: some View {
         let rows = viewModel.filteredTransactions
-        if rows.isEmpty {
-            EmptyState(
-                title: "Nenhuma transação encontrada",
-                message: "Ajuste a busca ou os filtros.",
-                systemImage: "magnifyingglass"
-            )
-        } else {
-            List {
-                Section {
-                    ForEach(rows) { tx in
-                        TransactionRow(
-                            title: tx.description,
-                            subtitle: [
-                                tx.date.formatted(),
-                                viewModel.accountName(for: tx)
-                            ]
-                            .compactMap { $0 }
-                            .joined(separator: " · "),
-                            amountText: tx.amount.formatted(),
-                            isCredit: tx.kind == .credit,
-                            badge: tx.category,
-                            isPending: tx.isPending
-                        )
-                        .listRowBackground(FinancialColors.bgSecondary)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                if rows.isEmpty {
+                    EmptyState(
+                        title: "Nenhuma transação encontrada",
+                        message: "Ajuste a busca ou os filtros.",
+                        systemImage: "magnifyingglass"
+                    )
+                } else {
+                    GlassCard {
+                        VStack(alignment: .leading, spacing: 0) {
+                            Text("\(rows.count) lançamentos")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(MeuFluxColors.textMuted)
+                                .padding(.bottom, 8)
+                            ForEach(Array(rows.enumerated()), id: \.element.id) { index, tx in
+                                TransactionRow(
+                                    title: tx.description,
+                                    subtitle: [
+                                        tx.date.formatted(),
+                                        viewModel.accountName(for: tx)
+                                    ]
+                                    .compactMap { $0 }
+                                    .joined(separator: " · "),
+                                    amountText: tx.amount.formatted(),
+                                    isCredit: tx.kind == .credit,
+                                    badge: tx.category.map(LineItemDetail.translatedCategory),
+                                    isPending: tx.isPending,
+                                    action: {
+                                        selectedDetail = viewModel.detail(for: tx)
+                                    }
+                                )
+                                if index < rows.count - 1 {
+                                    Divider().opacity(0.35)
+                                }
+                            }
+                        }
                     }
-                } header: {
-                    Text("\(rows.count) lançamentos")
                 }
             }
-            #if os(iOS)
-            .listStyle(.insetGrouped)
-            #else
-            .listStyle(.inset)
-            #endif
-            .scrollContentBackground(.hidden)
+            .meuFluxPageGutter()
         }
     }
 }

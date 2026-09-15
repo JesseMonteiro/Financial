@@ -35,7 +35,9 @@ import {
   parseCreditBillPdf,
 } from '../services/api';
 import { getCurrentUserId } from '../services/storage';
-import { PurchaseModal, MANUAL_CATEGORY_OPTIONS } from './ManualExpenses';
+import { PurchaseModal } from './ManualExpenses';
+import { userCategoryOptions } from '../utils/categories';
+import { useCategoryStore } from '../stores/categoryStore';
 import { AccountIcon } from '../components/AccountIcon';
 import { IconPicker } from '../components/IconPicker';
 import { decorateAccountWithIcon } from '../utils/accountIcons';
@@ -324,6 +326,7 @@ export function Accounts() {
   } = useAccountStore();
   const { addManualTransaction, replaceManualPurchasesForAccount } = useTransactionStore();
   const { loadForAccounts: loadCreditForAccounts, invalidateAccounts, transactionsByAccount, billsByAccount } = useCreditDataStore();
+  const { categories, loadCategories } = useCategoryStore();
   const [editingId, setEditingId] = useState(null);
   const [tempName, setTempName] = useState('');
   const [editingMoneyId, setEditingMoneyId] = useState(null);
@@ -347,6 +350,7 @@ export function Accounts() {
 
   useEffect(() => {
     loadAccounts();
+    loadCategories();
   }, []);
 
   const bankAccounts = accounts.filter((a) => a.type === 'BANK');
@@ -592,7 +596,8 @@ export function Accounts() {
         const dateStr = p.date ? `${String(p.date).slice(0, 10)}T12:00:00.000Z` : new Date().toISOString();
         const installment = p.installment ? Number(p.installment) : null;
         const totalInstallments = p.totalInstallments ? Number(p.totalInstallments) : null;
-        const cat = MANUAL_CATEGORY_OPTIONS.some((o) => o.value === p.category) ? p.category : 'Other';
+        const known = userCategoryOptions(categories);
+        const cat = known.some((o) => o.value === p.category) ? p.category : (known.find((o) => o.value === 'Other')?.value || known[0]?.value || 'Other');
         return {
           id: crypto.randomUUID(),
           description: p.description || 'Compra',

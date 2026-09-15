@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Search, ArrowDownRight, ArrowUpRight, Download, RefreshCw } from 'lucide-react';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
@@ -9,15 +9,20 @@ import { useAccountStore } from '../stores/accountStore';
 import { formatCurrency, formatDateRelative, formatDate } from '../utils/formatters';
 import { translateCategory } from '../utils/categories';
 import { isInitialEmpty } from '../utils/loading';
-import { AccountIcon, accountById } from '../components/AccountIcon';
+import { ItemDetailSheet } from '../components/ItemDetailSheet';
+import { fromTransaction, categoryOptionsForItem, applyingCategory } from '../utils/lineItemDetail';
+import { fetchCategories } from '../services/api';
 
 export function Transactions() {
-  const { loadTransactions, getFilteredTransactions, transactions: rawTransactions, filters, setFilters, loading, lastUpdated } = useTransactionStore();
+  const { loadTransactions, getFilteredTransactions, transactions: rawTransactions, filters, setFilters, loading, lastUpdated, updateOpenFinanceCategory } = useTransactionStore();
   const { accounts, loadAccounts } = useAccountStore();
+  const [selectedItem, setSelectedItem] = useState(null);
+  const [pluggyCategories, setPluggyCategories] = useState([]);
 
   useEffect(() => {
     loadTransactions();
     loadAccounts();
+    fetchCategories({ force: true }).then((list) => setPluggyCategories(Array.isArray(list) ? list : [])).catch(() => setPluggyCategories([]));
   }, []);
 
   const filteredTransactions = getFilteredTransactions();
@@ -148,7 +153,18 @@ export function Transactions() {
             {filteredTransactions.map(tx => {
               const isIncome = tx.amount > 0 || tx.type === 'CREDIT';
               return (
-                <div key={tx.id} className="list-row">
+                <div
+                  key={tx.id}
+                  className="list-row list-row--clickable"
+                  onClick={() => setSelectedItem(fromTransaction(tx, accountById(accounts, tx.accountId)?.name))}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      setSelectedItem(fromTransaction(tx, accountById(accounts, tx.accountId)?.name));
+                    }
+                  }}
+                >
                   <div className="list-row-main">
                     <div style={{
                       width: 38,
@@ -206,6 +222,17 @@ export function Transactions() {
           </div>
         )}
       </Card>
+      {selectedItem && (
+        <ItemDetailSheet
+          item={selectedItem}
+          categoryOptions={categoryOptionsForItem(selectedItem, pluggyCategories)}
+          onChangeCategory={async (option) => {
+            await updateOpenFinanceCategory(selectedItem.sourceId, option.value, option.label);
+            setSelectedItem(applyingCategory(selectedItem, option));
+          }}
+          onClose={() => setSelectedItem(null)}
+        />
+      )}
     </div>
   );
 }

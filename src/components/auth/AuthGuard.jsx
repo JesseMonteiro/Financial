@@ -39,7 +39,7 @@ export function AuthGuard({ children }) {
             WebkitBackgroundClip: 'text',
             WebkitTextFillColor: 'transparent'
           }}>
-            FinanceHub
+            MeuFlux
           </h1>
         </div>
         <Loader2 size={32} className="spinner" style={{ color: '#6366f1', animation: 'spin 1s linear infinite' }} />

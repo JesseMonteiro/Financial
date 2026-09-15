@@ -62,5 +62,5 @@ app.get('/api/health', (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`[FinanceHub Backend] Servidor rodando na porta ${PORT}`);
+  console.log(`[MeuFlux Backend] Servidor rodando na porta ${PORT}`);
 });

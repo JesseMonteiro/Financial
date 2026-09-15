@@ -1,26 +1,39 @@
 import SwiftUI
-import FinancialDesignSystem
-import FinancialDomain
+import MeuFluxDesignSystem
+import MeuFluxDomain
 
 public struct JointFinanceView: View {
     @State private var viewModel: JointFinanceViewModel
+    @State private var selectedDetail: LineItemDetail?
     private let onOpenSettings: (() -> Void)?
     private let onOpenMealVouchers: (() -> Void)?
+    private let onOpenManualExpenses: (() -> Void)?
+    private let onOpenReceivables: (() -> Void)?
 
     public init(
         repository: any JointFinanceRepository,
         investments: (any InvestmentsRepository)? = nil,
         toggleManualExpensePaid: any ToggleManualExpensePaidUseCase = StubToggleManualExpensePaid(),
+        manuals: (any ManualExpensesRepository)? = nil,
+        receivables: (any ReceivablesRepository)? = nil,
+        purchaseCategories: (any PurchaseCategoriesRepository)? = nil,
         onOpenSettings: (() -> Void)? = nil,
-        onOpenMealVouchers: (() -> Void)? = nil
+        onOpenMealVouchers: (() -> Void)? = nil,
+        onOpenManualExpenses: (() -> Void)? = nil,
+        onOpenReceivables: (() -> Void)? = nil
     ) {
         _viewModel = State(wrappedValue: JointFinanceViewModel(
             repository: repository,
             investments: investments,
-            toggleManualExpensePaid: toggleManualExpensePaid
+            toggleManualExpensePaid: toggleManualExpensePaid,
+            manuals: manuals,
+            receivables: receivables,
+            purchaseCategories: purchaseCategories
         ))
         self.onOpenSettings = onOpenSettings
         self.onOpenMealVouchers = onOpenMealVouchers
+        self.onOpenManualExpenses = onOpenManualExpenses
+        self.onOpenReceivables = onOpenReceivables
     }
 
     public init() {
@@ -44,9 +57,52 @@ public struct JointFinanceView: View {
                 }
             }
         }
-        .financialPageTitle("Conta conjunta")
+        .meuFluxPageTitle("Conta conjunta")
         .refreshable { await viewModel.load(force: true) }
         .task(id: viewModel.selectedMonth.key) { await viewModel.load() }
+        .sheet(item: $selectedDetail) { item in
+            LineItemDetailSheet(
+                item: item,
+                isBusy: viewModel.pendingManualIds.contains(item.sourceId),
+                categoryOptions: item.kind == .manualExpense
+                    ? LineItemCategoryOption.manualOptions(viewModel.purchaseCategories)
+                    : [],
+                onTogglePaid: {
+                    Task {
+                        if item.kind == .manualExpense {
+                            await viewModel.toggleManualPaid(expenseId: item.sourceId, isPaid: !item.isPaid)
+                        } else if item.kind == .receivable {
+                            await viewModel.markReceivablePaid(id: item.sourceId, installmentNumber: item.installmentNumber)
+                        }
+                        selectedDetail = nil
+                    }
+                },
+                onEdit: {
+                    selectedDetail = nil
+                    if item.kind == .manualExpense {
+                        onOpenManualExpenses?()
+                    } else if item.kind == .receivable {
+                        onOpenReceivables?()
+                    }
+                },
+                onDelete: {
+                    Task {
+                        if item.kind == .manualExpense {
+                            await viewModel.deleteManual(id: item.sourceId)
+                        } else if item.kind == .receivable {
+                            await viewModel.deleteReceivable(id: item.sourceId)
+                        }
+                        selectedDetail = nil
+                    }
+                },
+                onChangeCategory: item.kind == .manualExpense ? { option in
+                    Task {
+                        await viewModel.updateManualCategory(id: item.sourceId, category: option.id)
+                        selectedDetail = item.applyingCategory(option: option)
+                    }
+                } : nil
+            )
+        }
     }
 
     private var inactiveView: some View {
@@ -64,7 +120,7 @@ public struct JointFinanceView: View {
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(FinancialColors.primary)
+                .tint(MeuFluxColors.primary)
                 .padding(.horizontal)
             }
         }
@@ -103,12 +159,12 @@ public struct JointFinanceView: View {
         VStack(alignment: .leading, spacing: 4) {
             Text("Momento Financeiro consolidado")
                 .font(.subheadline.weight(.semibold))
-                .foregroundStyle(FinancialColors.textPrimary)
+                .foregroundStyle(MeuFluxColors.textPrimary)
             Text(
                 snapshot.members.map(\.displayName).joined(separator: " · ")
             )
             .font(.caption)
-            .foregroundStyle(FinancialColors.textMuted)
+            .foregroundStyle(MeuFluxColors.textMuted)
         }
     }
 
@@ -160,33 +216,33 @@ public struct JointFinanceView: View {
                 title: "Entradas",
                 value: detail.totals.income.formatted(),
                 subtitle: "Salários + \(detail.receivables.items.count) reembolsos",
-                valueColor: FinancialColors.success,
-                accent: FinancialColors.success
+                valueColor: MeuFluxColors.success,
+                accent: MeuFluxColors.success
             )
             JointKPICard(
                 title: "Saídas",
                 value: detail.totals.expenses.formatted(),
                 subtitle: "\(detail.manualExpenses.items.count) manuais",
-                valueColor: FinancialColors.danger,
-                accent: FinancialColors.danger
+                valueColor: MeuFluxColors.danger,
+                accent: MeuFluxColors.danger
             )
             JointKPICard(
                 title: "A pagar",
                 value: detail.totals.accountsPayable.formatted(),
                 subtitle: payableClear ? "Nada pendente" :
                     "\(detail.creditCards.unpaidBills.count) fat. · \(detail.automaticDebits.unpaidItems.count) déb.",
-                valueColor: payableClear ? FinancialColors.success : FinancialColors.warning,
-                accent: payableClear ? FinancialColors.success : FinancialColors.warning
+                valueColor: payableClear ? MeuFluxColors.success : MeuFluxColors.warning,
+                accent: payableClear ? MeuFluxColors.success : MeuFluxColors.warning
             )
             JointKPICard(
                 title: "Saldo",
                 value: (netOk ? "+" : "") + detail.totals.netBalance.formatted(),
                 subtitle: netOk ? "Superávit" : "Déficit",
-                valueColor: netOk ? FinancialColors.success : FinancialColors.danger,
-                accent: netOk ? FinancialColors.success : FinancialColors.danger
+                valueColor: netOk ? MeuFluxColors.success : MeuFluxColors.danger,
+                accent: netOk ? MeuFluxColors.success : MeuFluxColors.danger
             )
         }
-        .background(FinancialColors.border)
+        .background(MeuFluxColors.border)
         .clipShape(RoundedRectangle(cornerRadius: Radius().lg, style: .continuous))
     }
 
@@ -198,16 +254,16 @@ public struct JointFinanceView: View {
                 HStack {
                     Text("Utilização")
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(FinancialColors.textMuted)
+                        .foregroundStyle(MeuFluxColors.textMuted)
                     Spacer()
                     Text("\(percent)%\(over ? " estourado" : "")")
                         .font(.caption.weight(.bold))
-                        .foregroundStyle(over ? FinancialColors.danger : FinancialColors.textSecondary)
+                        .foregroundStyle(over ? MeuFluxColors.danger : MeuFluxColors.textSecondary)
                 }
-                JointProgressBar(percent: percent, color: over ? FinancialColors.danger : FinancialColors.primary)
+                JointProgressBar(percent: percent, color: over ? MeuFluxColors.danger : MeuFluxColors.primary)
                 Text("Despesas consomem \(percent)% das entradas combinadas.")
                     .font(.caption2)
-                    .foregroundStyle(FinancialColors.textMuted)
+                    .foregroundStyle(MeuFluxColors.textMuted)
             }
         }
     }
@@ -222,21 +278,21 @@ public struct JointFinanceView: View {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("Saldo")
                                     .font(.caption.weight(.semibold))
-                                    .foregroundStyle(FinancialColors.textMuted)
+                                    .foregroundStyle(MeuFluxColors.textMuted)
                                 Text(item.remaining.formatted())
                                     .font(.title2.weight(.bold))
                             }
                             Spacer()
                             Image(systemName: "fork.knife")
-                                .foregroundStyle(FinancialColors.textMuted)
+                                .foregroundStyle(MeuFluxColors.textMuted)
                         }
                         Text("Crédito dia \(item.creditDay) · gasto no mês \(item.monthSpent.formatted())")
                             .font(.caption)
-                            .foregroundStyle(FinancialColors.textMuted)
+                            .foregroundStyle(MeuFluxColors.textMuted)
                         if let owner = item.ownerLabel, !owner.isEmpty {
                             Text(owner)
                                 .font(.caption2)
-                                .foregroundStyle(FinancialColors.textMuted)
+                                .foregroundStyle(MeuFluxColors.textMuted)
                         }
                         if onOpenMealVouchers != nil {
                             Button("Gerenciar VA/VR") {
@@ -258,7 +314,7 @@ public struct JointFinanceView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         Text(member.displayName)
                             .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(FinancialColors.textPrimary)
+                            .foregroundStyle(MeuFluxColors.textPrimary)
                         HStack {
                             TextField("0,00", text: Binding(
                                 get: { viewModel.salaryInputs[member.id] ?? "" },
@@ -278,7 +334,7 @@ public struct JointFinanceView: View {
                                 }
                             }
                             .buttonStyle(.borderedProminent)
-                            .tint(FinancialColors.primary)
+                            .tint(MeuFluxColors.primary)
                             .disabled(viewModel.savingMemberIds.contains(member.id))
                         }
                     }
@@ -292,12 +348,12 @@ public struct JointFinanceView: View {
             Text("Faturas de Cartão de Crédito")
                 .font(.headline)
                 .fontWeight(.semibold)
-                .foregroundStyle(FinancialColors.textPrimary)
+                .foregroundStyle(MeuFluxColors.textPrimary)
 
             if detail.creditCards.isEmpty {
                 Text("Nenhuma fatura de cartão vencendo neste mês.")
                     .font(.caption)
-                    .foregroundStyle(FinancialColors.textMuted)
+                    .foregroundStyle(MeuFluxColors.textMuted)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 16)
             } else {
@@ -331,22 +387,23 @@ public struct JointFinanceView: View {
                     Text("Total Faturas")
                         .font(.caption)
                         .fontWeight(.bold)
+                        .foregroundStyle(MeuFluxColors.textPrimary)
                     Spacer()
                     Text(detail.creditCards.total.formatted())
                         .font(.caption)
                         .fontWeight(.bold)
-                        .foregroundStyle(FinancialColors.danger)
+                        .foregroundStyle(MeuFluxColors.danger)
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(
                     RoundedRectangle(cornerRadius: Radius().lg, style: .continuous)
-                        .fill(Color.white.opacity(0.92))
+                        .fill(MeuFluxColors.card)
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: Radius().lg, style: .continuous)
-                        .strokeBorder(FinancialColors.border, lineWidth: 1)
+                        .strokeBorder(MeuFluxColors.border, lineWidth: 1)
                 )
             }
         }
@@ -363,13 +420,15 @@ public struct JointFinanceView: View {
                                 .font(.subheadline.weight(.semibold))
                             Text("\(item.accountName) · \(item.date)")
                                 .font(.caption)
-                                .foregroundStyle(FinancialColors.textMuted)
+                                .foregroundStyle(MeuFluxColors.textMuted)
                         }
                         Spacer()
                         Text(item.amount.formatted())
                             .font(.subheadline.weight(.bold))
-                            .foregroundStyle(item.isPending ? FinancialColors.warning : FinancialColors.textPrimary)
+                            .foregroundStyle(item.isPending ? MeuFluxColors.warning : MeuFluxColors.textPrimary)
                     }
+                    .contentShape(Rectangle())
+                    .onTapGesture { selectedDetail = LineItemDetail.from(debit: item) }
                     if item.id != detail.automaticDebits.items.last?.id {
                         Divider().opacity(0.35)
                     }
@@ -397,14 +456,17 @@ public struct JointFinanceView: View {
                             HStack(spacing: 6) {
                                 Text(item.date)
                                     .font(.caption)
-                                    .foregroundStyle(FinancialColors.textMuted)
+                                    .foregroundStyle(MeuFluxColors.textMuted)
                                 if let owner = item.ownerLabel {
                                     Text("· \(owner)")
                                         .font(.caption)
-                                        .foregroundStyle(FinancialColors.textMuted)
+                                        .foregroundStyle(MeuFluxColors.textMuted)
                                 }
                             }
                         }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                        .onTapGesture { selectedDetail = LineItemDetail.from(momentExpense: item) }
                         Spacer()
                         Text(item.amount.formatted())
                             .font(.subheadline.weight(.bold))
@@ -428,18 +490,20 @@ public struct JointFinanceView: View {
                                 .font(.subheadline.weight(.semibold))
                             Text("\(item.description) · \(item.installmentNumber)/\(item.totalInstallments)")
                                 .font(.caption)
-                                .foregroundStyle(FinancialColors.textMuted)
+                                .foregroundStyle(MeuFluxColors.textMuted)
                             if let owner = item.ownerLabel {
                                 Text(owner)
                                     .font(.caption2)
-                                    .foregroundStyle(FinancialColors.textMuted)
+                                    .foregroundStyle(MeuFluxColors.textMuted)
                             }
                         }
                         Spacer()
                         Text(item.amount.formatted())
                             .font(.subheadline.weight(.bold))
-                            .foregroundStyle(item.isPaid ? FinancialColors.success : FinancialColors.textPrimary)
+                            .foregroundStyle(item.isPaid ? MeuFluxColors.success : MeuFluxColors.textPrimary)
                     }
+                    .contentShape(Rectangle())
+                    .onTapGesture { selectedDetail = LineItemDetail.from(momentReceivable: item) }
                     if item.id != detail.receivables.items.last?.id {
                         Divider().opacity(0.35)
                     }
@@ -466,7 +530,7 @@ public struct JointFinanceView: View {
                     if viewModel.jointInvestments.isEmpty {
                         Text("Nenhuma posição conjunta.")
                             .font(.caption)
-                            .foregroundStyle(FinancialColors.textSecondary)
+                            .foregroundStyle(MeuFluxColors.textSecondary)
                     } else {
                         ForEach(viewModel.jointInvestments) { inv in
                             HStack {
@@ -475,7 +539,7 @@ public struct JointFinanceView: View {
                                     if let owner = inv.ownerLabel {
                                         Text(owner)
                                             .font(.caption)
-                                            .foregroundStyle(FinancialColors.textSecondary)
+                                            .foregroundStyle(MeuFluxColors.textSecondary)
                                     }
                                 }
                                 Spacer()
@@ -528,7 +592,7 @@ private struct JointMonthChip: View {
 
     private var tone: Color? {
         guard let status else { return nil }
-        return status.isPositive ? FinancialColors.success : FinancialColors.danger
+        return status.isPositive ? MeuFluxColors.success : MeuFluxColors.danger
     }
 
     private var netLabel: String? {
@@ -542,14 +606,14 @@ private struct JointMonthChip: View {
             VStack(spacing: 2) {
                 Text(monthName)
                     .font(.caption.weight(isSelected ? .bold : .semibold))
-                    .foregroundStyle(tone ?? FinancialColors.textPrimary)
+                    .foregroundStyle(tone ?? MeuFluxColors.textPrimary)
                 Text(verbatim: "\(month.year)\(isCurrent ? " • Atual" : "")")
                     .font(.system(size: 10))
-                    .foregroundStyle(FinancialColors.textMuted)
+                    .foregroundStyle(MeuFluxColors.textMuted)
                 if let netLabel {
                     Text(netLabel)
                         .font(.system(size: 10, weight: .bold).monospacedDigit())
-                        .foregroundStyle(tone ?? FinancialColors.textSecondary)
+                        .foregroundStyle(tone ?? MeuFluxColors.textSecondary)
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
                 }
@@ -573,12 +637,12 @@ private struct JointMonthChip: View {
     }
 
     private var chipFill: Color {
-        guard let tone else { return FinancialColors.tertiaryBackground }
+        guard let tone else { return MeuFluxColors.tertiaryBackground }
         return tone.opacity(isSelected ? 0.15 : 0.05)
     }
 
     private var chipBorder: Color {
-        guard let tone else { return FinancialColors.border }
+        guard let tone else { return MeuFluxColors.border }
         return tone.opacity(isSelected ? 1 : 0.35)
     }
 }
@@ -596,7 +660,7 @@ private struct JointKPICard: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title.uppercased())
                     .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(FinancialColors.textMuted)
+                    .foregroundStyle(MeuFluxColors.textMuted)
                 Text(value)
                     .font(.subheadline.weight(.heavy).monospacedDigit())
                     .foregroundStyle(valueColor)
@@ -604,14 +668,14 @@ private struct JointKPICard: View {
                     .minimumScaleFactor(0.7)
                 Text(subtitle)
                     .font(.caption2)
-                    .foregroundStyle(FinancialColors.textSecondary)
+                    .foregroundStyle(MeuFluxColors.textSecondary)
                     .lineLimit(2)
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 10)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .background(Color.white.opacity(0.95))
+        .background(MeuFluxColors.card)
     }
 }
 
@@ -622,7 +686,7 @@ private struct JointProgressBar: View {
     var body: some View {
         GeometryReader { geometry in
             ZStack(alignment: .leading) {
-                Capsule().fill(FinancialColors.border.opacity(0.65))
+                Capsule().fill(MeuFluxColors.border.opacity(0.65))
                 Capsule()
                     .fill(color)
                     .frame(width: max(0, geometry.size.width * CGFloat(min(100, max(0, percent))) / 100))
@@ -642,7 +706,7 @@ private struct JointPaidCheckbox: View {
             onToggle(!checked)
         } label: {
             Image(systemName: checked ? "checkmark.square.fill" : "square")
-                .foregroundStyle(checked ? FinancialColors.success : FinancialColors.textSecondary)
+                .foregroundStyle(checked ? MeuFluxColors.success : MeuFluxColors.textSecondary)
                 .font(.system(size: 18))
         }
         .disabled(busy)

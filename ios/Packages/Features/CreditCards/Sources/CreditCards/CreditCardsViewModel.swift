@@ -1,7 +1,7 @@
 import Foundation
 import Observation
-import FinancialDomain
-import FinancialDesignSystem
+import MeuFluxDomain
+import MeuFluxDesignSystem
 
 @Observable
 @MainActor
@@ -16,8 +16,12 @@ public final class CreditCardsViewModel {
     private let repository: any CreditCardsRepository
     private let manuals: (any ManualExpensesRepository)?
     private let parseBillUseCase: (any ParseBillUseCase)?
+    private let receivables: (any ReceivablesRepository)?
+    private let transactions: (any TransactionsRepository)?
     private var lastLoadedAt: Date?
     private var lastCacheKey: String?
+    public private(set) var linkedTransactionIDs: Set<String> = []
+    public private(set) var categoryOptions: [LineItemCategoryOption] = []
 
     public var purchaseDescription = ""
     public var purchaseAmount = ""
@@ -29,11 +33,15 @@ public final class CreditCardsViewModel {
     public init(
         repository: any CreditCardsRepository = StubCreditCardsRepository(),
         manuals: (any ManualExpensesRepository)? = nil,
-        parseBill: (any ParseBillUseCase)? = nil
+        parseBill: (any ParseBillUseCase)? = nil,
+        receivables: (any ReceivablesRepository)? = nil,
+        transactions: (any TransactionsRepository)? = nil
     ) {
         self.repository = repository
         self.manuals = manuals
         self.parseBillUseCase = parseBill
+        self.receivables = receivables
+        self.transactions = transactions
     }
 
     public var isAllCards: Bool { selectedCardId == CreditCardsScreen.allCardsId }
@@ -91,20 +99,20 @@ public final class CreditCardsViewModel {
     }
 
     public var availableLimit: Money {
-        if let selectedCard { return selectedCard.availableLimit ?? .zero }
-        return screen?.availableLimitTotal ?? .zero
+        screen?.resolvedAvailableLimit(cardId: selectedCardId) ?? .zero
     }
 
     public var creditLimit: Money {
-        if let selectedCard { return selectedCard.creditLimit ?? .zero }
-        return screen?.creditLimitTotal ?? .zero
+        screen?.resolvedCreditLimit(cardId: selectedCardId) ?? .zero
     }
 
     public var limitFreePercent: Int {
-        guard creditLimit.amount > 0 else { return 0 }
-        let used = outstanding.amount / creditLimit.amount
-        let usedPct = NSDecimalNumber(decimal: used * 100).intValue
-        return max(0, min(100, 100 - usedPct))
+        screen?.limitFreePercent(cardId: selectedCardId) ?? 0
+    }
+
+    public func cardDisplayName(for line: CreditBillLine) -> String {
+        screen?.displayName(forAccountId: line.accountId)
+            ?? line.accountName
     }
 
     public var title: String {
@@ -155,6 +163,7 @@ public final class CreditCardsViewModel {
             lastCacheKey: lastCacheKey,
             cacheKey: cacheKey
         ) {
+            if categoryOptions.isEmpty { await loadCategories(force: true) }
             return
         }
 
@@ -179,6 +188,8 @@ public final class CreditCardsViewModel {
             state = .loaded(loaded)
             lastLoadedAt = Date()
             lastCacheKey = cacheKey
+            await refreshLinkedReceivables()
+            await loadCategories(force: force)
         } catch {
             errorMessage = (error as? FinancialError)?.messagePT ?? error.localizedDescription
             if !state.hasContent {
@@ -188,6 +199,61 @@ public final class CreditCardsViewModel {
     }
 
     public func retry() async { await load(force: true) }
+
+    public func changeCategory(id: String, option: LineItemCategoryOption) async {
+        guard let transactions else { return }
+        do {
+            try await transactions.updateCategory(id: id, categoryId: option.id)
+            await load(force: true)
+        } catch {
+            errorMessage = (error as? FinancialError)?.messagePT ?? error.localizedDescription
+        }
+    }
+
+    private func loadCategories(force: Bool) async {
+        guard let transactions else { return }
+        let cats = (try? await transactions.fetchCategories(force: force)) ?? []
+        if !cats.isEmpty {
+            categoryOptions = LineItemCategoryOption.pluggyOptions(cats)
+        }
+    }
+
+    public func canCreateReceivable(for line: CreditBillLine) -> Bool {
+        receivables != nil && !line.isPayment && !line.isCredit && !linkedTransactionIDs.contains(line.id)
+    }
+
+    public func createReceivable(from line: CreditBillLine, person: String) async {
+        guard let receivables else { return }
+        let name = person.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return }
+        let due = InstantDate(from: Date())
+        let item = Receivable(
+            id: UUID().uuidString,
+            description: line.description,
+            amount: line.amount,
+            dueDate: due,
+            counterparty: name,
+            installments: 1,
+            originalTotalAmount: line.amount,
+            linkedTransactionId: line.id,
+            installmentHistory: [
+                ReceivableInstallment(installmentNumber: 1, amount: line.amount, dueDate: due)
+            ]
+        )
+        do {
+            try await receivables.saveReceivable(item)
+            await refreshLinkedReceivables()
+        } catch {
+            errorMessage = (error as? FinancialError)?.messagePT ?? error.localizedDescription
+        }
+    }
+
+    private func refreshLinkedReceivables() async {
+        guard let receivables else { return }
+        if let recs = try? await receivables.fetchReceivables(force: false) {
+            linkedTransactionIDs = Set(recs.compactMap(\.linkedTransactionId))
+        }
+    }
 
     public func selectCard(_ id: String) {
         selectedCardId = id

@@ -13,6 +13,7 @@ node_modules
 # Build output
 dist
 dist-ssr
+.build/
 
 # Environment variables & secrets (CRITICAL FOR SECURITY)
 .env
@@ -22,6 +23,7 @@ dist-ssr
 
 # Supabase CLI temp files (contain project ref, org ID, email)
 supabase/.temp/
+ios/supabase/.temp/
 
 # Graphify knowledge graph output
 graphify-out/
@@ -32,7 +34,7 @@ ios/*.xcodeproj/
 ios/*.xcworkspace/
 ios/DerivedData/
 **/xcuserdata/
-ios/FinancialApp/Config/Secrets.xcconfig
+ios/MeuFluxApp/Config/Secrets.xcconfig
 
 
 # Editor directories and OS files

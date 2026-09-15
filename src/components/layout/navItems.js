@@ -18,6 +18,7 @@ import {
   Repeat,
   CalendarDays,
   Users,
+  Tags,
 } from 'lucide-react';
 
 export const navItems = [
@@ -32,6 +33,7 @@ export const navItems = [
   { label: 'Momento Financeiro', shortLabel: 'Momento', path: '/financial-moment', icon: Activity },
   { label: 'Conta conjunta', shortLabel: 'Conjunta', path: '/joint-account', icon: Users, requiresJoint: true },
   { label: 'Despesas Manuais', shortLabel: 'Despesas', path: '/manual-expenses', icon: PlusCircle },
+  { label: 'Categorias', shortLabel: 'Categorias', path: '/categories', icon: Tags },
   { label: 'Assinaturas', shortLabel: 'Assinaturas', path: '/subscriptions', icon: Repeat },
   { label: 'Agenda', shortLabel: 'Agenda', path: '/agenda', icon: CalendarDays },
   { label: 'Metas', shortLabel: 'Metas', path: '/goals', icon: Target },

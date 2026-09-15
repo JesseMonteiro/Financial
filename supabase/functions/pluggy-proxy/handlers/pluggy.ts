@@ -206,8 +206,34 @@ export async function handleTransactions(
   url: URL,
   method: string,
   id?: string,
+  body?: unknown,
 ): Promise<Response> {
-  if (method === 'PATCH' && id) return jsonResponse({ message: 'patch not supported in proxy mode' });
+  if (method === 'PATCH' && id) {
+    const categoryId = readCategoryId(body);
+    if (!categoryId) return errorResponse('categoryId é obrigatório', 400);
+    const current = await pluggyJson(client, `/transactions/${id}`) as { accountId?: string };
+    if (current?.accountId) {
+      const accounts: { id: string }[] = [];
+      for (const iid of client.itemIds) {
+        try {
+          const d = await pluggyJson(client, '/accounts', { params: { itemId: iid } }) as {
+            results?: { id: string }[];
+          };
+          accounts.push(...(d.results || []));
+        } catch (_) {
+          /* skip */
+        }
+      }
+      if (!accounts.some((acc) => acc.id === current.accountId)) {
+        return errorResponse('Acesso negado para esta transação', 403);
+      }
+    }
+    const updated = await pluggyJson(client, `/transactions/${id}`, {
+      method: 'PATCH',
+      body: { categoryId },
+    });
+    return jsonResponse(updated);
+  }
   if (id) return jsonResponse(await pluggyJson(client, `/transactions/${id}`));
   const accountId = url.searchParams.get('accountId');
   const from = url.searchParams.get('from') ?? undefined;
@@ -239,6 +265,36 @@ export async function handleTransactions(
     }
   }
   return jsonResponse({ results: all, total: all.length });
+}
+
+function readCategoryId(body: unknown): string {
+  if (!body || typeof body !== 'object') return '';
+  const rec = body as Record<string, unknown>;
+  const raw = rec.categoryId ?? rec.category_id;
+  return raw == null ? '' : String(raw).trim();
+}
+
+async function fetchAllCategories(client: PluggyClient): Promise<unknown[]> {
+  const first = await pluggyJson(client, '/categories') as {
+    results?: unknown[];
+    page?: number;
+    totalPages?: number;
+  } | unknown[];
+  if (Array.isArray(first)) return first;
+  const results = [...(first?.results || [])];
+  const totalPages = Number(first?.totalPages || 1);
+  for (let page = 2; page <= totalPages && page <= 20; page++) {
+    const next = await pluggyJson(client, '/categories', { params: { page: String(page) } }) as {
+      results?: unknown[];
+    };
+    results.push(...(next?.results || []));
+  }
+  return results;
+}
+
+export async function handleCategories(client: PluggyClient): Promise<Response> {
+  const results = await fetchAllCategories(client);
+  return jsonResponse({ results, total: results.length });
 }
 
 export async function handleInvestments(client: PluggyClient, url: URL, id?: string): Promise<Response> {

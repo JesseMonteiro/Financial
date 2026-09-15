@@ -1,0 +1,141 @@
+import SwiftUI
+import MeuFluxDesignSystem
+import MeuFluxDomain
+
+public struct CategoriesView: View {
+    @State private var viewModel: CategoriesViewModel
+    @State private var showEditor = false
+
+    public init(repository: any PurchaseCategoriesRepository) {
+        _viewModel = State(initialValue: CategoriesViewModel(repository: repository))
+    }
+
+    public init() {
+        _viewModel = State(initialValue: CategoriesViewModel())
+    }
+
+    public var body: some View {
+        Group {
+            switch viewModel.state {
+            case .idle, .loading:
+                PageLoadingSkeleton(style: .list)
+            case .empty:
+                EmptyState(
+                    title: "Nenhuma categoria",
+                    message: "Crie categorias para classificar compras e despesas manuais.",
+                    systemImage: "tag",
+                    actionTitle: "Nova categoria",
+                    action: {
+                        viewModel.beginCreate()
+                        showEditor = true
+                    }
+                )
+            case .failed(let message):
+                ErrorState(message: message) { Task { await viewModel.retry() } }
+            case .loaded:
+                content
+            }
+        }
+        .meuFluxPageTitle("Categorias")
+        .refreshable { await viewModel.load(force: true) }
+        .task { await viewModel.load() }
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    viewModel.beginCreate()
+                    showEditor = true
+                } label: {
+                    Image(systemName: "plus")
+                }
+                .accessibilityLabel("Nova categoria")
+            }
+        }
+        .sheet(isPresented: $showEditor) {
+            NavigationStack {
+                Form {
+                    TextField("Nome", text: $viewModel.draftLabel)
+                    Section("Cor") {
+                        LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 5), spacing: 12) {
+                            ForEach(PurchaseCategoryCatalog.presetColors, id: \.self) { preset in
+                                Circle()
+                                    .fill(Color(hexString: preset) ?? MeuFluxColors.primary)
+                                    .frame(width: 28, height: 28)
+                                    .overlay {
+                                        if viewModel.draftColor == preset {
+                                            Circle().strokeBorder(MeuFluxColors.textPrimary, lineWidth: 2)
+                                        }
+                                    }
+                                    .onTapGesture { viewModel.draftColor = preset }
+                                    .accessibilityLabel("Cor \(preset)")
+                            }
+                        }
+                    }
+                }
+                .navigationTitle(viewModel.editingID == nil ? "Nova categoria" : "Editar categoria")
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancelar") { showEditor = false }
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Salvar") {
+                            Task {
+                                await viewModel.saveDraft()
+                                showEditor = false
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private var content: some View {
+        List {
+            ForEach(viewModel.categories) { category in
+                HStack(spacing: 12) {
+                    Circle()
+                        .fill(Color(hexString: category.color ?? "#6366f1") ?? MeuFluxColors.primary)
+                        .frame(width: 14, height: 14)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(category.label).font(.headline)
+                        Text(category.key)
+                            .font(.caption)
+                            .foregroundStyle(MeuFluxColors.textSecondary)
+                    }
+                    Spacer()
+                }
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    viewModel.beginEdit(category)
+                    showEditor = true
+                }
+                .swipeActions {
+                    Button(role: .destructive) {
+                        Task { await viewModel.delete(category) }
+                    } label: {
+                        Label("Excluir", systemImage: "trash")
+                    }
+                    Button {
+                        viewModel.beginEdit(category)
+                        showEditor = true
+                    } label: {
+                        Label("Editar", systemImage: "pencil")
+                    }
+                }
+            }
+        }
+    }
+}
+
+private extension Color {
+    init?(hexString: String) {
+        var value = hexString.trimmingCharacters(in: .whitespacesAndNewlines)
+        if value.hasPrefix("#") { value.removeFirst() }
+        guard value.count == 6, let int = UInt64(value, radix: 16) else { return nil }
+        self.init(hex: UInt32(int))
+    }
+}
+
+#Preview {
+    NavigationStack { CategoriesView() }
+}

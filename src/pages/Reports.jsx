@@ -88,7 +88,7 @@ export function Reports() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `financehub-relatorio-${ym}.csv`;
+    a.download = `meuflux-relatorio-${ym}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };

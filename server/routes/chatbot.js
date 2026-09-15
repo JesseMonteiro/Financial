@@ -173,10 +173,10 @@ router.post('/telegram/webhook', async (req, res) => {
         if (linkError || !linkResult.success) {
           await sendTelegramMessage(chatId, `❌ *Falha ao vincular conta:*\n${linkResult?.message || linkError?.message || 'Token inválido ou expirado.'}`);
         } else {
-          await sendTelegramMessage(chatId, `🎉 *Olá, ${linkResult.display_name}!*\n\nSua conta do FinanceHub foi vinculada com sucesso a este Telegram.\n\nAgora você pode conversar comigo de forma natural! Pergunte por exemplo:\n- "Qual meu saldo?"\n- "Gastei 45 reais com uber ontem"\n- "Recebi 1200 de pix"`);
+          await sendTelegramMessage(chatId, `🎉 *Olá, ${linkResult.display_name}!*\n\nSua conta do MeuFlux foi vinculada com sucesso a este Telegram.\n\nAgora você pode conversar comigo de forma natural! Pergunte por exemplo:\n- "Qual meu saldo?"\n- "Gastei 45 reais com uber ontem"\n- "Recebi 1200 de pix"`);
         }
       } else {
-        await sendTelegramMessage(chatId, `👋 *Olá! Eu sou o assistente do FinanceHub.*\n\nPara me usar, você precisa conectar sua conta:\n1. Acesse o FinanceHub Web.\n2. Vá na tela de *Configurações*.\n3. Clique em *Conectar Telegram* para gerar seu código de pareamento.`);
+        await sendTelegramMessage(chatId, `👋 *Olá! Eu sou o assistente do MeuFlux.*\n\nPara me usar, você precisa conectar sua conta:\n1. Acesse o MeuFlux Web.\n2. Vá na tela de *Configurações*.\n3. Clique em *Conectar Telegram* para gerar seu código de pareamento.`);
       }
       return;
     }
@@ -187,7 +187,7 @@ router.post('/telegram/webhook', async (req, res) => {
     });
 
     if (profileError || !profile || !profile.id) {
-      await sendTelegramMessage(chatId, `⚠️ *Conta não vinculada!*\n\nNão consegui encontrar nenhuma conta do FinanceHub associada a este número de chat.\n\nPara vincular:\n1. Vá nas *Configurações* do FinanceHub Web.\n2. Clique em *Conectar Telegram*.\n3. Digite o comando gerado aqui no chat.`);
+      await sendTelegramMessage(chatId, `⚠️ *Conta não vinculada!*\n\nNão consegui encontrar nenhuma conta do MeuFlux associada a este número de chat.\n\nPara vincular:\n1. Vá nas *Configurações* do MeuFlux Web.\n2. Clique em *Conectar Telegram*.\n3. Digite o comando gerado aqui no chat.`);
       return;
     }
 
@@ -301,7 +301,7 @@ router.post('/telegram/webhook', async (req, res) => {
 
       case 'UNKNOWN':
       default: {
-        const helpMessage = parsed.message || `Olá! Sou o assistente do FinanceHub.\n\nComo posso ajudar?\n- *Saldo das contas:* "Qual meu saldo?" ou /saldo\n- *Faturas do cartão:* "Minhas faturas" ou /faturas\n- *Resumo semanal:* "Resumo da semana" ou /resumo\n- *Despesas:* "Gastei 55 reais no supermercado hoje"`;
+        const helpMessage = parsed.message || `Olá! Sou o assistente do MeuFlux.\n\nComo posso ajudar?\n- *Saldo das contas:* "Qual meu saldo?" ou /saldo\n- *Faturas do cartão:* "Minhas faturas" ou /faturas\n- *Resumo semanal:* "Resumo da semana" ou /resumo\n- *Despesas:* "Gastei 55 reais no supermercado hoje"`;
         await sendTelegramMessage(chatId, helpMessage);
         break;
       }

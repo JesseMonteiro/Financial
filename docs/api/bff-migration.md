@@ -36,6 +36,26 @@
 | `GET /subscriptions` | `GET /v1/subscriptions` |
 | — | `GET/POST/PATCH/DELETE /v1/domain/*` |
 
+Domain resources include `budgets`, `goals`, `receivables`, `manual-transactions`, `manual-accounts`, `meal-benefits`, `meal-benefit-purchases`, and `purchase-categories` (user-owned purchase category CRUD; seeds the 9 default manual keys on first empty GET). This is separate from Pluggy `GET /v1/categories`.
+
+## Budget screen (`GET /budget-screen` and `/v1/budget-screen`)
+
+Query: `month=YYYY-MM`. Each category row:
+
+| Field | Meaning |
+| --- | --- |
+| `spent` | Banco/cartão + compras VA/VR do mês |
+| `spentBank` / `spentMeal` | Breakdown das fontes |
+| `period` | `daily` \| `weekly` \| `biweekly` \| `monthly` |
+| `periodAmount` | Valor configurado por período (coluna `budgets.limit`) |
+| `allowance` / `limit` | Verba já liberada no mês (períodos iniciados × `periodAmount`) |
+| `monthCap` | Teto se todos os períodos do mês ocorrerem |
+| `periodIndex` / `periodCount` | Progresso do período no mês |
+
+VA sem `category` soma em `Supermercado & Alimentação`; VR em `Restaurantes & Bares`. `POST /v1/domain/budgets` faz upsert em `(user_id, category)` e aceita `period`.
+
+`calculationVersion` atual: `2026.09.2`.
+
 ## Kill switches
 
 Env vars: `KILL_PLUGGY`, `KILL_GEMINI`, `KILL_TELEGRAM`, `FEATURE_PUSH`.

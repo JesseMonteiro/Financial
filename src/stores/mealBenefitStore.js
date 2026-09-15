@@ -147,6 +147,7 @@ export const useMealBenefitStore = create((set, get) => ({
       amount: Number(data.amount) || 0,
       purchasedAt: data.purchasedAt || todayISO(),
       description: data.description || '',
+      category: data.category || '',
       createdAt: now,
     });
     const snapshot = get().purchases;

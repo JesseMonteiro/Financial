@@ -1,6 +1,6 @@
 import SwiftUI
-import FinancialDesignSystem
-import FinancialDomain
+import MeuFluxDesignSystem
+import MeuFluxDomain
 
 public struct AccountsView: View {
     @State private var viewModel: AccountsViewModel
@@ -47,7 +47,7 @@ public struct AccountsView: View {
                 }
             }
         }
-        .financialPageTitle("Contas & Saldos")
+        .meuFluxPageTitle("Contas & Saldos")
         .refreshable { await viewModel.load(force: true) }
         .task { await viewModel.load() }
         .toolbar {
@@ -141,7 +141,7 @@ public struct AccountsView: View {
                 bankSection
                 creditSection
             }
-            .financialPageGutter()
+            .meuFluxPageGutter()
         }
     }
 
@@ -149,19 +149,19 @@ public struct AccountsView: View {
         VStack(alignment: .leading, spacing: 4) {
             Text("Contas e cartões do Open Finance e itens manuais que você cadastrar.")
                 .font(.subheadline)
-                .foregroundStyle(FinancialColors.textMuted)
+                .foregroundStyle(MeuFluxColors.textMuted)
         }
     }
 
     private func statusBanner(_ text: String, isError: Bool) -> some View {
         Text(text)
             .font(.subheadline.weight(.medium))
-            .foregroundStyle(isError ? FinancialColors.danger : FinancialColors.success)
+            .foregroundStyle(isError ? MeuFluxColors.danger : MeuFluxColors.success)
             .padding(.horizontal, 14)
             .padding(.vertical, 12)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
-                (isError ? FinancialColors.dangerBackground : FinancialColors.successBackground),
+                (isError ? MeuFluxColors.dangerBackground : MeuFluxColors.successBackground),
                 in: RoundedRectangle(cornerRadius: Radius().md, style: .continuous)
             )
     }
@@ -170,7 +170,7 @@ public struct AccountsView: View {
         VStack(alignment: .leading, spacing: 12) {
             sectionTitle(
                 systemImage: "wallet.pass.fill",
-                tint: FinancialColors.primary,
+                tint: MeuFluxColors.primary,
                 title: "Contas Bancárias (\(viewModel.bankAccounts.count))"
             )
 
@@ -193,7 +193,7 @@ public struct AccountsView: View {
         VStack(alignment: .leading, spacing: 12) {
             sectionTitle(
                 systemImage: "creditcard.fill",
-                tint: FinancialColors.danger,
+                tint: MeuFluxColors.danger,
                 title: "Cartões de Crédito (\(viewModel.creditCards.count))"
             )
 
@@ -219,14 +219,14 @@ public struct AccountsView: View {
                 .foregroundStyle(tint)
             Text(title)
                 .font(.title3.weight(.semibold))
-                .foregroundStyle(FinancialColors.textPrimary)
+                .foregroundStyle(MeuFluxColors.textPrimary)
         }
     }
 
     private func emptySectionHint(_ text: String) -> some View {
         Text(text)
             .font(.subheadline)
-            .foregroundStyle(FinancialColors.textMuted)
+            .foregroundStyle(MeuFluxColors.textMuted)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.vertical, 8)
     }
@@ -247,7 +247,7 @@ public struct AccountsView: View {
                 moneyBlock(
                     label: "Saldo disponível",
                     amount: account.displayAmount.formatted(),
-                    color: FinancialColors.textPrimary
+                    color: MeuFluxColors.textPrimary
                 )
 
                 if account.reservedBalance.amount > 0 {
@@ -275,7 +275,7 @@ public struct AccountsView: View {
                 moneyBlock(
                     label: "Fatura Atual",
                     amount: account.displayAmount.formatted(),
-                    color: FinancialColors.danger
+                    color: MeuFluxColors.danger
                 )
 
                 if hasCreditLimit(account) {
@@ -309,14 +309,14 @@ public struct AccountsView: View {
                 HStack(alignment: .center, spacing: 6) {
                     Text(account.name)
                         .font(.body.weight(.semibold))
-                        .foregroundStyle(FinancialColors.textPrimary)
+                        .foregroundStyle(MeuFluxColors.textPrimary)
                         .lineLimit(2)
                     Button {
                         viewModel.beginRename(account)
                     } label: {
                         Image(systemName: "pencil")
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(FinancialColors.textMuted)
+                            .foregroundStyle(MeuFluxColors.textMuted)
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Editar nome")
@@ -324,13 +324,13 @@ public struct AccountsView: View {
 
                 Text(subtitle)
                     .font(.caption)
-                    .foregroundStyle(FinancialColors.textMuted)
+                    .foregroundStyle(MeuFluxColors.textMuted)
                     .lineLimit(2)
 
                 if let owner = account.ownerLabel, !owner.isEmpty {
                     Text("Titular: \(owner)")
                         .font(.caption)
-                        .foregroundStyle(FinancialColors.textMuted)
+                        .foregroundStyle(MeuFluxColors.textMuted)
                 }
             }
 
@@ -349,7 +349,7 @@ public struct AccountsView: View {
         VStack(alignment: .leading, spacing: 2) {
             Text(label)
                 .font(.caption)
-                .foregroundStyle(FinancialColors.textMuted)
+                .foregroundStyle(MeuFluxColors.textMuted)
             Text(amount)
                 .font(.title2.weight(.bold).monospacedDigit())
                 .foregroundStyle(color)
@@ -376,14 +376,14 @@ public struct AccountsView: View {
     private func reservedText(_ amount: Money, linked: Bool) -> some View {
         Text(reservedAttributed(amount, linked: linked))
             .font(.caption)
-            .foregroundStyle(FinancialColors.textMuted)
+            .foregroundStyle(MeuFluxColors.textMuted)
     }
 
     private func reservedAttributed(_ amount: Money, linked: Bool) -> AttributedString {
         var base = AttributedString("\(amount.formatted()) em caixinhas contabilizados em ")
         var link = AttributedString("Investimentos")
         if linked {
-            link.foregroundColor = FinancialColors.primary
+            link.foregroundColor = MeuFluxColors.primary
             link.font = .caption.weight(.semibold)
         }
         base.append(link)
@@ -402,7 +402,7 @@ public struct AccountsView: View {
             Text("Total: \((account.creditLimit ?? .zero).formatted())")
         }
         .font(.caption)
-        .foregroundStyle(FinancialColors.textMuted)
+        .foregroundStyle(MeuFluxColors.textMuted)
     }
 
     private func manualActions(_ account: Account) -> some View {

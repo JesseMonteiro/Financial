@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Gera ios/FinancialApp/Config/Secrets.xcconfig a partir do .env do web.
+ * Gera ios/MeuFluxApp/Config/Secrets.xcconfig a partir do .env do web.
  * Não commit o arquivo gerado.
  */
 import fs from 'node:fs';
@@ -8,7 +8,7 @@ import path from 'node:path';
 
 const root = path.resolve(process.cwd());
 const envPath = path.join(root, '.env');
-const outPath = path.join(root, 'ios/FinancialApp/Config/Secrets.xcconfig');
+const outPath = path.join(root, 'ios/MeuFluxApp/Config/Secrets.xcconfig');
 
 if (!fs.existsSync(envPath)) {
   console.error('Arquivo .env não encontrado na raiz do repo.');

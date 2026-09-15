@@ -1,6 +1,6 @@
 import SwiftUI
-import FinancialDesignSystem
-import FinancialDomain
+import MeuFluxDesignSystem
+import MeuFluxDomain
 
 public struct LoansView: View {
     @State private var viewModel: LoansViewModel
@@ -30,7 +30,7 @@ public struct LoansView: View {
                 content
             }
         }
-        .financialPageTitle("Empréstimos")
+        .meuFluxPageTitle("Empréstimos")
         .refreshable { await viewModel.load(force: true) }
         .task { await viewModel.load() }
     }
@@ -59,7 +59,7 @@ public struct LoansView: View {
                         }
                     }
                     .font(.caption)
-                    .foregroundStyle(FinancialColors.textSecondary)
+                    .foregroundStyle(MeuFluxColors.textSecondary)
                 }
                 .padding(.vertical, 4)
             }

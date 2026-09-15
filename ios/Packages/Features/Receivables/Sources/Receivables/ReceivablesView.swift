@@ -1,10 +1,11 @@
 import SwiftUI
-import FinancialDesignSystem
-import FinancialDomain
+import MeuFluxDesignSystem
+import MeuFluxDomain
 
 public struct ReceivablesView: View {
     @State private var viewModel: ReceivablesViewModel
     @State private var showEditor = false
+    @State private var selectedDetail: LineItemDetail?
 
     public init(repository: any ReceivablesRepository) {
         _viewModel = State(initialValue: ReceivablesViewModel(repository: repository))
@@ -29,7 +30,7 @@ public struct ReceivablesView: View {
                 }
             }
         }
-        .financialPageTitle("Valores a Receber")
+        .meuFluxPageTitle("Valores a Receber")
         .refreshable { await viewModel.load(force: true) }
         .task { await viewModel.load() }
         .toolbar {
@@ -45,6 +46,32 @@ public struct ReceivablesView: View {
         }
         .sheet(isPresented: $showEditor) {
             editorSheet
+        }
+        .sheet(item: $selectedDetail) { item in
+            LineItemDetailSheet(
+                item: item,
+                onTogglePaid: {
+                    if let number = item.installmentNumber {
+                        Task {
+                            await viewModel.markInstallmentPaid(receivableID: item.sourceId, number: number)
+                            selectedDetail = nil
+                        }
+                    }
+                },
+                onEdit: {
+                    if let receivable = viewModel.receivables.first(where: { $0.id == item.sourceId }) {
+                        viewModel.beginEdit(receivable)
+                        selectedDetail = nil
+                        showEditor = true
+                    }
+                },
+                onDelete: {
+                    if let receivable = viewModel.receivables.first(where: { $0.id == item.sourceId }) {
+                        viewModel.pendingDelete = receivable
+                        selectedDetail = nil
+                    }
+                }
+            )
         }
         .confirmationDialog(
             "Remover lançamento?",
@@ -85,7 +112,7 @@ public struct ReceivablesView: View {
                     }
                 )
             }
-            .financialPageGutter()
+            .meuFluxPageGutter()
         }
     }
 
@@ -97,10 +124,10 @@ public struct ReceivablesView: View {
                 if let error = viewModel.errorMessage {
                     Text(error)
                         .font(.subheadline.weight(.medium))
-                        .foregroundStyle(FinancialColors.danger)
+                        .foregroundStyle(MeuFluxColors.danger)
                         .padding(12)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(FinancialColors.dangerBackground, in: RoundedRectangle(cornerRadius: Radius().md, style: .continuous))
+                        .background(MeuFluxColors.dangerBackground, in: RoundedRectangle(cornerRadius: Radius().md, style: .continuous))
                 }
 
                 kpiGrid
@@ -109,14 +136,14 @@ public struct ReceivablesView: View {
                     personCard(group)
                 }
             }
-            .financialPageGutter()
+            .meuFluxPageGutter()
         }
     }
 
     private var header: some View {
         Text("Controle compras do cartão emprestadas a terceiros e valores avulsos.")
             .font(.subheadline)
-            .foregroundStyle(FinancialColors.textMuted)
+            .foregroundStyle(MeuFluxColors.textMuted)
     }
 
     private var kpiGrid: some View {
@@ -125,28 +152,28 @@ public struct ReceivablesView: View {
                 title: "Total a receber",
                 value: viewModel.totalToReceive.formatted(),
                 subtitle: "Pendente de recebimento",
-                tint: FinancialColors.primary,
+                tint: MeuFluxColors.primary,
                 icon: "dollarsign.circle"
             )
             kpiCard(
                 title: "Total recebido",
                 value: viewModel.totalReceived.formatted(),
                 subtitle: "Já recebido até hoje",
-                tint: FinancialColors.success,
+                tint: MeuFluxColors.success,
                 icon: "checkmark.circle.fill"
             )
             kpiCard(
                 title: "Nº de pessoas",
                 value: "\(viewModel.peopleCount)",
                 subtitle: viewModel.peopleCount == 1 ? "pessoa com débito" : "pessoas com débito",
-                tint: FinancialColors.info,
+                tint: MeuFluxColors.info,
                 icon: "person.2.fill"
             )
             kpiCard(
                 title: "Próximo recebimento",
                 value: viewModel.nextDueDate?.formatted(template: "d MMM") ?? "—",
                 subtitle: viewModel.nextDueDate == nil ? "Sem parcelas pendentes" : "Próxima parcela pendente",
-                tint: viewModel.nextDueDate == nil ? FinancialColors.textMuted : FinancialColors.warning,
+                tint: viewModel.nextDueDate == nil ? MeuFluxColors.textMuted : MeuFluxColors.warning,
                 icon: "calendar.badge.clock"
             )
         }
@@ -164,7 +191,7 @@ public struct ReceivablesView: View {
                 HStack {
                     Text(title.uppercased())
                         .font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(FinancialColors.textMuted)
+                        .foregroundStyle(MeuFluxColors.textMuted)
                     Spacer()
                     Image(systemName: icon)
                         .font(.caption.weight(.semibold))
@@ -177,7 +204,7 @@ public struct ReceivablesView: View {
                     .lineLimit(1)
                 Text(subtitle)
                     .font(.caption2)
-                    .foregroundStyle(FinancialColors.textMuted)
+                    .foregroundStyle(MeuFluxColors.textMuted)
             }
         }
         .overlay(alignment: .leading) {
@@ -197,7 +224,7 @@ public struct ReceivablesView: View {
 
     private func personCard(_ group: ReceivablePersonGroup) -> some View {
         let expanded = viewModel.expandedPersonIDs.contains(group.id)
-        let color = Color(hexString: group.personColor) ?? FinancialColors.primary
+        let color = Color(hexString: group.personColor) ?? MeuFluxColors.primary
 
         return VStack(spacing: 0) {
             Button {
@@ -214,10 +241,10 @@ public struct ReceivablesView: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(group.personName)
                             .font(.body.weight(.bold))
-                            .foregroundStyle(FinancialColors.textPrimary)
+                            .foregroundStyle(MeuFluxColors.textPrimary)
                         Text("\(group.totalReceived.formatted()) recebido até hoje")
                             .font(.caption)
-                            .foregroundStyle(FinancialColors.textMuted)
+                            .foregroundStyle(MeuFluxColors.textMuted)
                     }
 
                     Spacer(minLength: 8)
@@ -226,18 +253,18 @@ public struct ReceivablesView: View {
                         HStack {
                             Text("\(group.progressPercent)% recebido")
                                 .font(.system(size: 10))
-                                .foregroundStyle(FinancialColors.textMuted)
+                                .foregroundStyle(MeuFluxColors.textMuted)
                             Text(group.totalPending.formatted())
                                 .font(.system(size: 10, weight: .bold))
-                                .foregroundStyle(group.progressPercent == 100 ? FinancialColors.success : FinancialColors.primary)
+                                .foregroundStyle(group.progressPercent == 100 ? MeuFluxColors.success : MeuFluxColors.primary)
                         }
-                        progressBar(percent: group.progressPercent, tint: group.progressPercent == 100 ? FinancialColors.success : color)
+                        progressBar(percent: group.progressPercent, tint: group.progressPercent == 100 ? MeuFluxColors.success : color)
                             .frame(width: 120)
                     }
 
                     Image(systemName: expanded ? "chevron.up" : "chevron.down")
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(FinancialColors.textMuted)
+                        .foregroundStyle(MeuFluxColors.textMuted)
                 }
                 .padding(16)
                 .background(
@@ -272,13 +299,13 @@ public struct ReceivablesView: View {
                 }
             }
         }
-        .background(FinancialColors.bgSecondary)
+        .background(MeuFluxColors.bgSecondary)
         .clipShape(RoundedRectangle(cornerRadius: Radius().xl, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: Radius().xl, style: .continuous)
-                .strokeBorder(FinancialColors.border, lineWidth: 1)
+                .strokeBorder(MeuFluxColors.border, lineWidth: 1)
         }
-        .shadow(color: Color.black.opacity(0.04), radius: 8, y: 2)
+        .shadow(color: MeuFluxColors.cardShadow, radius: 8, y: 2)
     }
 
     private func receivableRow(_ receivable: Receivable, personColor: Color) -> some View {
@@ -290,7 +317,7 @@ public struct ReceivablesView: View {
 
         return VStack(spacing: 0) {
             Button {
-                viewModel.toggleReceivable(receivable.id)
+                selectedDetail = LineItemDetail.from(receivable: receivable)
             } label: {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(alignment: .top, spacing: 8) {
@@ -298,7 +325,7 @@ public struct ReceivablesView: View {
                             HStack(spacing: 6) {
                                 Text(receivable.description)
                                     .font(.subheadline.weight(.semibold))
-                                    .foregroundStyle(FinancialColors.textPrimary)
+                                    .foregroundStyle(MeuFluxColors.textPrimary)
                                 if settled {
                                     StatusBadge("Quitado", style: .success)
                                 }
@@ -322,11 +349,11 @@ public struct ReceivablesView: View {
                                 )
                                 if let next = receivable.nextPendingDue {
                                     Text("Próx: \(next.formatted(template: "d MMM"))")
-                                        .foregroundStyle(FinancialColors.warning)
+                                        .foregroundStyle(MeuFluxColors.warning)
                                 }
                             }
                             .font(.caption2)
-                            .foregroundStyle(FinancialColors.textMuted)
+                            .foregroundStyle(MeuFluxColors.textMuted)
                         }
 
                         Spacer(minLength: 4)
@@ -338,7 +365,7 @@ public struct ReceivablesView: View {
                                     : "\(receivable.receivedAmount.formatted()) / \(receivable.amount.formatted())"
                             )
                             .font(.subheadline.weight(.bold).monospacedDigit())
-                            .foregroundStyle(FinancialColors.textPrimary)
+                            .foregroundStyle(MeuFluxColors.textPrimary)
 
                             HStack(spacing: 10) {
                                 Button {
@@ -346,7 +373,7 @@ public struct ReceivablesView: View {
                                     showEditor = true
                                 } label: {
                                     Image(systemName: "pencil")
-                                        .foregroundStyle(FinancialColors.textMuted)
+                                        .foregroundStyle(MeuFluxColors.textMuted)
                                 }
                                 .buttonStyle(.plain)
 
@@ -354,20 +381,26 @@ public struct ReceivablesView: View {
                                     viewModel.pendingDelete = receivable
                                 } label: {
                                     Image(systemName: "trash")
-                                        .foregroundStyle(FinancialColors.textMuted)
+                                        .foregroundStyle(MeuFluxColors.textMuted)
                                 }
                                 .buttonStyle(.plain)
 
-                                Image(systemName: expanded ? "chevron.up" : "chevron.down")
-                                    .font(.caption)
-                                    .foregroundStyle(FinancialColors.textMuted)
+                                Button {
+                                    viewModel.toggleReceivable(receivable.id)
+                                } label: {
+                                    Image(systemName: expanded ? "chevron.up" : "chevron.down")
+                                        .font(.caption)
+                                        .foregroundStyle(MeuFluxColors.textMuted)
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel(expanded ? "Recolher parcelas" : "Ver parcelas")
                             }
                         }
                     }
 
                     progressBar(
                         percent: pct,
-                        tint: settled ? FinancialColors.success : personColor
+                        tint: settled ? MeuFluxColors.success : personColor
                     )
                 }
                 .padding(12)
@@ -383,12 +416,12 @@ public struct ReceivablesView: View {
                 .overlay(alignment: .top) { Divider() }
             }
         }
-        .background(FinancialColors.bgTertiary)
+        .background(MeuFluxColors.bgTertiary)
         .clipShape(RoundedRectangle(cornerRadius: Radius().lg, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: Radius().lg, style: .continuous)
                 .strokeBorder(
-                    settled ? FinancialColors.success.opacity(0.35) : FinancialColors.border,
+                    settled ? MeuFluxColors.success.opacity(0.35) : MeuFluxColors.border,
                     lineWidth: 1
                 )
         }
@@ -403,10 +436,15 @@ public struct ReceivablesView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Parcela \(installment.installmentNumber)/\(total)")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(FinancialColors.textSecondary)
+                    .foregroundStyle(MeuFluxColors.textSecondary)
                 Text("Vence \(installment.dueDate.formatted(template: "d MMM yyyy"))")
                     .font(.caption2)
-                    .foregroundStyle(FinancialColors.textMuted)
+                    .foregroundStyle(MeuFluxColors.textMuted)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                selectedDetail = LineItemDetail.from(receivable: receivable, installment: installment)
             }
             Spacer()
             Text(installment.amount.formatted())
@@ -428,13 +466,13 @@ public struct ReceivablesView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
-        .background(installment.isPaid ? FinancialColors.success.opacity(0.05) : Color.clear)
+        .background(installment.isPaid ? MeuFluxColors.success.opacity(0.05) : Color.clear)
     }
 
     private func progressBar(percent: Int, tint: Color) -> some View {
         GeometryReader { geo in
             ZStack(alignment: .leading) {
-                Capsule().fill(FinancialColors.bgTertiary)
+                Capsule().fill(MeuFluxColors.bgTertiary)
                 Capsule()
                     .fill(tint)
                     .frame(width: max(0, geo.size.width * CGFloat(percent) / 100))

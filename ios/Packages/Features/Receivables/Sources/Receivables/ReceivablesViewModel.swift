@@ -1,7 +1,7 @@
 import Foundation
 import Observation
-import FinancialDomain
-import FinancialDesignSystem
+import MeuFluxDomain
+import MeuFluxDesignSystem
 
 public enum ReceivableRecurrence: String, CaseIterable, Identifiable, Sendable {
     case single

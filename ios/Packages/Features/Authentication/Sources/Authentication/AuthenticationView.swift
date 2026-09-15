@@ -1,5 +1,5 @@
 import SwiftUI
-import FinancialDesignSystem
+import MeuFluxDesignSystem
 
 public struct AuthenticationView: View {
     @Bindable var viewModel: AuthenticationViewModel
@@ -13,12 +13,12 @@ public struct AuthenticationView: View {
     public var body: some View {
         VStack(spacing: 24) {
             Spacer()
-            Text("FinanceHub")
+            Text("MeuFlux")
                 .font(.largeTitle.weight(.bold))
-                .foregroundStyle(FinancialColors.primary)
+                .foregroundStyle(MeuFluxColors.primary)
             Text(subtitle)
                 .font(.subheadline)
-                .foregroundStyle(FinancialColors.textSecondary)
+                .foregroundStyle(MeuFluxColors.textSecondary)
                 .multilineTextAlignment(.center)
 
             if viewModel.mode != .reset {
@@ -33,8 +33,9 @@ public struct AuthenticationView: View {
                 if viewModel.mode == .signUp {
                     TextField("Nome completo", text: $viewModel.fullName)
                         .textContentType(.name)
+                        .foregroundStyle(MeuFluxColors.textPrimary)
                         .padding()
-                        .background(FinancialColors.bgTertiary, in: RoundedRectangle(cornerRadius: 12))
+                        .background(MeuFluxColors.bgTertiary, in: RoundedRectangle(cornerRadius: 12))
                 }
 
                 TextField("E-mail", text: $viewModel.email)
@@ -43,35 +44,37 @@ public struct AuthenticationView: View {
                     .keyboardType(.emailAddress)
                     .textInputAutocapitalization(.never)
                     #endif
+                    .foregroundStyle(MeuFluxColors.textPrimary)
                     .padding()
-                    .background(FinancialColors.bgTertiary, in: RoundedRectangle(cornerRadius: 12))
+                    .background(MeuFluxColors.bgTertiary, in: RoundedRectangle(cornerRadius: 12))
 
                 if viewModel.mode != .reset {
                 SecureField("Senha", text: $viewModel.password)
                         .textContentType(viewModel.mode == .signUp ? .newPassword : .password)
+                    .foregroundStyle(MeuFluxColors.textPrimary)
                     .padding()
-                    .background(FinancialColors.bgTertiary, in: RoundedRectangle(cornerRadius: 12))
+                    .background(MeuFluxColors.bgTertiary, in: RoundedRectangle(cornerRadius: 12))
                 }
             }
 
             if let hint = viewModel.configurationHint {
                 Text(hint)
                     .font(.caption)
-                    .foregroundStyle(FinancialColors.warning)
+                    .foregroundStyle(MeuFluxColors.warning)
                     .multilineTextAlignment(.center)
             }
 
             if let success = viewModel.successMessage {
                 Text(success)
                     .font(.caption)
-                    .foregroundStyle(FinancialColors.success)
+                    .foregroundStyle(MeuFluxColors.success)
                     .multilineTextAlignment(.center)
             }
 
             if let error = viewModel.errorMessage {
                 Text(error)
                     .font(.caption)
-                    .foregroundStyle(FinancialColors.danger)
+                    .foregroundStyle(MeuFluxColors.danger)
                     .multilineTextAlignment(.center)
             }
 
@@ -91,7 +94,7 @@ public struct AuthenticationView: View {
                 }
             }
             .buttonStyle(.borderedProminent)
-            .tint(FinancialColors.primary)
+            .tint(MeuFluxColors.primary)
             .disabled(viewModel.state.isLoading)
 
             if viewModel.mode == .reset {
@@ -113,7 +116,8 @@ public struct AuthenticationView: View {
             Spacer()
         }
         .padding(24)
-        .background(FinancialColors.bgPrimary.ignoresSafeArea())
+        .foregroundStyle(MeuFluxColors.textPrimary)
+        .background(MeuFluxColors.bgPrimary.ignoresSafeArea())
     }
 
     private var subtitle: String {

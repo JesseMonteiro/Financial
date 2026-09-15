@@ -1,7 +1,7 @@
 import Foundation
 import Observation
-import FinancialDomain
-import FinancialDesignSystem
+import MeuFluxDomain
+import MeuFluxDesignSystem
 
 @Observable
 @MainActor
@@ -23,6 +23,7 @@ public final class MealVouchersViewModel {
     public var draftPurchaseDescription = ""
     public var draftPurchaseAmount = ""
     public var draftPurchaseDate = Date()
+    public var draftPurchaseCategory = MealBenefitKind.va.defaultBudgetCategory
 
     private let repository: (any MealBenefitsRepository)?
     private var lastLoadedAt: Date?
@@ -138,6 +139,7 @@ public final class MealVouchersViewModel {
         draftPurchaseDescription = ""
         draftPurchaseAmount = ""
         draftPurchaseDate = Date()
+        draftPurchaseCategory = benefit.kind.defaultBudgetCategory
     }
 
     public func savePurchase() async {
@@ -152,7 +154,8 @@ public final class MealVouchersViewModel {
             benefitId: benefitId,
             amount: Money(amount: amount),
             purchasedAt: InstantDate(from: draftPurchaseDate),
-            description: draftPurchaseDescription.trimmingCharacters(in: .whitespacesAndNewlines)
+            description: draftPurchaseDescription.trimmingCharacters(in: .whitespacesAndNewlines),
+            category: draftPurchaseCategory
         )
         do {
             try await repository.savePurchase(purchase)

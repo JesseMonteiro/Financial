@@ -2,17 +2,17 @@
 import PackageDescription
 
 let package = Package(
-    name: "Financial",
+    name: "MeuFlux",
     defaultLocalization: "pt-BR",
     platforms: [
         .iOS(.v26),
         .macOS(.v26),
     ],
     products: [
-        .library(name: "FinancialCore", targets: ["FinancialCore"]),
-        .library(name: "FinancialDomain", targets: ["FinancialDomain"]),
-        .library(name: "FinancialData", targets: ["FinancialData"]),
-        .library(name: "FinancialDesignSystem", targets: ["FinancialDesignSystem"]),
+        .library(name: "MeuFluxCore", targets: ["MeuFluxCore"]),
+        .library(name: "MeuFluxDomain", targets: ["MeuFluxDomain"]),
+        .library(name: "MeuFluxData", targets: ["MeuFluxData"]),
+        .library(name: "MeuFluxDesignSystem", targets: ["MeuFluxDesignSystem"]),
         .library(name: "Authentication", targets: ["Authentication"]),
         .library(name: "Dashboard", targets: ["Dashboard"]),
         .library(name: "Accounts", targets: ["Accounts"]),
@@ -22,6 +22,7 @@ let package = Package(
         .library(name: "Loans", targets: ["Loans"]),
         .library(name: "Budget", targets: ["Budget"]),
         .library(name: "Goals", targets: ["Goals"]),
+        .library(name: "Categories", targets: ["Categories"]),
         .library(name: "MealVouchers", targets: ["MealVouchers"]),
         .library(name: "Receivables", targets: ["Receivables"]),
         .library(name: "ManualExpenses", targets: ["ManualExpenses"]),
@@ -32,25 +33,27 @@ let package = Package(
         .library(name: "Reports", targets: ["Reports"]),
         .library(name: "BankConnections", targets: ["BankConnections"]),
         .library(name: "Settings", targets: ["Settings"]),
+        .library(name: "NotificationImport", targets: ["NotificationImport"]),
+        .library(name: "MeuFluxIntelligence", targets: ["MeuFluxIntelligence"]),
     ],
     targets: [
         .target(
-            name: "FinancialCore",
-            path: "Packages/FinancialCore/Sources/FinancialCore"
+            name: "MeuFluxCore",
+            path: "Packages/MeuFluxCore/Sources/MeuFluxCore"
         ),
         .target(
-            name: "FinancialDomain",
-            path: "Packages/FinancialDomain/Sources/FinancialDomain"
+            name: "MeuFluxDomain",
+            path: "Packages/MeuFluxDomain/Sources/MeuFluxDomain"
         ),
         .target(
-            name: "FinancialData",
-            dependencies: ["FinancialDomain", "FinancialCore"],
-            path: "Packages/FinancialData/Sources/FinancialData"
+            name: "MeuFluxData",
+            dependencies: ["MeuFluxDomain", "MeuFluxCore"],
+            path: "Packages/MeuFluxData/Sources/MeuFluxData"
         ),
         .target(
-            name: "FinancialDesignSystem",
-            dependencies: ["FinancialCore"],
-            path: "Packages/FinancialDesignSystem/Sources/FinancialDesignSystem",
+            name: "MeuFluxDesignSystem",
+            dependencies: ["MeuFluxCore", "MeuFluxDomain"],
+            path: "Packages/MeuFluxDesignSystem/Sources/MeuFluxDesignSystem",
             resources: [
                 .process("Resources/CardFaces.xcassets"),
                 .process("Resources/CardFaces"),
@@ -58,29 +61,36 @@ let package = Package(
                 .copy("Resources/LogoLoading.gif"),
             ]
         ),
-        .target(name: "Authentication", dependencies: ["FinancialDomain", "FinancialDesignSystem"], path: "Packages/Features/Authentication/Sources/Authentication"),
-        .target(name: "Dashboard", dependencies: ["FinancialDomain", "FinancialDesignSystem"], path: "Packages/Features/Dashboard/Sources/Dashboard"),
-        .target(name: "Accounts", dependencies: ["FinancialDomain", "FinancialDesignSystem"], path: "Packages/Features/Accounts/Sources/Accounts"),
-        .target(name: "Transactions", dependencies: ["FinancialDomain", "FinancialDesignSystem"], path: "Packages/Features/Transactions/Sources/Transactions"),
-        .target(name: "CreditCards", dependencies: ["FinancialDomain", "FinancialDesignSystem"], path: "Packages/Features/CreditCards/Sources/CreditCards"),
-        .target(name: "Investments", dependencies: ["FinancialDomain", "FinancialDesignSystem"], path: "Packages/Features/Investments/Sources/Investments"),
-        .target(name: "Loans", dependencies: ["FinancialDomain", "FinancialDesignSystem"], path: "Packages/Features/Loans/Sources/Loans"),
-        .target(name: "Budget", dependencies: ["FinancialDomain", "FinancialDesignSystem"], path: "Packages/Features/Budget/Sources/Budget"),
-        .target(name: "Goals", dependencies: ["FinancialDomain", "FinancialDesignSystem"], path: "Packages/Features/Goals/Sources/Goals"),
-        .target(name: "MealVouchers", dependencies: ["FinancialDomain", "FinancialDesignSystem"], path: "Packages/Features/MealVouchers/Sources/MealVouchers"),
-        .target(name: "Receivables", dependencies: ["FinancialDomain", "FinancialDesignSystem"], path: "Packages/Features/Receivables/Sources/Receivables"),
-        .target(name: "ManualExpenses", dependencies: ["FinancialDomain", "FinancialDesignSystem"], path: "Packages/Features/ManualExpenses/Sources/ManualExpenses"),
-        .target(name: "FinancialMoment", dependencies: ["FinancialDomain", "FinancialDesignSystem"], path: "Packages/Features/FinancialMoment/Sources/FinancialMoment"),
-        .target(name: "JointFinance", dependencies: ["FinancialDomain", "FinancialDesignSystem", "FinancialCore"], path: "Packages/Features/JointFinance/Sources/JointFinance"),
-        .target(name: "Subscriptions", dependencies: ["FinancialDomain", "FinancialDesignSystem"], path: "Packages/Features/Subscriptions/Sources/Subscriptions"),
-        .target(name: "Agenda", dependencies: ["FinancialDomain", "FinancialDesignSystem"], path: "Packages/Features/Agenda/Sources/Agenda"),
-        .target(name: "Reports", dependencies: ["FinancialDomain", "FinancialDesignSystem"], path: "Packages/Features/Reports/Sources/Reports"),
-        .target(name: "BankConnections", dependencies: ["FinancialDomain", "FinancialDesignSystem"], path: "Packages/Features/BankConnections/Sources/BankConnections"),
-        .target(name: "Settings", dependencies: ["FinancialDomain", "FinancialDesignSystem"], path: "Packages/Features/Settings/Sources/Settings"),
+        .target(name: "Authentication", dependencies: ["MeuFluxDomain", "MeuFluxDesignSystem"], path: "Packages/Features/Authentication/Sources/Authentication"),
+        .target(name: "Dashboard", dependencies: ["MeuFluxDomain", "MeuFluxDesignSystem", "MeuFluxIntelligence"], path: "Packages/Features/Dashboard/Sources/Dashboard"),
+        .target(name: "Accounts", dependencies: ["MeuFluxDomain", "MeuFluxDesignSystem"], path: "Packages/Features/Accounts/Sources/Accounts"),
+        .target(name: "Transactions", dependencies: ["MeuFluxDomain", "MeuFluxDesignSystem"], path: "Packages/Features/Transactions/Sources/Transactions"),
+        .target(name: "CreditCards", dependencies: ["MeuFluxDomain", "MeuFluxDesignSystem"], path: "Packages/Features/CreditCards/Sources/CreditCards"),
+        .target(name: "Investments", dependencies: ["MeuFluxDomain", "MeuFluxDesignSystem"], path: "Packages/Features/Investments/Sources/Investments"),
+        .target(name: "Loans", dependencies: ["MeuFluxDomain", "MeuFluxDesignSystem"], path: "Packages/Features/Loans/Sources/Loans"),
+        .target(name: "Budget", dependencies: ["MeuFluxDomain", "MeuFluxDesignSystem"], path: "Packages/Features/Budget/Sources/Budget"),
+        .target(name: "Goals", dependencies: ["MeuFluxDomain", "MeuFluxDesignSystem"], path: "Packages/Features/Goals/Sources/Goals"),
+        .target(name: "Categories", dependencies: ["MeuFluxDomain", "MeuFluxDesignSystem"], path: "Packages/Features/Categories/Sources/Categories"),
+        .target(name: "MealVouchers", dependencies: ["MeuFluxDomain", "MeuFluxDesignSystem"], path: "Packages/Features/MealVouchers/Sources/MealVouchers"),
+        .target(name: "Receivables", dependencies: ["MeuFluxDomain", "MeuFluxDesignSystem"], path: "Packages/Features/Receivables/Sources/Receivables"),
+        .target(name: "ManualExpenses", dependencies: ["MeuFluxDomain", "MeuFluxDesignSystem"], path: "Packages/Features/ManualExpenses/Sources/ManualExpenses"),
+        .target(name: "FinancialMoment", dependencies: ["MeuFluxDomain", "MeuFluxDesignSystem"], path: "Packages/Features/FinancialMoment/Sources/FinancialMoment"),
+        .target(name: "JointFinance", dependencies: ["MeuFluxDomain", "MeuFluxDesignSystem", "MeuFluxCore"], path: "Packages/Features/JointFinance/Sources/JointFinance"),
+        .target(name: "Subscriptions", dependencies: ["MeuFluxDomain", "MeuFluxDesignSystem"], path: "Packages/Features/Subscriptions/Sources/Subscriptions"),
+        .target(name: "Agenda", dependencies: ["MeuFluxDomain", "MeuFluxDesignSystem"], path: "Packages/Features/Agenda/Sources/Agenda"),
+        .target(name: "Reports", dependencies: ["MeuFluxDomain", "MeuFluxDesignSystem"], path: "Packages/Features/Reports/Sources/Reports"),
+        .target(name: "BankConnections", dependencies: ["MeuFluxDomain", "MeuFluxDesignSystem"], path: "Packages/Features/BankConnections/Sources/BankConnections"),
+        .target(name: "Settings", dependencies: ["MeuFluxDomain", "MeuFluxDesignSystem", "MeuFluxIntelligence"], path: "Packages/Features/Settings/Sources/Settings"),
+        .target(name: "NotificationImport", dependencies: ["MeuFluxDomain", "MeuFluxDesignSystem"], path: "Packages/Features/NotificationImport/Sources/NotificationImport"),
+        .target(
+            name: "MeuFluxIntelligence",
+            dependencies: ["MeuFluxDomain", "MeuFluxCore"],
+            path: "Packages/MeuFluxIntelligence/Sources/MeuFluxIntelligence"
+        ),
         .testTarget(
-            name: "FinancialDomainTests",
-            dependencies: ["FinancialDomain", "FinancialCore", "FinancialData", "FinancialDesignSystem"],
-            path: "FinancialTests"
+            name: "MeuFluxTests",
+            dependencies: ["MeuFluxDomain", "MeuFluxCore", "MeuFluxData", "MeuFluxDesignSystem", "MeuFluxIntelligence"],
+            path: "MeuFluxTests"
         ),
     ]
 )

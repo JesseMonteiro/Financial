@@ -8,9 +8,6 @@ import {
   Plus,
   Trash2,
   AlertTriangle,
-  TrendingUp,
-  TrendingDown,
-  BarChart2,
   Info
 } from 'lucide-react';
 import { Card } from '../components/ui/Card';
@@ -23,8 +20,10 @@ import { useBudgetStore } from '../stores/budgetStore';
 import { useAccountStore } from '../stores/accountStore';
 import { useReceivableStore } from '../stores/receivableStore';
 import { useCreditDataStore } from '../stores/creditDataStore';
+import { useMealBenefitStore } from '../stores/mealBenefitStore';
 import { formatCurrency } from '../utils/formatters';
-import { translateCategory } from '../utils/categories';
+import { allTranslations, translateCategory } from '../utils/categories';
+import { useCategoryStore } from '../stores/categoryStore';
 import { getCategoryColor } from '../utils/colors';
 import {
   getDueMonthKey,
@@ -33,6 +32,15 @@ import {
   MONTHS_PT,
 } from '../utils/creditBillPeriod';
 import { isInitialEmpty } from '../utils/loading';
+import {
+  asOfForBudgetMonth,
+  BUDGET_PERIOD_LABELS,
+  BUDGET_PERIOD_UNIT,
+  BUDGET_PERIODS,
+  mergeBudgetRows,
+  periodProgressLabel,
+} from '../utils/budgetPeriod';
+import { mealSpendByCategory } from '../utils/mealBenefits';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell
 } from 'recharts';
@@ -60,12 +68,18 @@ export function Budget() {
   const { accounts, loadAccounts, loading: accountsLoading, lastUpdated: accAt } = useAccountStore();
   const { receivables, loadReceivables } = useReceivableStore();
   const {
+    benefits: mealBenefits,
+    purchases: mealPurchases,
+    loadMealBenefits,
+  } = useMealBenefitStore();
+  const {
     loadForAccounts,
     loading: creditLoading,
     lastUpdatedByAccount,
     transactionsByAccount,
     billsByAccount,
   } = useCreditDataStore();
+  const { categories, loadCategories } = useCategoryStore();
 
   // Selected due month (current by default)
   const [selectedMonth, setSelectedMonth] = useState(currentDueMonthKey);
@@ -73,15 +87,17 @@ export function Budget() {
   // Edit state
   const [editingCat, setEditingCat] = useState(null);
   const [editValue, setEditValue] = useState('');
+  const [editPeriod, setEditPeriod] = useState('monthly');
 
   // Add new budget
   const [addingNew, setAddingNew] = useState(false);
   const [newCat, setNewCat] = useState('');
   const [newLimit, setNewLimit] = useState('');
+  const [newPeriod, setNewPeriod] = useState('monthly');
   const [savingBudget, setSavingBudget] = useState(false);
 
   // ── Load data ─────────────────────────────────────────────────────────────
-  useEffect(() => { loadBudgets(); loadAccounts(); loadReceivables(); }, []);
+  useEffect(() => { loadBudgets(); loadAccounts(); loadReceivables(); loadMealBenefits(); loadCategories(); }, []);
 
   const accountIds = useMemo(() => accounts.map((a) => a.id), [accounts]);
 
@@ -142,7 +158,16 @@ export function Budget() {
     return map;
   }, [allTransactions, officialBills, selectedMonth, forecastOffset]);
 
-  // All available due months
+  const mealSpendMap = useMemo(
+    () => mealSpendByCategory(mealBenefits, mealPurchases, selectedMonth),
+    [mealBenefits, mealPurchases, selectedMonth],
+  );
+
+  const asOfDate = useMemo(
+    () => asOfForBudgetMonth(selectedMonth),
+    [selectedMonth],
+  );
+
   const availableMonths = useMemo(() => {
     const months = new Set();
     allTransactions.forEach(tx => {
@@ -150,49 +175,35 @@ export function Budget() {
       const m = txDueMonth(tx);
       if (m && m !== 'Outros') months.add(m);
     });
+    mealPurchases.forEach((p) => {
+      const m = String(p.purchasedAt || '').slice(0, 7);
+      if (m) months.add(m);
+    });
+    months.add(currentDueMonthKey());
+    months.add(selectedMonth);
     return [...months].sort();
-  }, [allTransactions, officialBills, forecastOffset]);
+  }, [allTransactions, officialBills, forecastOffset, mealPurchases, selectedMonth]);
 
-  // ── Merge real spending with user-defined limits ───────────────────────────
-  /**
-   * budgetRows = all categories that either:
-   *   (a) have real spending in selected month, OR
-   *   (b) have a user-defined budget limit stored in IndexedDB
-   * Each row: { category (PT label), spent, limit (0 if not set), hasLimit }
-   */
-  const budgetRows = useMemo(() => {
-    const rows = {};
+  const budgetRows = useMemo(() => mergeBudgetRows({
+    spentBankMap: spendingByCategory,
+    spentMealMap: mealSpendMap,
+    budgets,
+    ym: selectedMonth,
+    asOfDate,
+  }), [spendingByCategory, mealSpendMap, budgets, selectedMonth, asOfDate]);
 
-    // Add real spending categories
-    Object.entries(spendingByCategory).forEach(([cat, spent]) => {
-      rows[cat] = { category: cat, spent, limit: 0, hasLimit: false };
-    });
-
-    // Overlay user-defined limits
-    budgets.forEach(b => {
-      if (rows[b.category]) {
-        rows[b.category].limit = b.limit;
-        rows[b.category].hasLimit = true;
-      } else {
-        // Budget defined but no spending this month
-        rows[b.category] = { category: b.category, spent: 0, limit: b.limit, hasLimit: true };
-      }
-    });
-
-    // Sort: over budget first, then by spending desc
-    return Object.values(rows).sort((a, b) => {
-      const aOver = a.hasLimit && a.spent > a.limit;
-      const bOver = b.hasLimit && b.spent > b.limit;
-      if (aOver !== bOver) return aOver ? -1 : 1;
-      return b.spent - a.spent;
-    });
-  }, [spendingByCategory, budgets]);
-
-  // ── KPI totals ─────────────────────────────────────────────────────────────
-  const totalSpent = useMemo(() =>
-    Object.values(spendingByCategory).reduce((s, v) => s + v, 0), [spendingByCategory]);
-  const totalLimit = useMemo(() =>
-    budgets.reduce((s, b) => s + b.limit, 0), [budgets]);
+  const totalSpent = useMemo(
+    () => budgetRows.reduce((s, r) => s + r.spent, 0),
+    [budgetRows],
+  );
+  const totalAllowance = useMemo(
+    () => budgetRows.filter((r) => r.hasLimit).reduce((s, r) => s + r.allowance, 0),
+    [budgetRows],
+  );
+  const totalMonthCap = useMemo(
+    () => budgetRows.filter((r) => r.hasLimit).reduce((s, r) => s + r.monthCap, 0),
+    [budgetRows],
+  );
   const categoriesOverBudget = useMemo(() =>
     budgetRows.filter(r => r.hasLimit && r.spent > r.limit).length, [budgetRows]);
   const categoriesWithBudget = useMemo(() =>
@@ -228,7 +239,7 @@ export function Budget() {
     if (isNaN(val) || val <= 0 || savingBudget) return;
     setSavingBudget(true);
     try {
-      await updateBudget(cat, val);
+      await updateBudget(cat, val, editPeriod);
       setEditingCat(null);
     } catch (err) {
       console.error(err);
@@ -242,9 +253,10 @@ export function Budget() {
     if (!newCat || isNaN(val) || val <= 0 || savingBudget) return;
     setSavingBudget(true);
     try {
-      await updateBudget(newCat, val);
+      await updateBudget(newCat, val, newPeriod);
       setNewCat('');
       setNewLimit('');
+      setNewPeriod('monthly');
       setAddingNew(false);
     } catch (err) {
       console.error(err);
@@ -253,16 +265,17 @@ export function Budget() {
     }
   };
 
-  // All PT category labels from real transactions (for the add-new dropdown)
   const allRealCategories = useMemo(() => {
     const cats = new Set(Object.keys(spendingByCategory));
+    Object.keys(mealSpendMap).forEach((c) => cats.add(c));
     budgets.forEach(b => cats.add(b.category));
-    // Also add all translated categories from all transactions
     allTransactions.forEach(tx => {
       if (tx.category) cats.add(translateCategory(tx.category));
     });
+    Object.values(allTranslations()).forEach((label) => cats.add(label));
+    categories.forEach((c) => { if (c.label) cats.add(c.label); });
     return [...cats].sort();
-  }, [spendingByCategory, budgets, allTransactions]);
+  }, [spendingByCategory, mealSpendMap, budgets, allTransactions, categories]);
 
   // Navigation
   const monthIdx = availableMonths.indexOf(selectedMonth);
@@ -290,9 +303,9 @@ export function Budget() {
       {/* Header */}
       <div className="page-header" style={{ alignItems: 'flex-end' }}>
         <div>
-          <h1 style={{ fontSize: 'var(--font-size-2xl)', fontWeight: 700 }}>Orçamento Mensal</h1>
+          <h1 style={{ fontSize: 'var(--font-size-2xl)', fontWeight: 700 }}>Orçamento</h1>
           <p style={{ color: 'var(--text-muted)', fontSize: 'var(--font-size-sm)', marginTop: '0.25rem' }}>
-            Gastos reais por categoria com limites definidos por você • Dados Pluggy/Santander
+            Meta por categoria com período diário, semanal, quinzenal ou mensal. A verba acumula no mês e zera na virada.
           </p>
         </div>
         <div className="page-header__actions">
@@ -324,31 +337,31 @@ export function Budget() {
       <div className="dashboard-grid">
         <Card className="col-3" style={{ borderLeft: '4px solid var(--primary)' }}>
           <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)', fontWeight: 600 }}>GASTO REAL NO MÊS</span>
-          <h2 style={{ fontSize: 'var(--font-size-2xl)', fontWeight: 700, margin: '0.4rem 0', color: totalSpent > totalLimit && totalLimit > 0 ? 'var(--danger)' : 'var(--text-primary)' }}>
+          <h2 style={{ fontSize: 'var(--font-size-2xl)', fontWeight: 700, margin: '0.4rem 0', color: totalSpent > totalAllowance && totalAllowance > 0 ? 'var(--danger)' : 'var(--text-primary)' }}>
             {loadingTx ? '...' : formatCurrency(totalSpent)}
           </h2>
           <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>
-            {Object.keys(spendingByCategory).length} categorias detectadas
+            Banco/cartão + VA/VR · {budgetRows.length} categorias
           </span>
         </Card>
 
         <Card className="col-3" style={{ borderLeft: '4px solid var(--info)' }}>
-          <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)', fontWeight: 600 }}>ORÇAMENTO DEFINIDO</span>
+          <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)', fontWeight: 600 }}>VERBA LIBERADA</span>
           <h2 style={{ fontSize: 'var(--font-size-2xl)', fontWeight: 700, margin: '0.4rem 0' }}>
-            {formatCurrency(totalLimit)}
+            {formatCurrency(totalAllowance)}
           </h2>
           <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>
-            {categoriesWithBudget} {categoriesWithBudget === 1 ? 'categoria' : 'categorias'} com limite definido
+            Teto do mês {formatCurrency(totalMonthCap)} · {categoriesWithBudget} {categoriesWithBudget === 1 ? 'meta' : 'metas'}
           </span>
         </Card>
 
-        <Card className="col-3" style={{ borderLeft: `4px solid ${totalLimit > 0 ? (totalSpent <= totalLimit ? 'var(--success)' : 'var(--danger)') : 'var(--border-color)'}` }}>
+        <Card className="col-3" style={{ borderLeft: `4px solid ${totalAllowance > 0 ? (totalSpent <= totalAllowance ? 'var(--success)' : 'var(--danger)') : 'var(--border-color)'}` }}>
           <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)', fontWeight: 600 }}>SALDO DO ORÇAMENTO</span>
-          <h2 style={{ fontSize: 'var(--font-size-2xl)', fontWeight: 700, margin: '0.4rem 0', color: totalLimit > 0 ? (totalSpent <= totalLimit ? 'var(--success)' : 'var(--danger)') : 'var(--text-muted)' }}>
-            {totalLimit > 0 ? formatCurrency(Math.abs(totalLimit - totalSpent)) : '—'}
+          <h2 style={{ fontSize: 'var(--font-size-2xl)', fontWeight: 700, margin: '0.4rem 0', color: totalAllowance > 0 ? (totalSpent <= totalAllowance ? 'var(--success)' : 'var(--danger)') : 'var(--text-muted)' }}>
+            {totalAllowance > 0 ? formatCurrency(Math.abs(totalAllowance - totalSpent)) : '—'}
           </h2>
-          <span style={{ fontSize: 'var(--font-size-xs)', color: totalSpent > totalLimit && totalLimit > 0 ? 'var(--danger)' : 'var(--text-muted)' }}>
-            {totalLimit > 0 ? (totalSpent <= totalLimit ? '✓ Dentro do orçamento' : '⚠ Orçamento excedido') : 'Defina limites nas categorias'}
+          <span style={{ fontSize: 'var(--font-size-xs)', color: totalSpent > totalAllowance && totalAllowance > 0 ? 'var(--danger)' : 'var(--text-muted)' }}>
+            {totalAllowance > 0 ? (totalSpent <= totalAllowance ? '✓ Dentro da verba acumulada' : '⚠ Verba excedida') : 'Defina metas nas categorias'}
           </span>
         </Card>
 
@@ -399,32 +412,41 @@ export function Budget() {
       {/* Budget Categories */}
       <Card
         title={`Orçamento por Categoria — ${dueMonthLabel(selectedMonth)}`}
-        subtitle="Gastos reais da Pluggy. Clique em ✏ para definir um limite para a categoria."
+        subtitle="Gasto de banco/cartão e VA/VR contra a verba já liberada no mês. Clique em ✏ para definir a meta."
         action={
           <Button size="sm" variant="primary" onClick={() => setAddingNew(true)} icon={Plus}>
-            Adicionar Limite
+            Adicionar meta
           </Button>
         }
       >
-        {/* Add new budget row */}
         {addingNew && (
-          <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', padding: '0.85rem', backgroundColor: 'var(--bg-tertiary)', borderRadius: 'var(--radius-md)', border: '1px solid var(--primary)', marginBottom: '1rem' }}>
+          <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap', padding: '0.85rem', backgroundColor: 'var(--bg-tertiary)', borderRadius: 'var(--radius-md)', border: '1px solid var(--primary)', marginBottom: '1rem' }}>
             <select
               value={newCat}
               onChange={e => setNewCat(e.target.value)}
               className="input"
-              style={{ flex: 2, padding: '0.4rem 0.6rem', fontSize: 'var(--font-size-xs)' }}
+              style={{ flex: '1 1 180px', padding: '0.4rem 0.6rem', fontSize: 'var(--font-size-xs)' }}
             >
               <option value="">Selecione a categoria...</option>
               {allRealCategories
                 .filter(c => !budgets.some(b => b.category === c))
                 .map(c => <option key={c} value={c}>{c}</option>)}
             </select>
+            <select
+              value={newPeriod}
+              onChange={e => setNewPeriod(e.target.value)}
+              className="input"
+              style={{ padding: '0.4rem 0.6rem', fontSize: 'var(--font-size-xs)' }}
+            >
+              {BUDGET_PERIODS.map((p) => (
+                <option key={p} value={p}>{BUDGET_PERIOD_LABELS[p]}</option>
+              ))}
+            </select>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
               <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>R$</span>
               <input
                 type="number"
-                placeholder="Limite mensal"
+                placeholder={`Valor${BUDGET_PERIOD_UNIT[newPeriod] || ''}`}
                 value={newLimit}
                 onChange={e => setNewLimit(e.target.value)}
                 className="input"
@@ -432,7 +454,7 @@ export function Budget() {
               />
             </div>
             <Button size="sm" variant="primary" onClick={handleAddNew} icon={Check} loading={savingBudget}>Salvar</Button>
-            <button onClick={() => { setAddingNew(false); setNewCat(''); setNewLimit(''); }}
+            <button onClick={() => { setAddingNew(false); setNewCat(''); setNewLimit(''); setNewPeriod('monthly'); }}
               style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--text-muted)' }}>
               <X size={16} />
             </button>
@@ -479,8 +501,13 @@ export function Budget() {
                       </span>
                       {isOver && <Badge variant="danger"><AlertTriangle size={10} style={{ marginRight: 3 }} />Estourado</Badge>}
                       {isNear && !isOver && <Badge variant="warning">Atenção</Badge>}
+                      {row.hasLimit && (
+                        <Badge variant="neutral">
+                          {formatCurrency(row.periodAmount)}{BUDGET_PERIOD_UNIT[row.period] || ''}
+                        </Badge>
+                      )}
                       {!row.hasLimit && (
-                        <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontStyle: 'italic' }}>sem limite definido</span>
+                        <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontStyle: 'italic' }}>sem meta definida</span>
                       )}
                     </div>
 
@@ -488,10 +515,20 @@ export function Budget() {
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
                       {isEditing ? (
                         <>
+                          <select
+                            value={editPeriod}
+                            onChange={e => setEditPeriod(e.target.value)}
+                            className="input"
+                            style={{ padding: '0.2rem 0.4rem', fontSize: 'var(--font-size-xs)' }}
+                          >
+                            {BUDGET_PERIODS.map((p) => (
+                              <option key={p} value={p}>{BUDGET_PERIOD_LABELS[p]}</option>
+                            ))}
+                          </select>
                           <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>R$</span>
                           <input
                             type="number"
-                            defaultValue={row.limit || ''}
+                            defaultValue={row.periodAmount || row.limit || ''}
                             onChange={e => setEditValue(e.target.value)}
                             onKeyDown={e => e.key === 'Enter' && handleSaveEdit(row.category)}
                             autoFocus
@@ -501,7 +538,7 @@ export function Budget() {
                           <IconBusyButton
                             busy={savingBudget || Boolean(pending[row.category])}
                             onClick={() => handleSaveEdit(row.category)}
-                            title="Salvar limite"
+                            title="Salvar meta"
                             style={{ color: 'var(--success)' }}
                           >
                             <Check size={15} />
@@ -523,8 +560,12 @@ export function Budget() {
                             </span>
                           )}
                           <button
-                            onClick={() => { setEditingCat(row.category); setEditValue(row.limit || ''); }}
-                            title="Definir limite"
+                            onClick={() => {
+                              setEditingCat(row.category);
+                              setEditValue(row.periodAmount || row.limit || '');
+                              setEditPeriod(row.period || 'monthly');
+                            }}
+                            title="Definir meta"
                             className="tap-target"
                             style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--text-muted)' }}
                           >
@@ -534,7 +575,7 @@ export function Budget() {
                             <IconBusyButton
                               onClick={() => deleteBudget(row.category)}
                               busy={Boolean(pending[row.category])}
-                              title="Remover limite"
+                              title="Remover meta"
                               style={{ color: 'var(--danger)' }}
                             >
                               <Trash2 size={13} />
@@ -550,11 +591,16 @@ export function Budget() {
                     <>
                       <ProgressBar percent={Math.min(100, pct)} color={barColor} height={9} />
                       <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>
-                        {pct}% utilizado
+                        {periodProgressLabel(row.period, selectedMonth, asOfDate)} · {pct}% da verba liberada
                         {isOver
                           ? ` • Excedeu em ${formatCurrency(row.spent - row.limit)}`
                           : ` • Restam ${formatCurrency(row.limit - row.spent)}`}
                       </span>
+                      {row.spentMeal > 0 && (
+                        <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>
+                          {formatCurrency(row.spentBank)} banco/cartão · {formatCurrency(row.spentMeal)} VA/VR
+                        </span>
+                      )}
                     </>
                   )}
 
@@ -565,8 +611,13 @@ export function Budget() {
                         <div style={{ height: '100%', width: `${Math.min(100, (row.spent / totalSpent) * 100)}%`, backgroundColor: getCategoryColor(row.category), borderRadius: 3 }} />
                       </div>
                       <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>
-                        {Math.round((row.spent / totalSpent) * 100)}% do total gasto no mês • Clique em ✏ para definir um limite
+                        {Math.round((row.spent / totalSpent) * 100)}% do total gasto no mês • Clique em ✏ para definir uma meta
                       </span>
+                      {row.spentMeal > 0 && (
+                        <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>
+                          {formatCurrency(row.spentBank)} banco/cartão · {formatCurrency(row.spentMeal)} VA/VR
+                        </span>
+                      )}
                     </>
                   )}
                 </div>
@@ -580,7 +631,7 @@ export function Budget() {
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', marginTop: '1.5rem', padding: '1rem', backgroundColor: 'var(--bg-tertiary)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}>
             <Info size={18} style={{ color: 'var(--info)', flexShrink: 0, marginTop: 1 }} />
             <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)', margin: 0 }}>
-              Você ainda não definiu limites de orçamento. Clique no ícone <strong>✏</strong> ao lado de qualquer categoria ou use o botão <strong>+ Adicionar Limite</strong> para começar a controlar seus gastos.
+              Você ainda não definiu metas de orçamento. Clique no ícone <strong>✏</strong> ao lado de qualquer categoria ou use o botão <strong>+ Adicionar meta</strong>. A verba diária, semanal e quinzenal acumula no mês e zera na virada. Compras de VA entram em supermercado e de VR em restaurantes, salvo se você marcar a compra.
             </p>
           </div>
         )}

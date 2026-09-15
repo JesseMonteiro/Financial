@@ -1,6 +1,6 @@
 import SwiftUI
-import FinancialDesignSystem
-import FinancialDomain
+import MeuFluxDesignSystem
+import MeuFluxDomain
 
 public struct MealVouchersView: View {
     @State private var viewModel: MealVouchersViewModel
@@ -37,7 +37,7 @@ public struct MealVouchersView: View {
                 content
             }
         }
-        .financialPageTitle("VA / VR")
+        .meuFluxPageTitle("VA / VR")
         .refreshable { await viewModel.load(force: true) }
         .task { await viewModel.load() }
         .toolbar {
@@ -64,7 +64,7 @@ public struct MealVouchersView: View {
                             Text(benefit.displayLabel).font(.headline)
                             Text(benefit.kind.title)
                                 .font(.caption)
-                                .foregroundStyle(FinancialColors.textMuted)
+                                .foregroundStyle(MeuFluxColors.textMuted)
                         }
                         Spacer()
                         Text(snap.remaining.formatted())
@@ -72,11 +72,11 @@ public struct MealVouchersView: View {
                     }
                     Text("\(benefit.monthlyAmount.formatted()) no dia \(benefit.creditDay)")
                         .font(.caption)
-                        .foregroundStyle(FinancialColors.textMuted)
+                        .foregroundStyle(MeuFluxColors.textMuted)
                     if let next = snap.nextCredit {
                         Text("Próximo crédito \(next.formatted())")
                             .font(.caption2)
-                            .foregroundStyle(FinancialColors.textMuted)
+                            .foregroundStyle(MeuFluxColors.textMuted)
                     }
                     ProgressView(value: monthProgress(snap, benefit: benefit))
                     Toggle("Mostrar no Momento", isOn: Binding(
@@ -93,11 +93,16 @@ public struct MealVouchersView: View {
                                 Text(purchase.description.isEmpty ? "Compra" : purchase.description)
                                 Text(purchase.purchasedAt.formatted())
                                     .font(.caption2)
-                                    .foregroundStyle(FinancialColors.textMuted)
+                                    .foregroundStyle(MeuFluxColors.textMuted)
+                                if !purchase.category.isEmpty {
+                                    Text(purchase.category)
+                                        .font(.caption2)
+                                        .foregroundStyle(MeuFluxColors.textMuted)
+                                }
                             }
                             Spacer()
                             Text("− \(purchase.amount.formatted())")
-                                .foregroundStyle(FinancialColors.danger)
+                                .foregroundStyle(MeuFluxColors.danger)
                             Button(role: .destructive) {
                                 Task { await viewModel.deletePurchase(purchase) }
                             } label: {
@@ -185,6 +190,11 @@ public struct MealVouchersView: View {
                     .keyboardType(.decimalPad)
                     #endif
                 DatePicker("Data", selection: $viewModel.draftPurchaseDate, displayedComponents: .date)
+                Picker("Categoria no orçamento", selection: $viewModel.draftPurchaseCategory) {
+                    ForEach(MealBenefitKind.budgetCategoryOptions, id: \.self) { label in
+                        Text(label).tag(label)
+                    }
+                }
             }
             .navigationTitle("Nova compra")
             .toolbar {

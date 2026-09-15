@@ -4,6 +4,7 @@ export {
   getCurrentUserId,
   getStoredBudgets, saveStoredBudget, deleteStoredBudget,
   getStoredGoals, saveStoredGoal, deleteStoredGoal,
+  getStoredPurchaseCategories, saveStoredPurchaseCategory, deleteStoredPurchaseCategory,
   getStoredReceivables, saveStoredReceivable, deleteStoredReceivable,
   getStoredManualTransactions, saveStoredManualTransaction, saveStoredManualTransactions,
   deleteStoredManualTransaction, deleteStoredManualTransactions,
@@ -18,11 +19,102 @@ export {
   getStoredMealBenefitPurchases, saveStoredMealBenefitPurchase, deleteStoredMealBenefitPurchase,
 } from './supabaseStorage.js';
 
-const DB_NAME = 'FinanceHub_DB';
+const DB_NAME = 'MeuFlux_DB';
+const LEGACY_DB_NAME = 'FinanceHub_DB';
 const DB_VERSION = 3;
+const LS_PREFIX = 'meuflux_';
+const LEGACY_LS_PREFIX = 'financehub_';
+const LS_MIGRATED_FLAG = 'meuflux_storage_keys_migrated';
+const IDB_MIGRATED_FLAG = 'meuflux_idb_migrated';
+
+export function migrateLocalStorageKeysOnce() {
+  if (typeof window === 'undefined') return;
+  try {
+    if (localStorage.getItem(LS_MIGRATED_FLAG)) return;
+    const toCopy = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith(LEGACY_LS_PREFIX)) toCopy.push(key);
+    }
+    for (const oldKey of toCopy) {
+      const newKey = LS_PREFIX + oldKey.slice(LEGACY_LS_PREFIX.length);
+      if (localStorage.getItem(newKey) == null) {
+        localStorage.setItem(newKey, localStorage.getItem(oldKey));
+      }
+    }
+    const legacyDone = localStorage.getItem('financehub_migration_completed');
+    if (legacyDone && !localStorage.getItem('meuflux_migration_completed')) {
+      localStorage.setItem('meuflux_migration_completed', legacyDone);
+    }
+    localStorage.setItem(LS_MIGRATED_FLAG, '1');
+  } catch {
+    /* private mode / quota */
+  }
+}
+
+async function copyLegacyIndexedDBIfNeeded(newDb) {
+  if (typeof window === 'undefined' || typeof indexedDB === 'undefined') return;
+  try {
+    if (localStorage.getItem(IDB_MIGRATED_FLAG)) return;
+
+    const legacy = await new Promise((resolve) => {
+      const req = indexedDB.open(LEGACY_DB_NAME);
+      let created = false;
+      req.onupgradeneeded = () => {
+        created = true;
+      };
+      req.onsuccess = () => {
+        const db = req.result;
+        if (created) {
+          db.close();
+          indexedDB.deleteDatabase(LEGACY_DB_NAME);
+          resolve(null);
+          return;
+        }
+        resolve(db);
+      };
+      req.onerror = () => resolve(null);
+    });
+
+    if (!legacy) {
+      localStorage.setItem(IDB_MIGRATED_FLAG, '1');
+      return;
+    }
+
+    try {
+      const storeNames = Array.from(legacy.objectStoreNames);
+      for (const storeName of storeNames) {
+        if (!newDb.objectStoreNames.contains(storeName)) continue;
+        const existing = await newDb.getAll(storeName);
+        if (existing.length > 0) continue;
+        const rows = await new Promise((resolve, reject) => {
+          const tx = legacy.transaction(storeName, 'readonly');
+          const req = tx.objectStore(storeName).getAll();
+          req.onsuccess = () => resolve(req.result || []);
+          req.onerror = () => reject(req.error);
+        });
+        const tx = newDb.transaction(storeName, 'readwrite');
+        for (const row of rows) {
+          await tx.store.put(row);
+        }
+        await tx.done;
+      }
+    } finally {
+      legacy.close();
+      localStorage.setItem(IDB_MIGRATED_FLAG, '1');
+    }
+  } catch {
+    try {
+      localStorage.setItem(IDB_MIGRATED_FLAG, '1');
+    } catch {
+      /* ignore */
+    }
+  }
+}
 
 export async function initStorage() {
-  return openDB(DB_NAME, DB_VERSION, {
+  migrateLocalStorageKeysOnce();
+  const db = await openDB(DB_NAME, DB_VERSION, {
     upgrade(db) {
       if (!db.objectStoreNames.contains('budgets')) {
         db.createObjectStore('budgets', { keyPath: 'category' });
@@ -41,12 +133,20 @@ export async function initStorage() {
       }
     },
   });
+  await copyLegacyIndexedDBIfNeeded(db);
+  return db;
+}
+
+if (typeof window !== 'undefined') {
+  migrateLocalStorageKeysOnce();
 }
 
 // LocalStorage Helpers
 export function getLocalSetting(key, fallback) {
   try {
-    const val = localStorage.getItem(`financehub_${key}`);
+    migrateLocalStorageKeysOnce();
+    const val = localStorage.getItem(`${LS_PREFIX}${key}`)
+      ?? localStorage.getItem(`${LEGACY_LS_PREFIX}${key}`);
     return val ? JSON.parse(val) : fallback;
   } catch (e) {
     return fallback;
@@ -55,7 +155,7 @@ export function getLocalSetting(key, fallback) {
 
 export function setLocalSetting(key, value) {
   try {
-    localStorage.setItem(`financehub_${key}`, JSON.stringify(value));
+    localStorage.setItem(`${LS_PREFIX}${key}`, JSON.stringify(value));
   } catch (e) {
     console.error('Erro ao salvar no localStorage', e);
   }

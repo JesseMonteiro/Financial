@@ -1,14 +1,16 @@
 import SwiftUI
-import FinancialDesignSystem
-import FinancialDomain
+import MeuFluxDesignSystem
+import MeuFluxDomain
 #if canImport(UIKit)
 import UIKit
 #endif
 
 public struct FinancialMomentView: View {
     @State private var viewModel: FinancialMomentDetailViewModel
+    @State private var selectedDetail: LineItemDetail?
     private let onCreateManualExpense: (() -> Void)?
     private let onOpenMealVouchers: (() -> Void)?
+    private let onOpenReceivables: (() -> Void)?
 
     private var isPhoneIdiom: Bool {
         #if canImport(UIKit)
@@ -22,22 +24,31 @@ public struct FinancialMomentView: View {
         buildFinancialMomentDetail: any BuildFinancialMomentDetailUseCase,
         manageMonthlySalary: any ManageMonthlySalaryUseCase,
         toggleManualExpensePaid: any ToggleManualExpensePaidUseCase,
+        manuals: (any ManualExpensesRepository)? = nil,
+        receivables: (any ReceivablesRepository)? = nil,
+        purchaseCategories: (any PurchaseCategoriesRepository)? = nil,
         onCreateManualExpense: (() -> Void)? = nil,
-        onOpenMealVouchers: (() -> Void)? = nil
+        onOpenMealVouchers: (() -> Void)? = nil,
+        onOpenReceivables: (() -> Void)? = nil
     ) {
         _viewModel = State(initialValue: FinancialMomentDetailViewModel(
             buildFinancialMomentDetail: buildFinancialMomentDetail,
             manageMonthlySalary: manageMonthlySalary,
-            toggleManualExpensePaid: toggleManualExpensePaid
+            toggleManualExpensePaid: toggleManualExpensePaid,
+            manuals: manuals,
+            receivables: receivables,
+            purchaseCategories: purchaseCategories
         ))
         self.onCreateManualExpense = onCreateManualExpense
         self.onOpenMealVouchers = onOpenMealVouchers
+        self.onOpenReceivables = onOpenReceivables
     }
 
     public init() {
         _viewModel = State(initialValue: FinancialMomentDetailViewModel())
         self.onCreateManualExpense = nil
         self.onOpenMealVouchers = nil
+        self.onOpenReceivables = nil
     }
 
     public var body: some View {
@@ -63,9 +74,52 @@ public struct FinancialMomentView: View {
                 }
             }
         }
-        .financialPageTitle("Momento Financeiro")
+        .meuFluxPageTitle("Momento Financeiro")
         .refreshable { await viewModel.load(force: true) }
         .task(id: viewModel.selectedMonth.key) { await viewModel.load() }
+        .sheet(item: $selectedDetail) { item in
+            LineItemDetailSheet(
+                item: item,
+                isBusy: viewModel.pendingExpenses.contains(item.sourceId),
+                categoryOptions: item.kind == .manualExpense
+                    ? LineItemCategoryOption.manualOptions(viewModel.purchaseCategories)
+                    : [],
+                onTogglePaid: {
+                    Task {
+                        if item.kind == .manualExpense {
+                            await viewModel.toggleManualExpensePaid(item.sourceId, isPaid: !item.isPaid)
+                        } else if item.kind == .receivable {
+                            await viewModel.markReceivablePaid(id: item.sourceId, installmentNumber: item.installmentNumber)
+                        }
+                        selectedDetail = nil
+                    }
+                },
+                onEdit: {
+                    selectedDetail = nil
+                    if item.kind == .manualExpense {
+                        onCreateManualExpense?()
+                    } else if item.kind == .receivable {
+                        onOpenReceivables?()
+                    }
+                },
+                onDelete: {
+                    Task {
+                        if item.kind == .manualExpense {
+                            await viewModel.deleteManual(id: item.sourceId)
+                        } else if item.kind == .receivable {
+                            await viewModel.deleteReceivable(id: item.sourceId)
+                        }
+                        selectedDetail = nil
+                    }
+                },
+                onChangeCategory: item.kind == .manualExpense ? { option in
+                    Task {
+                        await viewModel.updateManualCategory(id: item.sourceId, category: option.id)
+                        selectedDetail = item.applyingCategory(option: option)
+                    }
+                } : nil
+            )
+        }
     }
 
     @ViewBuilder
@@ -149,37 +203,37 @@ public struct FinancialMomentView: View {
                 title: "Entradas",
                 value: detail.totals.income.formatted(),
                 subtitle: "Salário + \(detail.receivables.items.count) reembolsos",
-                valueColor: FinancialColors.success,
-                accent: FinancialColors.success
+                valueColor: MeuFluxColors.success,
+                accent: MeuFluxColors.success
             )
             KPICompactCard(
                 title: "Saídas",
                 value: detail.totals.expenses.formatted(),
                 subtitle: "\(detail.manualExpenses.items.count) manuais",
-                valueColor: FinancialColors.danger,
-                accent: FinancialColors.danger
+                valueColor: MeuFluxColors.danger,
+                accent: MeuFluxColors.danger
             )
             KPICompactCard(
                 title: "A pagar",
                 value: detail.totals.accountsPayable.formatted(),
                 subtitle: payableClear ? "Nada pendente" :
                     "\(detail.creditCards.unpaidBills.count) fat. · \(detail.automaticDebits.unpaidItems.count) déb.",
-                valueColor: payableClear ? FinancialColors.success : FinancialColors.warning,
-                accent: payableClear ? FinancialColors.success : FinancialColors.warning
+                valueColor: payableClear ? MeuFluxColors.success : MeuFluxColors.warning,
+                accent: payableClear ? MeuFluxColors.success : MeuFluxColors.warning
             )
             KPICompactCard(
                 title: "Saldo",
                 value: (netOk ? "+" : "") + detail.totals.netBalance.formatted(),
                 subtitle: netOk ? "Superávit" : "Déficit",
-                valueColor: netOk ? FinancialColors.success : FinancialColors.danger,
-                accent: netOk ? FinancialColors.success : FinancialColors.danger
+                valueColor: netOk ? MeuFluxColors.success : MeuFluxColors.danger,
+                accent: netOk ? MeuFluxColors.success : MeuFluxColors.danger
             )
         }
-        .background(FinancialColors.border)
+        .background(MeuFluxColors.border)
         .clipShape(RoundedRectangle(cornerRadius: Radius().lg, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: Radius().lg, style: .continuous)
-                .strokeBorder(FinancialColors.border, lineWidth: 1)
+                .strokeBorder(MeuFluxColors.border, lineWidth: 1)
         )
     }
 
@@ -190,7 +244,7 @@ public struct FinancialMomentView: View {
                 title: "Entradas do Mês",
                 value: detail.totals.income.formatted(),
                 subtitle: "Salário + \(detail.receivables.items.count) reembolsos",
-                tint: FinancialColors.success,
+                tint: MeuFluxColors.success,
                 systemImage: "arrow.down.left",
                 leadingAccent: true
             )
@@ -198,7 +252,7 @@ public struct FinancialMomentView: View {
                 title: "Saídas do Mês",
                 value: detail.totals.expenses.formatted(),
                 subtitle: "Faturas + débitos auto + \(detail.manualExpenses.items.count) manuais",
-                tint: FinancialColors.danger,
+                tint: MeuFluxColors.danger,
                 systemImage: "arrow.up.right",
                 leadingAccent: true
             )
@@ -207,7 +261,7 @@ public struct FinancialMomentView: View {
                 value: detail.totals.accountsPayable.formatted(),
                 subtitle: detail.totals.accountsPayable.isZero ? "Nada pendente neste mês" :
                     "\(detail.creditCards.unpaidBills.count) fatura(s), \(detail.automaticDebits.unpaidItems.count) débito(s) auto",
-                tint: detail.totals.accountsPayable.isZero ? FinancialColors.success : FinancialColors.warning,
+                tint: detail.totals.accountsPayable.isZero ? MeuFluxColors.success : MeuFluxColors.warning,
                 systemImage: "exclamationmark.triangle",
                 leadingAccent: true
             )
@@ -215,7 +269,7 @@ public struct FinancialMomentView: View {
                 title: "Saldo Residual",
                 value: (detail.totals.netBalance.amount >= 0 ? "+" : "") + detail.totals.netBalance.formatted(),
                 subtitle: detail.totals.netBalance.amount >= 0 ? "Superavitário" : "Deficitário",
-                tint: detail.totals.netBalance.amount >= 0 ? FinancialColors.success : FinancialColors.danger,
+                tint: detail.totals.netBalance.amount >= 0 ? MeuFluxColors.success : MeuFluxColors.danger,
                 systemImage: "scale.3d",
                 leadingAccent: true
             )
@@ -232,21 +286,21 @@ public struct FinancialMomentView: View {
                 HStack {
                     Text("Utilização")
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(FinancialColors.textMuted)
+                        .foregroundStyle(MeuFluxColors.textMuted)
                     Spacer()
                     Text("\(percent)%\(over ? " estourado" : "")")
                         .font(.caption.weight(.bold))
-                        .foregroundStyle(over ? FinancialColors.danger : FinancialColors.textSecondary)
+                        .foregroundStyle(over ? MeuFluxColors.danger : MeuFluxColors.textSecondary)
                 }
 
                 ProgressBar(
                     percent: percent,
-                    color: over ? FinancialColors.danger : FinancialColors.primary
+                    color: over ? MeuFluxColors.danger : MeuFluxColors.primary
                 )
 
                 Text("Suas despesas consomem \(percent)% do seu orçamento líquido. Restam \(Money(amount: max(0, detail.totals.netBalance.amount)).formatted()) livres para investimento ou reserva.")
                     .font(.caption2)
-                    .foregroundStyle(FinancialColors.textMuted)
+                    .foregroundStyle(MeuFluxColors.textMuted)
             }
         }
     }
@@ -261,21 +315,21 @@ public struct FinancialMomentView: View {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("Saldo")
                                     .font(.caption.weight(.semibold))
-                                    .foregroundStyle(FinancialColors.textMuted)
+                                    .foregroundStyle(MeuFluxColors.textMuted)
                                 Text(item.remaining.formatted())
                                     .font(.title2.weight(.bold))
                             }
                             Spacer()
                             Image(systemName: "fork.knife")
-                                .foregroundStyle(FinancialColors.textMuted)
+                                .foregroundStyle(MeuFluxColors.textMuted)
                         }
                         Text("Crédito dia \(item.creditDay) · gasto no mês \(item.monthSpent.formatted())")
                             .font(.caption)
-                            .foregroundStyle(FinancialColors.textMuted)
+                            .foregroundStyle(MeuFluxColors.textMuted)
                         if let owner = item.ownerLabel, !owner.isEmpty {
                             Text(owner)
                                 .font(.caption2)
-                                .foregroundStyle(FinancialColors.textMuted)
+                                .foregroundStyle(MeuFluxColors.textMuted)
                         }
                         if onOpenMealVouchers != nil {
                             Button("Gerenciar VA/VR") {
@@ -307,11 +361,11 @@ public struct FinancialMomentView: View {
             VStack(alignment: .leading, spacing: 16) {
                 HStack {
                     Image(systemName: "arrow.down.left")
-                        .foregroundStyle(FinancialColors.success)
+                        .foregroundStyle(MeuFluxColors.success)
                     Text("Entradas / Créditos (\(shortMonth(detail.selectedMonth)))")
                         .font(.headline)
                         .fontWeight(.semibold)
-                        .foregroundStyle(FinancialColors.success)
+                        .foregroundStyle(MeuFluxColors.success)
                 }
                 
                 salaryCard(detail)
@@ -323,11 +377,11 @@ public struct FinancialMomentView: View {
             VStack(alignment: .leading, spacing: 16) {
                 HStack {
                     Image(systemName: "arrow.up.right")
-                        .foregroundStyle(FinancialColors.danger)
+                        .foregroundStyle(MeuFluxColors.danger)
                     Text("Saídas / Despesas (\(shortMonth(detail.selectedMonth)))")
                         .font(.headline)
                         .fontWeight(.semibold)
-                        .foregroundStyle(FinancialColors.danger)
+                        .foregroundStyle(MeuFluxColors.danger)
                 }
                 
                 if !detail.creditCards.isEmpty { billsCard(detail) }
@@ -348,7 +402,7 @@ public struct FinancialMomentView: View {
             HStack {
                 HStack(spacing: 8) {
                     Image(systemName: "dollarsign.circle")
-                        .foregroundStyle(FinancialColors.textMuted)
+                        .foregroundStyle(MeuFluxColors.textMuted)
                     
                     TextField("0,00", text: $viewModel.salaryInput)
                         .textFieldStyle(.roundedBorder)
@@ -378,7 +432,7 @@ public struct FinancialMomentView: View {
             if detail.receivables.isEmpty {
                 Text("Nenhum valor a receber cadastrado para este mês.")
                     .font(.caption)
-                    .foregroundStyle(FinancialColors.textMuted)
+                    .foregroundStyle(MeuFluxColors.textMuted)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 16)
             } else {
@@ -397,7 +451,7 @@ public struct FinancialMomentView: View {
                         Text(detail.receivables.total.formatted())
                             .font(.caption)
                             .fontWeight(.bold)
-                            .foregroundStyle(FinancialColors.success)
+                            .foregroundStyle(MeuFluxColors.success)
                     }
                 }
             }
@@ -414,11 +468,11 @@ public struct FinancialMomentView: View {
                 
                 HStack(spacing: 8) {
                     Badge(item.personName, style: .neutral)
-                        .foregroundStyle(parseColor(item.personColor) ?? FinancialColors.primary)
+                        .foregroundStyle(parseColor(item.personColor) ?? MeuFluxColors.primary)
                     
                     Text("Parcela \(item.installmentNumber)/\(item.totalInstallments)")
                         .font(.caption2)
-                        .foregroundStyle(FinancialColors.textMuted)
+                        .foregroundStyle(MeuFluxColors.textMuted)
                     
                     if item.isPaid {
                         Badge("Recebido", style: .success)
@@ -431,9 +485,11 @@ public struct FinancialMomentView: View {
             Text("+ " + item.amount.formatted())
                 .font(.caption)
                 .fontWeight(.bold)
-                .foregroundStyle(FinancialColors.success)
+                .foregroundStyle(MeuFluxColors.success)
         }
         .padding(.vertical, 8)
+        .contentShape(Rectangle())
+        .onTapGesture { selectedDetail = LineItemDetail.from(momentReceivable: item) }
     }
 
     @ViewBuilder
@@ -443,18 +499,18 @@ public struct FinancialMomentView: View {
                 Text("Faturas de Cartão de Crédito")
                     .font(.headline)
                     .fontWeight(.semibold)
-                    .foregroundStyle(FinancialColors.textPrimary)
+                    .foregroundStyle(MeuFluxColors.textPrimary)
                 if !isPhoneIdiom {
                     Text("Faturas fechadas e estimadas com vencimento neste mês.")
                         .font(.caption)
-                        .foregroundStyle(FinancialColors.textSecondary)
+                        .foregroundStyle(MeuFluxColors.textSecondary)
                 }
             }
 
             if detail.creditCards.isEmpty {
                 Text("Nenhuma fatura de cartão vencendo neste mês.")
                     .font(.caption)
-                    .foregroundStyle(FinancialColors.textMuted)
+                    .foregroundStyle(MeuFluxColors.textMuted)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 16)
             } else {
@@ -488,22 +544,23 @@ public struct FinancialMomentView: View {
                     Text("Total Faturas")
                         .font(.caption)
                         .fontWeight(.bold)
+                        .foregroundStyle(MeuFluxColors.textPrimary)
                     Spacer()
                     Text(detail.creditCards.total.formatted())
                         .font(.caption)
                         .fontWeight(.bold)
-                        .foregroundStyle(FinancialColors.danger)
+                        .foregroundStyle(MeuFluxColors.danger)
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(
                     RoundedRectangle(cornerRadius: Radius().lg, style: .continuous)
-                        .fill(Color.white.opacity(0.92))
+                        .fill(MeuFluxColors.card)
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: Radius().lg, style: .continuous)
-                        .strokeBorder(FinancialColors.border, lineWidth: 1)
+                        .strokeBorder(MeuFluxColors.border, lineWidth: 1)
                 )
             }
         }
@@ -523,7 +580,7 @@ public struct FinancialMomentView: View {
             if detail.automaticDebits.isEmpty {
                 Text("Nenhum débito automático nas contas conectadas para este mês.")
                     .font(.caption)
-                    .foregroundStyle(FinancialColors.textMuted)
+                    .foregroundStyle(MeuFluxColors.textMuted)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 16)
             } else {
@@ -542,7 +599,7 @@ public struct FinancialMomentView: View {
                         Text(detail.automaticDebits.total.formatted())
                             .font(.caption)
                             .fontWeight(.bold)
-                            .foregroundStyle(FinancialColors.danger)
+                            .foregroundStyle(MeuFluxColors.danger)
                     }
                 }
             }
@@ -566,7 +623,7 @@ public struct FinancialMomentView: View {
                     
                     Text(formatDate(debit.date))
                         .font(.caption2)
-                        .foregroundStyle(FinancialColors.textMuted)
+                        .foregroundStyle(MeuFluxColors.textMuted)
                     
                     if debit.isPending {
                         Badge("Agendado", style: .warning)
@@ -581,11 +638,13 @@ public struct FinancialMomentView: View {
             Text("- " + debit.amount.formatted())
                 .font(.caption)
                 .fontWeight(.bold)
-                .foregroundStyle(FinancialColors.danger)
+                .foregroundStyle(MeuFluxColors.danger)
         }
         .padding(.vertical, 8)
-        .background(debit.isPending ? FinancialColors.warningBackground : Color.clear)
+        .background(debit.isPending ? MeuFluxColors.warningBackground : Color.clear)
         .cornerRadius(8)
+        .contentShape(Rectangle())
+        .onTapGesture { selectedDetail = LineItemDetail.from(debit: debit) }
     }
 
     @ViewBuilder
@@ -602,13 +661,13 @@ public struct FinancialMomentView: View {
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.bordered)
-                    .tint(FinancialColors.primary)
+                    .tint(MeuFluxColors.primary)
                 }
 
                 if detail.manualExpenses.isEmpty {
                     Text("Nenhuma despesa manual registrada para este mês.")
                         .font(.caption)
-                        .foregroundStyle(FinancialColors.textMuted)
+                        .foregroundStyle(MeuFluxColors.textMuted)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 8)
                 } else {
@@ -627,7 +686,7 @@ public struct FinancialMomentView: View {
                             Text(detail.manualExpenses.total.formatted())
                                 .font(.caption)
                                 .fontWeight(.bold)
-                                .foregroundStyle(FinancialColors.danger)
+                                .foregroundStyle(MeuFluxColors.danger)
                         }
                     }
                 }
@@ -649,13 +708,16 @@ public struct FinancialMomentView: View {
                     
                     Text(formatDate(expense.date))
                         .font(.caption2)
-                        .foregroundStyle(FinancialColors.textMuted)
+                        .foregroundStyle(MeuFluxColors.textMuted)
                     
                     if expense.isPaid {
                         Badge("Paga", style: .success)
                     }
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+            .onTapGesture { selectedDetail = LineItemDetail.from(momentExpense: expense) }
             
             Spacer()
             
@@ -663,7 +725,7 @@ public struct FinancialMomentView: View {
                 Text("- " + expense.amount.formatted())
                     .font(.caption)
                     .fontWeight(.bold)
-                    .foregroundStyle(FinancialColors.danger)
+                    .foregroundStyle(MeuFluxColors.danger)
                 
                 PaidCheckbox(
                     checked: expense.isPaid,
@@ -676,7 +738,7 @@ public struct FinancialMomentView: View {
             }
         }
         .padding(.vertical, 8)
-        .background(expense.isPaid ? FinancialColors.successBackground : FinancialColors.tertiaryBackground)
+        .background(expense.isPaid ? MeuFluxColors.successBackground : MeuFluxColors.tertiaryBackground)
         .cornerRadius(8)
     }
 
@@ -761,7 +823,7 @@ private struct MomentMonthChip: View {
 
     private var tone: Color? {
         guard let status else { return nil }
-        return status.isPositive ? FinancialColors.success : FinancialColors.danger
+        return status.isPositive ? MeuFluxColors.success : MeuFluxColors.danger
     }
 
     private var netLabel: String? {
@@ -775,14 +837,14 @@ private struct MomentMonthChip: View {
             VStack(spacing: 2) {
                 Text(monthName)
                     .font(.caption.weight(isSelected ? .bold : .semibold))
-                    .foregroundStyle(tone ?? FinancialColors.textPrimary)
+                    .foregroundStyle(tone ?? MeuFluxColors.textPrimary)
                 Text(verbatim: "\(month.year)\(isCurrent ? " • Atual" : "")")
                     .font(.system(size: 10))
-                    .foregroundStyle(FinancialColors.textMuted)
+                    .foregroundStyle(MeuFluxColors.textMuted)
                 if let netLabel {
                     Text(netLabel)
                         .font(.system(size: 10, weight: .bold).monospacedDigit())
-                        .foregroundStyle(tone ?? FinancialColors.textSecondary)
+                        .foregroundStyle(tone ?? MeuFluxColors.textSecondary)
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
                 }
@@ -807,13 +869,13 @@ private struct MomentMonthChip: View {
 
     private var chipFill: Color {
         guard let tone else {
-            return FinancialColors.tertiaryBackground
+            return MeuFluxColors.tertiaryBackground
         }
         return tone.opacity(isSelected ? 0.15 : 0.05)
     }
 
     private var chipBorder: Color {
-        guard let tone else { return FinancialColors.border }
+        guard let tone else { return MeuFluxColors.border }
         return tone.opacity(isSelected ? 1 : 0.35)
     }
 }
@@ -834,7 +896,7 @@ private struct KPICompactCard: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title.uppercased())
                     .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(FinancialColors.textMuted)
+                    .foregroundStyle(MeuFluxColors.textMuted)
                     .tracking(0.3)
 
                 Text(value)
@@ -845,14 +907,14 @@ private struct KPICompactCard: View {
 
                 Text(subtitle)
                     .font(.caption2)
-                    .foregroundStyle(FinancialColors.textSecondary)
+                    .foregroundStyle(MeuFluxColors.textSecondary)
                     .lineLimit(2)
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 10)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .background(Color.white.opacity(0.95))
+        .background(MeuFluxColors.card)
     }
 }
 
@@ -868,7 +930,7 @@ private struct ProgressBar: View {
         GeometryReader { geometry in
             ZStack(alignment: .leading) {
                 Capsule()
-                    .fill(FinancialColors.border.opacity(0.65))
+                    .fill(MeuFluxColors.border.opacity(0.65))
                 Capsule()
                     .fill(color)
                     .frame(width: max(0, geometry.size.width * fraction))
@@ -889,7 +951,7 @@ private struct PaidCheckbox: View {
             onToggle(!checked)
         } label: {
             Image(systemName: checked ? "checkmark.square.fill" : "square")
-                .foregroundStyle(checked ? FinancialColors.success : FinancialColors.textSecondary)
+                .foregroundStyle(checked ? MeuFluxColors.success : MeuFluxColors.textSecondary)
                 .font(.system(size: 18))
         }
         .disabled(busy)

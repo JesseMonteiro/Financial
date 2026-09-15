@@ -13,10 +13,10 @@ Source of truth for web ↔ iOS parity. Every web route in [`src/App.jsx`](../..
 | Web route / area | Web source | iOS module | iOS screen(s) | Status |
 | --- | --- | --- | --- | --- |
 | `/login` (login / signup / reset) | `Login.jsx` | `Authentication` | `AuthenticationView` (3 modos) | 🟡 |
-| Session restore / splash | `authStore` + `AuthGuard` | `Authentication` + `FinancialApp` | `RootView` + Keychain | 🟡 |
-| App shell (tabs / sidebar / More) | `MainLayout.jsx`, `LiquidGlassTabBar.jsx` | `FinancialApp` + `FinancialDesignSystem` | `AdaptiveShell`, `MoreMenuView` | 🟡 |
-| Global search | Header search | `FinancialApp` | `GlobalSearchView` | ⬜ |
-| Deep links / universal links | Router paths | `FinancialApp` | `AppRoute.fromDeepLink` | 🟡 |
+| Session restore / splash | `authStore` + `AuthGuard` | `Authentication` + `MeuFluxApp` | `RootView` + Keychain | 🟡 |
+| App shell (tabs / sidebar / More) | `MainLayout.jsx`, `LiquidGlassTabBar.jsx` | `MeuFluxApp` + `MeuFluxDesignSystem` | `AdaptiveShell`, `MoreMenuView` | 🟡 |
+| Global search | Header search | `MeuFluxApp` | `GlobalSearchView` | ⬜ |
+| Deep links / universal links | Router paths | `MeuFluxApp` | `AppRoute.fromDeepLink` | 🟡 |
 
 ### Acceptance — shell & session
 
@@ -30,7 +30,7 @@ Source of truth for web ↔ iOS parity. Every web route in [`src/App.jsx`](../..
 
 ---
 
-## Primary product routes (19 areas)
+## Primary product routes (20 areas)
 
 | # | Web path | Label | Web page | iOS feature module | Primary screen | Status |
 | --- | ---: | --- | --- | --- | --- | --- |
@@ -40,19 +40,20 @@ Source of truth for web ↔ iOS parity. Every web route in [`src/App.jsx`](../..
 | 4 | `/investments` | Investimentos | `Investments.jsx` | `Investments` | `InvestmentsView` (Pluggy + conjunto) | 🟡 |
 | 5 | `/credit-cards` | Cartões de Crédito | `CreditCards.jsx` | `CreditCards` | `CreditCardsView` + compra + parse-bill | 🟡 |
 | 6 | `/loans` | Empréstimos | `Loans.jsx` | `Loans` | `LoansView` | 🟡 |
-| 7 | `/budget` | Orçamento | `Budget.jsx` | `Budget` | `BudgetView` CRUD `/v1/domain/budgets` | 🟡 |
+| 7 | `/budget` | Orçamento | `Budget.jsx` | `Budget` | `BudgetView` CRUD + períodos + KPIs | ✅ |
 | 8 | `/receivables` | Valores a Receber | `Receivables.jsx` | `Receivables` | `ReceivablesView` CRUD | 🟡 |
 | 9 | `/financial-moment` | Momento Financeiro | `FinancialMoment.jsx` | `FinancialMoment` | `FinancialMomentView` + CTA despesa | 🟡 |
 | 10 | `/joint-account` | Conta conjunta | `JointFinancialMoment.jsx` | `JointFinance` | `JointFinanceView` + investimentos | 🟡 |
 | 11 | `/manual-expenses` | Despesas Manuais | `ManualExpenses.jsx` | `ManualExpenses` | `ManualExpensesView` CRUD | 🟡 |
-| 12 | `/subscriptions` | Assinaturas | `Subscriptions.jsx` | `Subscriptions` | `SubscriptionsView` (derivado no cliente) | 🟡 |
-| 13 | `/agenda` (`/calendar` → redirect) | Agenda | `Agenda.jsx` | `Agenda` | `AgendaView` (derivado no cliente) | 🟡 |
-| 14 | `/goals` | Metas | `Goals.jsx` | `Goals` | `GoalsView` CRUD `/v1/domain/goals` | 🟡 |
+| 12 | `/categories` | Categorias | `Categories.jsx` | `Categories` | `CategoriesView` CRUD `/v1/domain/purchase-categories` | 🟡 |
+| 13 | `/subscriptions` | Assinaturas | `Subscriptions.jsx` | `Subscriptions` | `SubscriptionsView` (derivado no cliente) | 🟡 |
+| 14 | `/agenda` (`/calendar` → redirect) | Agenda | `Agenda.jsx` | `Agenda` | `AgendaView` (derivado no cliente) | 🟡 |
+| 15 | `/goals` | Metas | `Goals.jsx` | `Goals` | `GoalsView` CRUD `/v1/domain/goals` | 🟡 |
 | 19 | `/meal-vouchers` | VA / VR | `MealVouchers.jsx` | `MealVouchers` | `MealVouchersView` CRUD `/v1/domain/meal-benefits` | 🟡 |
-| 15 | `/reports` | Relatórios | `Reports.jsx` | `Reports` | `ReportsView` + CSV | 🟡 |
-| 16 | `/connect` | Conexões Bancárias | `ConnectBank.jsx` | `BankConnections` | lista, sync, Pluggy Connect WKWebView | 🟡 |
-| 17 | `/settings` | Configurações | `Settings.jsx` | `Settings` | tema, Telegram, logout; export/delete 🚫 web | 🟡 |
-| 18 | Auth / onboarding (non-nav) | Sessão | `Login.jsx` | `Authentication` | (see Shell) | 🟡 |
+| 16 | `/reports` | Relatórios | `Reports.jsx` | `Reports` | `ReportsView` + CSV | 🟡 |
+| 17 | `/connect` | Conexões Bancárias | `ConnectBank.jsx` | `BankConnections` | lista, sync, Pluggy Connect WKWebView | 🟡 |
+| 18 | `/settings` | Configurações | `Settings.jsx` | `Settings` | tema, Telegram, logout; export/delete 🚫 web | 🟡 |
+| 20 | Auth / onboarding (non-nav) | Sessão | `Login.jsx` | `Authentication` | (see Shell) | 🟡 |
 
 **Conditional nav:** Conta conjunta (`requiresJoint: true`) appears only when joint link is active — same rule as `getVisibleNavItems`.
 
@@ -162,8 +163,11 @@ Source of truth for web ↔ iOS parity. Every web route in [`src/App.jsx`](../..
 
 | Capability | Web | iOS | Status |
 | --- | --- | --- | --- |
-| Month strip, KPIs, real vs limit, refunds, overspent | ✅ | `BudgetView` | ⬜ |
-| CRUD category limits | ✅ | `/v1/budgets` | ⬜ |
+| Month strip, KPIs, real vs limit, overspent | ✅ | `BudgetView` mês + `MetricCard` (gasto, verba, saldo, estouradas) | ✅ |
+| CRUD category limits | ✅ período + valor | criar/editar sheet + excluir (`POST/DELETE /v1/domain/budgets`) | ✅ |
+| Período diário/semanal/quinzenal/mensal com acúmulo no mês | ✅ | picker + `BudgetScreenRowDTO` allowance/monthCap | ✅ |
+| VA/VR no spent da categoria (VA→mercado, VR→restaurante) | ✅ | `/budget-screen` + `spentMeal` | ✅ |
+| Gráfico gasto por mês / reembolsos no KPI | ✅ | ⬜ (fora desta rodada) | 🟡 |
 
 | State | Criteria |
 | --- | --- |
@@ -221,12 +225,25 @@ Source of truth for web ↔ iOS parity. Every web route in [`src/App.jsx`](../..
 | --- | --- | --- | --- |
 | CRUD, recurrence continuous/installment, series edit, paid + undo | ✅ | Full editor | ⬜ |
 | Deep link with preselected account | ✅ | Route query parity | ⬜ |
+| Category picker from user purchase categories | ✅ `categoryStore` | `PurchaseCategoriesRepository` | 🟡 |
 
 | State | Criteria |
 | --- | --- |
 | Loading / empty / error / offline / a11y | Offline queue for safe writes; series expand announced. |
 
-### 12. Subscriptions (`/subscriptions`)
+### 12. Categories (`/categories`)
+
+| Capability | Web | iOS | Status |
+| --- | --- | --- | --- |
+| List / add / edit / delete purchase categories | ✅ `Categories.jsx` | `CategoriesView` | 🟡 |
+| Seed 9 default keys on first empty load | ✅ storage + BFF | ✅ BFF GET seed | 🟡 |
+| Wire into manuals + budget pickers | ✅ | ✅ | 🟡 |
+
+| State | Criteria |
+| --- | --- |
+| Loading / empty / error / offline / a11y | Empty CTA creates category; delete does not rewrite historical expense keys. |
+
+### 13. Subscriptions (`/subscriptions`)
 
 | Capability | Web | iOS | Status |
 | --- | --- | --- | --- |
@@ -236,7 +253,7 @@ Source of truth for web ↔ iOS parity. Every web route in [`src/App.jsx`](../..
 | --- | --- |
 | Loading / empty / error / offline / a11y | Empty = no recurring pattern; confidence not color-only. |
 
-### 13. Agenda (`/agenda`)
+### 14. Agenda (`/agenda`)
 
 | Capability | Web | iOS | Status |
 | --- | --- | --- | --- |
@@ -246,7 +263,7 @@ Source of truth for web ↔ iOS parity. Every web route in [`src/App.jsx`](../..
 | --- | --- |
 | Loading / empty / error / offline / a11y | Calendar VO summary; overdue vs paid clear. |
 
-### 14. Goals (`/goals`)
+### 15. Goals (`/goals`)
 
 | Capability | Web | iOS | Status |
 | --- | --- | --- | --- |
@@ -256,7 +273,7 @@ Source of truth for web ↔ iOS parity. Every web route in [`src/App.jsx`](../..
 | --- | --- |
 | Loading / empty / error / offline / a11y | Progress numeric; offline queue writes. |
 
-### 15. Reports (`/reports`)
+### 16. Reports (`/reports`)
 
 | Capability | Web | iOS | Status |
 | --- | --- | --- | --- |
@@ -271,7 +288,7 @@ Source of truth for web ↔ iOS parity. Every web route in [`src/App.jsx`](../..
 | Offline | Cached period only; export may be limited. |
 | A11y | Sankey has tabular alternative always. |
 
-### 16. Bank connections (`/connect`)
+### 17. Bank connections (`/connect`)
 
 | Capability | Web | iOS | Status |
 | --- | --- | --- | --- |
@@ -287,7 +304,7 @@ Source of truth for web ↔ iOS parity. Every web route in [`src/App.jsx`](../..
 | Offline | Connect/sync blocked with banner. |
 | A11y | Status chips labeled; destructive delete confirmed. |
 
-### 17. Settings (`/settings`)
+### 18. Settings (`/settings`)
 
 | Capability | Web | iOS | Status |
 | --- | --- | --- | --- |
@@ -307,11 +324,11 @@ Source of truth for web ↔ iOS parity. Every web route in [`src/App.jsx`](../..
 
 | Capability | Module | Notes | Status |
 | --- | --- | --- | --- |
-| APNs (due dates, sync action, joint invite) | `FinancialApp` | Granular prefs | ⬜ |
-| Widgets (net worth, bill, dues) | `FinancialWidgets` | Redacted when locked | ⬜ |
-| App Intents / Shortcuts | Features | Confirm for money actions | ⬜ |
+| APNs (due dates, sync action, joint invite) | `MeuFluxApp` | Granular prefs | ⬜ |
+| Widgets (net worth, bill, dues) | `MeuFluxWidgets` | Redacted when locked | ⬜ |
+| App Intents / Shortcuts | Features | Consultas com diálogo + Face ID; lançar despesa confirma no atalho | ✅ |
 | Face ID / Touch ID lock | `Authentication` | Does not replace remote auth | ⬜ |
-| Spotlight / Quick Actions | `FinancialApp` | Feature shortcuts | ⬜ |
+| Spotlight / Quick Actions | `MeuFluxApp` | Entidades indexadas (transações, orçamento, saldo, faturas) | ✅ |
 | Apple Pay / payment initiation | — | 🚫 Aggregator only | 🚫 |
 
 ---

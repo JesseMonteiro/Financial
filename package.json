@@ -1,5 +1,5 @@
 {
-  "name": "financial",
+  "name": "meuflux",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -11,6 +11,8 @@
     "preview": "vite preview",
     "lint": "oxlint .",
     "test:fixtures": "node scripts/validate-credit-fixtures.mjs && node --experimental-strip-types scripts/run-credit-bill-parity.mjs",
+    "test:budget": "node scripts/run-budget-period.mjs",
+    "test:line-item": "node scripts/run-line-item-detail.mjs",
     "test:ios": "cd ios && swift test",
     "ios:secrets": "node scripts/ios-sync-secrets.mjs"
   },

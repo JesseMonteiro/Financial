@@ -1,6 +1,6 @@
 import SwiftUI
-import FinancialDesignSystem
-import FinancialDomain
+import MeuFluxDesignSystem
+import MeuFluxDomain
 
 public struct InvestmentsView: View {
     @State private var viewModel: InvestmentsViewModel
@@ -38,7 +38,7 @@ public struct InvestmentsView: View {
                 content
             }
         }
-        .financialPageTitle("Investimentos")
+        .meuFluxPageTitle("Investimentos")
         .refreshable { await viewModel.load(force: true) }
         .task(id: viewModel.scope) { await viewModel.load() }
         .toolbar {
@@ -69,7 +69,7 @@ public struct InvestmentsView: View {
                             Text(row.type)
                             Spacer()
                             Text(row.amount.formatted())
-                                .foregroundStyle(FinancialColors.textSecondary)
+                                .foregroundStyle(MeuFluxColors.textSecondary)
                         }
                     }
                 }
@@ -84,7 +84,7 @@ public struct InvestmentsView: View {
                         }
                         Text([inv.type, inv.issuer, inv.ownerLabel].compactMap { $0 }.joined(separator: " · "))
                             .font(.caption)
-                            .foregroundStyle(FinancialColors.textSecondary)
+                            .foregroundStyle(MeuFluxColors.textSecondary)
                     }
                 }
             }

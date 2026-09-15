@@ -78,7 +78,7 @@ export function Login() {
           <div className="login-logo">
             <Wallet size={32} />
           </div>
-          <h1 className="login-title">FinanceHub</h1>
+          <h1 className="login-title">MeuFlux</h1>
           <p className="login-subtitle">Assuma o controle do seu dinheiro</p>
         </div>
 

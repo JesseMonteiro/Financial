@@ -1,7 +1,7 @@
 import Foundation
 import Observation
-import FinancialDomain
-import FinancialDesignSystem
+import MeuFluxDomain
+import MeuFluxDesignSystem
 
 public enum ManualExpenseCategory: String, CaseIterable, Identifiable, Sendable {
     case food = "Food"
@@ -42,11 +42,8 @@ public enum ManualExpenseCategory: String, CaseIterable, Identifiable, Sendable 
         }
     }
 
-    public static func label(for raw: String?) -> String {
-        guard let raw, let match = ManualExpenseCategory(rawValue: raw) else {
-            return raw?.isEmpty == false ? raw! : "Outros"
-        }
-        return match.label
+    public static func label(for raw: String?, categories: [PurchaseCategory] = PurchaseCategoryCatalog.defaults) -> String {
+        PurchaseCategoryCatalog.label(for: raw, in: categories)
     }
 }
 
@@ -95,6 +92,10 @@ public struct ManualExpenseGroup: Identifiable, Hashable, Sendable {
 
     public var sample: ManualExpense? { installments.first }
 
+    public func containsExpense(id: String) -> Bool {
+        installments.contains { $0.id == id }
+    }
+
     public var totalForEdit: Money {
         if isRecurring && !isContinuous && installmentsCount > 1 {
             return installments.reduce(Money.zero) { $0.adding($1.amount) }
@@ -120,7 +121,7 @@ public final class ManualExpensesViewModel {
     // Draft form
     public var draftDescription = ""
     public var draftAmount = ""
-    public var draftCategory: ManualExpenseCategory = .food
+    public var draftCategoryKey = "Food"
     public var draftDate = Date()
     public var draftAccountId: String? = nil
     public var draftRecurring = false
@@ -128,12 +129,18 @@ public final class ManualExpensesViewModel {
     public var draftFrequency: ManualFrequency = .monthly
     public var draftOccurrences = "12"
     public var editingGroupID: String?
+    public private(set) var purchaseCategories: [PurchaseCategory] = PurchaseCategoryCatalog.defaults
 
     private let repository: (any ManualExpensesRepository)?
     private let accountsRepository: (any AccountsRepository)?
+    private let purchaseCategoriesRepository: (any PurchaseCategoriesRepository)?
     private let togglePaid: (any ToggleManualExpensePaidUseCase)?
     private var lastLoadedAt: Date?
     private var lastCacheKey: String?
+
+    public var categoryOptions: [PurchaseCategory] {
+        PurchaseCategoryCatalog.resolved(purchaseCategories)
+    }
 
     public var unpaidTotal: Money {
         expenses.filter { !$0.isPaid }.reduce(Money.zero) { $0.adding($1.amount) }
@@ -141,6 +148,19 @@ public final class ManualExpensesViewModel {
 
     public var manualAccounts: [Account] {
         accounts.filter(\.isManual)
+    }
+
+    public func group(containingExpenseID id: String) -> ManualExpenseGroup? {
+        groups.first { $0.containsExpense(id: id) }
+    }
+
+    public func expense(id: String) -> ManualExpense? {
+        expenses.first { $0.id == id }
+    }
+
+    public func accountLabel(for expense: ManualExpense) -> String? {
+        guard let accountId = expense.accountId else { return nil }
+        return accounts.first { $0.id == accountId }?.name
     }
 
     public var splitPreview: (count: Int, per: Money, last: Money, lastDiffers: Bool)? {
@@ -157,11 +177,13 @@ public final class ManualExpensesViewModel {
     public init(
         repository: (any ManualExpensesRepository)? = nil,
         accounts: (any AccountsRepository)? = nil,
-        togglePaid: (any ToggleManualExpensePaidUseCase)? = nil
+        togglePaid: (any ToggleManualExpensePaidUseCase)? = nil,
+        purchaseCategories: (any PurchaseCategoriesRepository)? = nil
     ) {
         self.repository = repository
         self.accountsRepository = accounts
         self.togglePaid = togglePaid
+        self.purchaseCategoriesRepository = purchaseCategories
     }
 
     public func load(force: Bool = false) async {
@@ -181,8 +203,15 @@ public final class ManualExpensesViewModel {
         do {
             async let accountsTask = accountsRepository?.fetchAccounts(force: force) ?? []
             async let expensesTask = repository.fetchExpenses(month: nil, force: force)
+            async let categoriesTask = purchaseCategoriesRepository?.fetchCategories(force: force)
             accounts = try await accountsTask
             expenses = try await expensesTask
+            if let loaded = try? await categoriesTask {
+                purchaseCategories = PurchaseCategoryCatalog.resolved(loaded)
+            }
+            if !categoryOptions.contains(where: { $0.key == draftCategoryKey }) {
+                draftCategoryKey = categoryOptions.first?.key ?? "Food"
+            }
             rebuildGroups()
             state = expenses.isEmpty ? .empty : .loaded(expenses)
             lastLoadedAt = Date()
@@ -209,7 +238,7 @@ public final class ManualExpensesViewModel {
         editingGroupID = nil
         draftDescription = ""
         draftAmount = ""
-        draftCategory = .food
+        draftCategoryKey = categoryOptions.first?.key ?? "Food"
         draftDate = Date()
         draftAccountId = nil
         draftRecurring = false
@@ -223,7 +252,10 @@ public final class ManualExpensesViewModel {
         editingGroupID = group.id
         draftDescription = group.description
         draftAmount = NSDecimalNumber(decimal: group.totalForEdit.amount).stringValue
-        draftCategory = ManualExpenseCategory(rawValue: group.category ?? "") ?? .other
+        let key = group.category ?? ""
+        draftCategoryKey = categoryOptions.contains(where: { $0.key == key })
+            ? key
+            : (categoryOptions.first(where: { $0.key == "Other" })?.key ?? categoryOptions.first?.key ?? "Food")
         if let date = group.startDate.date() {
             draftDate = date
         }
@@ -255,7 +287,7 @@ public final class ManualExpensesViewModel {
             let rows = buildSeries(
                 description: description,
                 total: total,
-                category: draftCategory.rawValue,
+                category: draftCategoryKey,
                 start: InstantDate(from: draftDate),
                 accountId: draftAccountId,
                 isRecurring: draftRecurring,
@@ -310,6 +342,27 @@ public final class ManualExpensesViewModel {
         do {
             try await repository.updateExpense(expense)
             cancelAmountEdit()
+            await load(force: true)
+        } catch {
+            errorMessage = (error as? FinancialError)?.messagePT ?? error.localizedDescription
+        }
+    }
+
+    public func updateCategory(expenseId: String, category: String) async {
+        guard let repository else { return }
+        let targets: [ManualExpense]
+        if let group = group(containingExpenseID: expenseId) {
+            targets = group.installments
+        } else if let expense = expense(id: expenseId) {
+            targets = [expense]
+        } else {
+            return
+        }
+        do {
+            for var item in targets {
+                item.category = category
+                try await repository.updateExpense(item)
+            }
             await load(force: true)
         } catch {
             errorMessage = (error as? FinancialError)?.messagePT ?? error.localizedDescription

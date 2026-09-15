@@ -1,0 +1,7 @@
+// Staging configuration placeholders — no secrets.
+PRODUCT_BUNDLE_IDENTIFIER = com.meuflux.app.staging
+PRODUCT_NAME = MeuFlux Staging
+API_BASE_URL = https:/$()/staging.api.example.com
+APP_DISPLAY_NAME = MeuFlux (Staging)
+INFOPLIST_KEY_CFBundleDisplayName = MeuFlux (Staging)
+

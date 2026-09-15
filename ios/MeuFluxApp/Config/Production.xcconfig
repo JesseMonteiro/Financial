@@ -1,0 +1,10 @@
+PRODUCT_BUNDLE_IDENTIFIER = com.meuflux.app
+PRODUCT_NAME = MeuFlux
+APP_DISPLAY_NAME = MeuFlux
+INFOPLIST_KEY_CFBundleDisplayName = MeuFlux
+
+SUPABASE_URL = https:/$()/tslzhkbxabbhrmbefhrj.supabase.co
+API_BASE_URL = https:/$()/tslzhkbxabbhrmbefhrj.supabase.co/functions/v1/pluggy-proxy
+SUPABASE_ANON_KEY = REPLACE_ME
+
+#include? "Secrets.xcconfig"

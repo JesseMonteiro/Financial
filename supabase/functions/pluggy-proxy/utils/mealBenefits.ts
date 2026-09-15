@@ -18,6 +18,15 @@ const KIND_LABELS: Record<string, string> = {
   VR: "Vale Refeição",
 };
 
+export const MEAL_DEFAULT_CATEGORY: Record<string, string> = {
+  VA: "Supermercado & Alimentação",
+  VR: "Restaurantes & Bares",
+};
+
+export function defaultMealCategoryForKind(kind?: string): string {
+  return kind === "VR" ? MEAL_DEFAULT_CATEGORY.VR : MEAL_DEFAULT_CATEGORY.VA;
+}
+
 function todayISO(now = new Date()): string {
   const y = now.getFullYear();
   const m = String(now.getMonth() + 1).padStart(2, "0");
@@ -68,6 +77,7 @@ export function normalizeMealPurchase(row: AnyRec = {}) {
     benefitId: String(row.benefitId || row.benefit_id || ""),
     amount: Number(row.amount) || 0,
     purchasedAt: String(row.purchasedAt || row.purchased_at || "").slice(0, 10),
+    category: String(row.category || "").trim(),
   };
 }
 
@@ -146,4 +156,26 @@ export function momentItemsFor(
         ownerLabel: benefit.ownerLabel,
       };
     });
+}
+
+export function mealSpendByCategory(
+  benefits: AnyRec[] = [],
+  purchases: AnyRec[] = [],
+  ym: string,
+): Record<string, number> {
+  const month = String(ym || "").slice(0, 7);
+  if (!month) return {};
+  const byId: Record<string, ReturnType<typeof normalizeMealBenefit>> = {};
+  benefits.map(normalizeMealBenefit).forEach((b) => {
+    if (b.id) byId[b.id] = b;
+  });
+  const map: Record<string, number> = {};
+  purchases.map(normalizeMealPurchase).forEach((p) => {
+    if (!p.purchasedAt.startsWith(month)) return;
+    const benefit = byId[p.benefitId];
+    const category = p.category || defaultMealCategoryForKind(benefit?.kind);
+    if (!category) return;
+    map[category] = (map[category] || 0) + p.amount;
+  });
+  return map;
 }

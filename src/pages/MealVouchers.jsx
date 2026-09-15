@@ -10,6 +10,8 @@ import { useMealBenefitStore } from '../stores/mealBenefitStore';
 import { formatCurrency, formatDate } from '../utils/formatters';
 import {
   MEAL_KIND_LABELS,
+  MEAL_CATEGORY_OPTIONS,
+  defaultMealCategoryForKind,
   displayBenefitLabel,
   monthSnapshot,
   nextCreditDate,
@@ -28,10 +30,11 @@ const emptyBenefitForm = () => ({
   showInMoment: false,
 });
 
-const emptyPurchaseForm = () => ({
+const emptyPurchaseForm = (kind = 'VA') => ({
   description: '',
   amount: '',
   purchasedAt: todayISO(),
+  category: defaultMealCategoryForKind(kind),
 });
 
 export function MealVouchers() {
@@ -122,6 +125,7 @@ export function MealVouchers() {
         description: purchaseForm.description.trim(),
         amount: parseFloat(purchaseForm.amount) || 0,
         purchasedAt: purchaseForm.purchasedAt || todayISO(),
+        category: purchaseForm.category || '',
       });
       setPurchaseForId(null);
       setPurchaseForm(emptyPurchaseForm());
@@ -270,7 +274,7 @@ export function MealVouchers() {
                   variant="secondary"
                   icon={ShoppingBag}
                   onClick={() => {
-                    setPurchaseForm(emptyPurchaseForm());
+                    setPurchaseForm(emptyPurchaseForm(benefit.kind));
                     setPurchaseForId(benefit.id);
                   }}
                 >
@@ -299,7 +303,10 @@ export function MealVouchers() {
                         <span style={{ fontWeight: 600, fontSize: 'var(--font-size-xs)' }}>
                           {p.description || 'Compra'}
                         </span>
-                        <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{formatDate(p.purchasedAt)}</span>
+                        <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+                          {formatDate(p.purchasedAt)}
+                          {p.category ? ` · ${p.category}` : ''}
+                        </span>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                         <span style={{ fontWeight: 700, fontSize: 'var(--font-size-xs)', color: 'var(--danger)' }}>
@@ -455,6 +462,21 @@ export function MealVouchers() {
                     value={purchaseForm.purchasedAt}
                     onChange={(e) => setPurchaseForm((f) => ({ ...f, purchasedAt: e.target.value }))}
                   />
+                </div>
+                <div>
+                  <label style={{ fontSize: 'var(--font-size-sm)', fontWeight: 500 }}>Categoria no orçamento</label>
+                  <select
+                    className="input"
+                    value={purchaseForm.category}
+                    onChange={(e) => setPurchaseForm((f) => ({ ...f, category: e.target.value }))}
+                  >
+                    {MEAL_CATEGORY_OPTIONS.map((cat) => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </select>
+                  <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)', margin: '0.35rem 0 0' }}>
+                    VA cai em supermercado e VR em restaurantes, a menos que você escolha outra.
+                  </p>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '0.5rem' }}>
                   <Button variant="outline" type="button" onClick={() => setPurchaseForId(null)} disabled={savingPurchase}>

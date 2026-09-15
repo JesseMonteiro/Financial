@@ -1,25 +1,32 @@
 import SwiftUI
 import Charts
 import UniformTypeIdentifiers
-import FinancialDesignSystem
-import FinancialDomain
+import MeuFluxDesignSystem
+import MeuFluxDomain
 
 public struct CreditCardsView: View {
     @State private var viewModel: CreditCardsViewModel
     @State private var showPurchase = false
     @State private var showImporter = false
+    @State private var selectedLine: CreditBillLine?
+    @State private var showCreateReceivable = false
+    @State private var receivablePerson = ""
     private let onReceivables: (() -> Void)?
 
     public init(
         repository: any CreditCardsRepository,
         manuals: (any ManualExpensesRepository)? = nil,
         parseBill: (any ParseBillUseCase)? = nil,
+        receivables: (any ReceivablesRepository)? = nil,
+        transactions: (any TransactionsRepository)? = nil,
         onReceivables: (() -> Void)? = nil
     ) {
         _viewModel = State(initialValue: CreditCardsViewModel(
             repository: repository,
             manuals: manuals,
-            parseBill: parseBill
+            parseBill: parseBill,
+            receivables: receivables,
+            transactions: transactions
         ))
         self.onReceivables = onReceivables
     }
@@ -48,7 +55,7 @@ public struct CreditCardsView: View {
                 }
             }
         }
-        .financialPageTitle("Cartões de Crédito")
+        .meuFluxPageTitle("Cartões de Crédito")
         .refreshable { await viewModel.load(force: true) }
         .task { await viewModel.load() }
         .toolbar {
@@ -122,7 +129,7 @@ public struct CreditCardsView: View {
                                         Text(purchase.description)
                                         Text(purchase.amount.formatted())
                                             .font(.caption)
-                                            .foregroundStyle(FinancialColors.textSecondary)
+                                            .foregroundStyle(MeuFluxColors.textSecondary)
                                     }
                                 }
                             }
@@ -142,6 +149,66 @@ public struct CreditCardsView: View {
                 }
             }
         }
+        .sheet(item: $selectedLine) { line in
+            let detail = LineItemDetail.from(
+                billLine: renamedLine(line),
+                canCreateReceivable: viewModel.canCreateReceivable(for: line)
+            )
+            LineItemDetailSheet(
+                item: detail,
+                categoryOptions: viewModel.categoryOptions,
+                onCreateReceivable: {
+                    receivablePerson = ""
+                    showCreateReceivable = true
+                },
+                onChangeCategory: { option in
+                    Task {
+                        await viewModel.changeCategory(id: detail.sourceId, option: option)
+                        if var line = selectedLine, line.id == detail.sourceId {
+                            line.category = option.label
+                            line.categoryId = option.id
+                            selectedLine = line
+                        }
+                    }
+                }
+            )
+        }
+        .sheet(isPresented: $showCreateReceivable) {
+            NavigationStack {
+                Form {
+                    TextField("Nome da pessoa", text: $receivablePerson)
+                    if let line = selectedLine {
+                        LabeledContent("Valor", value: line.amount.formatted())
+                        LabeledContent("Compra", value: line.description)
+                    }
+                }
+                .navigationTitle("Valor a receber")
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancelar") { showCreateReceivable = false }
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Salvar") {
+                            Task {
+                                if let line = selectedLine {
+                                    await viewModel.createReceivable(from: line, person: receivablePerson)
+                                }
+                                showCreateReceivable = false
+                                selectedLine = nil
+                            }
+                        }
+                        .disabled(receivablePerson.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    }
+                }
+            }
+            .presentationDetents([.medium])
+        }
+    }
+
+    private func renamedLine(_ line: CreditBillLine) -> CreditBillLine {
+        var copy = line
+        copy.accountName = viewModel.cardDisplayName(for: line)
+        return copy
     }
 
     private var content: some View {
@@ -156,7 +223,7 @@ public struct CreditCardsView: View {
                 }
                 statement
             }
-            .financialPageGutter()
+            .meuFluxPageGutter()
             .containerRelativeFrame(.horizontal)
         }
         .contentMargins(.horizontal, 0, for: .scrollContent)
@@ -168,14 +235,14 @@ public struct CreditCardsView: View {
             if viewModel.isAllCards {
                 Text("Soma consolidada de \(viewModel.cards.count) cartões")
                     .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(FinancialColors.textPrimary)
+                    .foregroundStyle(MeuFluxColors.textPrimary)
             } else if let card = viewModel.selectedCard {
                 Text(faceStyle(for: card).productLabel)
                     .font(.title3.weight(.bold))
-                    .foregroundStyle(FinancialColors.textPrimary)
+                    .foregroundStyle(MeuFluxColors.textPrimary)
                 Text("Final \(card.lastFour)")
                     .font(.subheadline)
-                    .foregroundStyle(FinancialColors.textSecondary)
+                    .foregroundStyle(MeuFluxColors.textSecondary)
             }
         }
     }
@@ -243,7 +310,7 @@ public struct CreditCardsView: View {
 
     private func circleDot(active: Bool) -> some View {
         Capsule()
-            .fill(active ? FinancialColors.primary : FinancialColors.border)
+            .fill(active ? MeuFluxColors.primary : MeuFluxColors.border)
             .frame(width: active ? 16 : 6, height: 6)
     }
 
@@ -256,13 +323,13 @@ public struct CreditCardsView: View {
                     title: "Fatura em aberto",
                     value: viewModel.openBillTotal.formatted(),
                     meta: open.map { "Vence \($0.dueDateShort)" } ?? "—",
-                    accent: FinancialColors.warning
+                    accent: MeuFluxColors.warning
                 )
                 CompactKPICell(
                     title: "Última paga",
                     value: viewModel.lastPaidTotal.formatted(),
                     meta: lastPaid?.title ?? "—",
-                    accent: FinancialColors.success
+                    accent: MeuFluxColors.success
                 )
             }
             HStack(spacing: 1) {
@@ -270,21 +337,21 @@ public struct CreditCardsView: View {
                     title: "Saldo devedor",
                     value: viewModel.outstanding.formatted(),
                     meta: viewModel.isAllCards ? "Soma consolidada" : "Neste cartão",
-                    accent: FinancialColors.danger
+                    accent: MeuFluxColors.danger
                 )
                 CompactKPICell(
                     title: "Limite disponível",
                     value: viewModel.availableLimit.formatted(),
                     meta: "\(viewModel.limitFreePercent)% livre",
-                    accent: FinancialColors.info
+                    accent: MeuFluxColors.info
                 )
             }
         }
-        .background(FinancialColors.border)
+        .background(MeuFluxColors.border)
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(FinancialColors.border, lineWidth: 1)
+                .strokeBorder(MeuFluxColors.border, lineWidth: 1)
         }
     }
 
@@ -358,7 +425,9 @@ public struct CreditCardsView: View {
             }
         }
         if deferLayout {
-            DispatchQueue.main.async(execute: run)
+            Task { @MainActor in
+                run()
+            }
         } else {
             run()
         }
@@ -368,9 +437,9 @@ public struct CreditCardsView: View {
         let selected = bill.dueMonth == viewModel.activeBillKey
         let accent: Color = {
             switch bill.type {
-            case .currentOpen: return FinancialColors.warning
-            case .future: return FinancialColors.info
-            case .past: return bill.isPaid ? FinancialColors.success : FinancialColors.border
+            case .currentOpen: return MeuFluxColors.warning
+            case .future: return MeuFluxColors.info
+            case .past: return bill.isPaid ? MeuFluxColors.success : MeuFluxColors.border
             }
         }()
         return Button {
@@ -379,7 +448,7 @@ public struct CreditCardsView: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text(bill.title)
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(FinancialColors.textPrimary)
+                    .foregroundStyle(MeuFluxColors.textPrimary)
                     .lineLimit(2)
                 StatusBadge(
                     bill.badgeText,
@@ -387,20 +456,20 @@ public struct CreditCardsView: View {
                 )
                 Text("VALOR CONSOLIDADO")
                     .font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(FinancialColors.textMuted)
+                    .foregroundStyle(MeuFluxColors.textMuted)
                 Text(bill.total.formatted())
                     .font(.subheadline.weight(.bold).monospacedDigit())
-                    .foregroundStyle(FinancialColors.textPrimary)
+                    .foregroundStyle(MeuFluxColors.textPrimary)
                 Text("Vence \(bill.dueDateShort) • \(bill.items.count) itens")
                     .font(.caption2)
-                    .foregroundStyle(FinancialColors.textMuted)
+                    .foregroundStyle(MeuFluxColors.textMuted)
             }
             .padding(12)
             .frame(width: 185, alignment: .leading)
-            .background(FinancialColors.bgTertiary, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .background(MeuFluxColors.bgTertiary, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(selected ? FinancialColors.primary : accent, lineWidth: selected ? 2 : 1.5)
+                    .strokeBorder(selected ? MeuFluxColors.primary : accent, lineWidth: selected ? 2 : 1.5)
             }
         }
         .buttonStyle(.plain)
@@ -418,7 +487,10 @@ public struct CreditCardsView: View {
                     .foregroundStyle(barColor(bill.type))
                     .cornerRadius(4)
                 }
-                .frame(height: 160)
+                .frame(height: 220)
+                .chartPlotStyle { plot in
+                    plot.padding(.bottom, 8)
+                }
                 .chartYAxis {
                     AxisMarks(position: .leading) { value in
                         AxisGridLine()
@@ -426,17 +498,34 @@ public struct CreditCardsView: View {
                             if let n = value.as(Double.self) {
                                 Text(n >= 1000 ? "R$ \(Int(n / 1000))k" : "R$ \(Int(n))")
                                     .font(.caption2)
+                                    .foregroundStyle(MeuFluxColors.textMuted)
+                            }
+                        }
+                    }
+                }
+                .chartXAxis {
+                    AxisMarks { value in
+                        AxisValueLabel(
+                            centered: true,
+                            collisionResolution: .disabled,
+                            orientation: .vertical
+                        ) {
+                            if let label = value.as(String.self) {
+                                Text(label)
+                                    .font(.system(size: 9, weight: .semibold))
+                                    .foregroundStyle(MeuFluxColors.textMuted)
+                                    .fixedSize()
                             }
                         }
                     }
                 }
                 HStack(spacing: 12) {
-                    legend(color: FinancialColors.primary, text: "Paga")
-                    legend(color: FinancialColors.warning, text: "Aberta")
-                    legend(color: FinancialColors.info, text: "Projetada")
+                    legend(color: MeuFluxColors.primary, text: "Paga")
+                    legend(color: MeuFluxColors.warning, text: "Aberta")
+                    legend(color: MeuFluxColors.info, text: "Projetada")
                 }
                 .font(.caption2)
-                .foregroundStyle(FinancialColors.textMuted)
+                .foregroundStyle(MeuFluxColors.textMuted)
                 .frame(maxWidth: .infinity, alignment: .trailing)
             }
         }
@@ -451,16 +540,14 @@ public struct CreditCardsView: View {
 
     private func barColor(_ type: CreditBillKind) -> Color {
         switch type {
-        case .currentOpen: return FinancialColors.warning
-        case .future: return FinancialColors.info
-        case .past: return FinancialColors.primary
+        case .currentOpen: return MeuFluxColors.warning
+        case .future: return MeuFluxColors.info
+        case .past: return MeuFluxColors.primary
         }
     }
 
     private func shortLabel(_ dueMonth: String) -> String {
-        let parts = dueMonth.split(separator: "-")
-        guard parts.count == 2 else { return dueMonth }
-        return "\(parts[1])/\(parts[0].suffix(2))"
+        YearMonth(key: dueMonth)?.shortAxisLabel ?? dueMonth
     }
 
     private var statement: some View {
@@ -477,10 +564,10 @@ public struct CreditCardsView: View {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("VALOR TOTAL DESTA FATURA")
                                 .font(.system(size: 10, weight: .bold))
-                                .foregroundStyle(FinancialColors.textMuted)
+                                .foregroundStyle(MeuFluxColors.textMuted)
                             Text(bill.total.formatted())
                                 .font(.title3.weight(.heavy).monospacedDigit())
-                                .foregroundStyle(FinancialColors.danger)
+                                .foregroundStyle(MeuFluxColors.danger)
                         }
                         Spacer()
                         VStack(alignment: .trailing, spacing: 4) {
@@ -490,33 +577,38 @@ public struct CreditCardsView: View {
                             )
                             Text("\(viewModel.filteredLines.count) de \(bill.items.count) compras")
                                 .font(.caption2)
-                                .foregroundStyle(FinancialColors.textMuted)
+                                .foregroundStyle(MeuFluxColors.textMuted)
                         }
                     }
                     .padding(12)
-                    .background(FinancialColors.bgTertiary, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .background(MeuFluxColors.bgTertiary, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                 }
 
                 HStack {
                     Image(systemName: "magnifyingglass")
-                        .foregroundStyle(FinancialColors.textMuted)
+                        .foregroundStyle(MeuFluxColors.textMuted)
                     TextField("Buscar compra...", text: $viewModel.searchText)
                         .textFieldStyle(.plain)
                         .font(.subheadline)
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 8)
-                .background(FinancialColors.bgTertiary, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .background(MeuFluxColors.bgTertiary, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
 
                 if viewModel.filteredLines.isEmpty {
                     Text("Nenhuma compra para o filtro selecionado.")
                         .font(.subheadline)
-                        .foregroundStyle(FinancialColors.textMuted)
+                        .foregroundStyle(MeuFluxColors.textMuted)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 24)
                 } else {
                     ForEach(viewModel.filteredLines) { line in
-                        statementRow(line)
+                        Button {
+                            selectedLine = renamedLine(line)
+                        } label: {
+                            statementRow(line)
+                        }
+                        .buttonStyle(.plain)
                         if line.id != viewModel.filteredLines.last?.id {
                             Divider().opacity(0.35)
                         }
@@ -535,11 +627,11 @@ public struct CreditCardsView: View {
                                 Spacer()
                                 Text("\(Money(amount: cat.value).formatted()) (\(min(100, pct))%)")
                                     .font(.caption)
-                                    .foregroundStyle(FinancialColors.textMuted)
+                                    .foregroundStyle(MeuFluxColors.textMuted)
                             }
                             GeometryReader { geo in
                                 Capsule()
-                                    .fill(FinancialColors.primary.opacity(0.85))
+                                    .fill(MeuFluxColors.primary.opacity(0.85))
                                     .frame(width: geo.size.width * CGFloat(min(100, pct)) / 100, height: 8)
                             }
                             .frame(height: 8)
@@ -551,22 +643,23 @@ public struct CreditCardsView: View {
     }
 
     private func statementRow(_ line: CreditBillLine) -> some View {
-        HStack(alignment: .top, spacing: 12) {
+        let cardName = viewModel.cardDisplayName(for: line)
+        return HStack(alignment: .top, spacing: 12) {
             Image(systemName: line.isPayment ? "checkmark.circle.fill" : "receipt")
-                .foregroundStyle(line.isPayment ? FinancialColors.success : FinancialColors.danger)
+                .foregroundStyle(line.isPayment ? MeuFluxColors.success : MeuFluxColors.danger)
                 .frame(width: 36, height: 36)
                 .background(
-                    (line.isPayment ? FinancialColors.success : FinancialColors.danger).opacity(0.12),
+                    (line.isPayment ? MeuFluxColors.success : MeuFluxColors.danger).opacity(0.12),
                     in: Circle()
                 )
             VStack(alignment: .leading, spacing: 4) {
                 Text(line.description)
                     .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(FinancialColors.textPrimary)
+                    .foregroundStyle(MeuFluxColors.textPrimary)
                     .lineLimit(2)
                 WrappingHStack(spacing: 6, lineSpacing: 4) {
-                    if viewModel.isAllCards, !line.accountName.isEmpty {
-                        StatusBadge(line.accountName, style: .neutral)
+                    if viewModel.isAllCards, !cardName.isEmpty {
+                        StatusBadge(cardName, style: .neutral)
                     }
                     if let category = line.category, !category.isEmpty {
                         StatusBadge(translatedCategory(category), style: line.isPayment ? .success : .neutral)
@@ -577,7 +670,7 @@ public struct CreditCardsView: View {
                     if let date = line.purchaseDate {
                         Text(date.formatted())
                             .font(.system(size: 10, weight: .medium))
-                            .foregroundStyle(FinancialColors.textMuted)
+                            .foregroundStyle(MeuFluxColors.textMuted)
                             .fixedSize()
                     }
                 }
@@ -587,12 +680,12 @@ public struct CreditCardsView: View {
             VStack(alignment: .trailing, spacing: 2) {
                 Text("\(line.isCredit ? "+" : "-") \(line.amount.formatted())")
                     .font(.subheadline.weight(.bold).monospacedDigit())
-                    .foregroundStyle(line.isCredit ? FinancialColors.success : FinancialColors.danger)
+                    .foregroundStyle(line.isCredit ? MeuFluxColors.success : MeuFluxColors.danger)
                 Text(line.statusLabel)
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(
-                        line.isProjected ? FinancialColors.info :
-                            line.isPending ? FinancialColors.warning : FinancialColors.success
+                        line.isProjected ? MeuFluxColors.info :
+                            line.isPending ? MeuFluxColors.warning : MeuFluxColors.success
                     )
             }
         }

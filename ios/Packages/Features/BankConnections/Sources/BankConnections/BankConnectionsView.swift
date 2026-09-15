@@ -1,6 +1,6 @@
 import SwiftUI
-import FinancialDesignSystem
-import FinancialDomain
+import MeuFluxDesignSystem
+import MeuFluxDomain
 
 public struct BankConnectionsView: View {
     @State private var viewModel: BankConnectionsViewModel
@@ -33,7 +33,7 @@ public struct BankConnectionsView: View {
                 content
             }
         }
-        .financialPageTitle("Conexões Bancárias")
+        .meuFluxPageTitle("Conexões Bancárias")
         .refreshable { await viewModel.load(force: true) }
         .task { await viewModel.load() }
         .toolbar {
@@ -85,7 +85,7 @@ public struct BankConnectionsView: View {
             if let error = viewModel.errorMessage {
                 Text(error)
                     .font(.caption)
-                    .foregroundStyle(FinancialColors.danger)
+                    .foregroundStyle(MeuFluxColors.danger)
             }
             ForEach(viewModel.items) { item in
                 VStack(alignment: .leading, spacing: 6) {
@@ -94,12 +94,12 @@ public struct BankConnectionsView: View {
                         Spacer()
                         Text(item.status)
                             .font(.caption)
-                            .foregroundStyle(FinancialColors.textSecondary)
+                            .foregroundStyle(MeuFluxColors.textSecondary)
                     }
                     if let execution = item.executionStatus {
                         Text(execution)
                             .font(.caption2)
-                            .foregroundStyle(FinancialColors.warning)
+                            .foregroundStyle(MeuFluxColors.warning)
                     }
                     HStack {
                         Button("Sincronizar") {

@@ -12,7 +12,7 @@ if (apiKey) {
 }
 
 const SYSTEM_INSTRUCTION = `
-Você é o assistente virtual do FinanceHub. Sua função é analisar a mensagem de texto do usuário sobre finanças e convertê-la estritamente em um objeto JSON contendo a intenção (intent) e os dados extraídos.
+Você é o assistente virtual do MeuFlux. Sua função é analisar a mensagem de texto do usuário sobre finanças e convertê-la estritamente em um objeto JSON contendo a intenção (intent) e os dados extraídos.
 
 Categorias suportadas para despesa: Alimentação, Transporte, Moradia, Lazer, Saúde, Educação, Outros.
 Tipos de transação suportados: DEBIT (para gastos/despesas), CREDIT (para ganhos/receitas).
@@ -55,7 +55,7 @@ Exemplos de entrada e saída:
 - "resumo da semana" ->
   {"intent": "GET_WEEKLY_SUMMARY", "data": {}}
 - "olá, tudo bem?" ->
-  {"intent": "UNKNOWN", "message": "Olá! Eu sou o assistente do FinanceHub. Posso te ajudar com saldo (/saldo), faturas (/faturas), resumo semanal (/resumo) ou cadastrar despesas (ex: 'gastei 50 no mercado'). Como posso ajudar?"}
+  {"intent": "UNKNOWN", "message": "Olá! Eu sou o assistente do MeuFlux. Posso te ajudar com saldo (/saldo), faturas (/faturas), resumo semanal (/resumo) ou cadastrar despesas (ex: 'gastei 50 no mercado'). Como posso ajudar?"}
 `;
 
 /**

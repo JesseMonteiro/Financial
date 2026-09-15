@@ -1,10 +1,12 @@
 import SwiftUI
 import Charts
-import FinancialDesignSystem
-import FinancialDomain
+import MeuFluxDesignSystem
+import MeuFluxDomain
 
 public struct DashboardView: View {
     @State private var viewModel: DashboardViewModel
+    @State private var showAssistant = false
+    @State private var selectedDetail: LineItemDetail?
 
     private let onConnect: (() -> Void)?
     private let onTransactions: (() -> Void)?
@@ -15,6 +17,7 @@ public struct DashboardView: View {
 
     public init(
         loadDashboard: any LoadDashboardUseCase,
+        transactions: (any TransactionsRepository)? = nil,
         onConnect: (() -> Void)? = nil,
         onTransactions: (() -> Void)? = nil,
         onCreditCards: (() -> Void)? = nil,
@@ -22,7 +25,10 @@ public struct DashboardView: View {
         onAgenda: (() -> Void)? = nil,
         onBudget: (() -> Void)? = nil
     ) {
-        _viewModel = State(wrappedValue: DashboardViewModel(loadDashboard: loadDashboard))
+        _viewModel = State(wrappedValue: DashboardViewModel(
+            loadDashboard: loadDashboard,
+            transactions: transactions
+        ))
         self.onConnect = onConnect
         self.onTransactions = onTransactions
         self.onCreditCards = onCreditCards
@@ -56,7 +62,7 @@ public struct DashboardView: View {
                                     .frame(maxWidth: .infinity)
                             }
                             .buttonStyle(.borderedProminent)
-                            .tint(FinancialColors.primary)
+                            .tint(MeuFluxColors.primary)
                         }
                     case .failed(let message):
                         ErrorState(message: message) { Task { await viewModel.load(force: true) } }
@@ -64,10 +70,41 @@ public struct DashboardView: View {
                         loadedContent(snap)
                     }
                 }
-                .financialPageGutter()
+                .meuFluxPageGutter()
             }
         }
-        .financialPageTitle("Início")
+        .meuFluxPageTitle("Início")
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    showAssistant = true
+                } label: {
+                    Label("Assistente", systemImage: "sparkles")
+                }
+            }
+        }
+        .sheet(isPresented: $showAssistant) {
+            NavigationStack {
+                MeuFluxAssistantView()
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Fechar") { showAssistant = false }
+                        }
+                    }
+            }
+        }
+        .sheet(item: $selectedDetail) { item in
+            LineItemDetailSheet(
+                item: item,
+                categoryOptions: viewModel.categoryOptions,
+                onChangeCategory: { option in
+                    Task {
+                        await viewModel.changeCategory(id: item.sourceId, option: option)
+                        selectedDetail = item.applyingCategory(option: option)
+                    }
+                }
+            )
+        }
         .refreshable { await viewModel.load(force: true) }
         .task { await viewModel.load() }
     }
@@ -77,11 +114,12 @@ public struct DashboardView: View {
     @ViewBuilder
     private func loadedContent(_ snap: DashboardSnapshot) -> some View {
         header(displayName: snap.displayName)
+        siriHint
 
         if !CalculationVersion.matches(snap.calculationVersion) {
             Text("Versão de cálculo desatualizada (\(snap.calculationVersion ?? "—")). Atualize o app.")
                 .font(.caption)
-                .foregroundStyle(FinancialColors.danger)
+                .foregroundStyle(MeuFluxColors.danger)
         }
 
         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
@@ -89,14 +127,14 @@ public struct DashboardView: View {
                 title: "Patrimônio Líquido",
                 value: snap.summary.netWorth.formatted(),
                 subtitle: "Ativos \(snap.summary.totalAssets.formatted()) · Dívidas -\(snap.summary.creditDebt.formatted())",
-                valueColor: snap.summary.netWorth.amount >= 0 ? FinancialColors.textPrimary : FinancialColors.danger,
+                valueColor: snap.summary.netWorth.amount >= 0 ? MeuFluxColors.textPrimary : MeuFluxColors.danger,
                 icon: "sparkles",
-                iconTint: FinancialColors.primary,
-                iconBg: FinancialColors.primary.opacity(0.12)
+                iconTint: MeuFluxColors.primary,
+                iconBg: MeuFluxColors.primary.opacity(0.12)
             ) {
                 SparklineChart(
                     values: snap.netWorthSeries.map(\.value),
-                    color: FinancialColors.primary
+                    color: MeuFluxColors.primary
                 )
             }
 
@@ -104,14 +142,14 @@ public struct DashboardView: View {
                 title: "Saldo em Contas",
                 value: snap.summary.bankBalance.formatted(),
                 subtitle: bankSubtitle(snap),
-                valueColor: FinancialColors.textPrimary,
+                valueColor: MeuFluxColors.textPrimary,
                 icon: "wallet.pass.fill",
-                iconTint: FinancialColors.success,
-                iconBg: FinancialColors.success.opacity(0.12)
+                iconTint: MeuFluxColors.success,
+                iconBg: MeuFluxColors.success.opacity(0.12)
             ) {
                 SparklineChart(
                     values: snap.incomeExpenseSeries.map(\.net),
-                    color: FinancialColors.success
+                    color: MeuFluxColors.success
                 )
             }
 
@@ -119,14 +157,14 @@ public struct DashboardView: View {
                 title: "Taxa de Poupança",
                 value: savingsRateText(snap.cashflow.savingsRate),
                 subtitle: "Líquido do mês: \(snap.cashflow.net.formatted())",
-                valueColor: (snap.cashflow.savingsRate ?? 0) >= 0 ? FinancialColors.success : FinancialColors.danger,
+                valueColor: (snap.cashflow.savingsRate ?? 0) >= 0 ? MeuFluxColors.success : MeuFluxColors.danger,
                 icon: "percent",
-                iconTint: FinancialColors.info,
-                iconBg: FinancialColors.info.opacity(0.12)
+                iconTint: MeuFluxColors.info,
+                iconBg: MeuFluxColors.info.opacity(0.12)
             ) {
                 SparklineChart(
                     values: snap.incomeExpenseSeries.map(\.net),
-                    color: FinancialColors.info
+                    color: MeuFluxColors.info
                 )
             }
 
@@ -134,14 +172,14 @@ public struct DashboardView: View {
                 title: "Gastos vs Mês Ant.",
                 value: momText(snap.monthOverMonth.expenseDeltaPct),
                 subtitle: "Este mês \(snap.cashflow.expense.formatted()) · ant. \(snap.monthOverMonth.previousExpense.formatted())",
-                valueColor: snap.monthOverMonth.expenseDeltaPct > 0 ? FinancialColors.danger : FinancialColors.success,
+                valueColor: snap.monthOverMonth.expenseDeltaPct > 0 ? MeuFluxColors.danger : MeuFluxColors.success,
                 icon: "chart.bar.fill",
-                iconTint: FinancialColors.danger,
-                iconBg: FinancialColors.danger.opacity(0.12)
+                iconTint: MeuFluxColors.danger,
+                iconBg: MeuFluxColors.danger.opacity(0.12)
             ) {
                 SparklineChart(
                     values: snap.incomeExpenseSeries.map(\.despesa),
-                    color: FinancialColors.danger
+                    color: MeuFluxColors.danger
                 )
             }
         }
@@ -159,12 +197,12 @@ public struct DashboardView: View {
                             x: .value("Mês", point.month),
                             y: .value("Patrimônio", point.value)
                         )
-                        .foregroundStyle(FinancialColors.primary.opacity(0.18))
+                        .foregroundStyle(MeuFluxColors.primary.opacity(0.18))
                         LineMark(
                             x: .value("Mês", point.month),
                             y: .value("Patrimônio", point.value)
                         )
-                        .foregroundStyle(FinancialColors.primary)
+                        .foregroundStyle(MeuFluxColors.primary)
                         .lineStyle(StrokeStyle(lineWidth: 2))
                     }
                     .frame(height: 180)
@@ -173,14 +211,14 @@ public struct DashboardView: View {
                             AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5, dash: [4]))
                             AxisValueLabel()
                                 .font(.caption2)
-                                .foregroundStyle(FinancialColors.textMuted)
+                                .foregroundStyle(MeuFluxColors.textMuted)
                         }
                     }
                     .chartXAxis {
                         AxisMarks { _ in
                             AxisValueLabel()
                                 .font(.caption2)
-                                .foregroundStyle(FinancialColors.textMuted)
+                                .foregroundStyle(MeuFluxColors.textMuted)
                         }
                     }
                 }
@@ -196,7 +234,7 @@ public struct DashboardView: View {
                             x: .value("Valor", cat.value),
                             y: .value("Categoria", cat.name)
                         )
-                        .foregroundStyle(color(from: cat.colorHex) ?? FinancialColors.primary)
+                        .foregroundStyle(color(from: cat.colorHex) ?? MeuFluxColors.primary)
                     }
                     .frame(height: CGFloat(max(140, snap.categoryExpenses.count * 28)))
                     .chartXAxis {
@@ -204,7 +242,14 @@ public struct DashboardView: View {
                             AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5, dash: [4]))
                             AxisValueLabel()
                                 .font(.caption2)
-                                .foregroundStyle(FinancialColors.textMuted)
+                                .foregroundStyle(MeuFluxColors.textMuted)
+                        }
+                    }
+                    .chartYAxis {
+                        AxisMarks { _ in
+                            AxisValueLabel()
+                                .font(.caption2)
+                                .foregroundStyle(MeuFluxColors.textSecondary)
                         }
                     }
                 }
@@ -221,19 +266,34 @@ public struct DashboardView: View {
                                 x: .value("Mês", point.month),
                                 y: .value("Receita", point.receita)
                             )
-                            .foregroundStyle(FinancialColors.success)
+                            .foregroundStyle(MeuFluxColors.success)
                             .position(by: .value("Tipo", "Receita"))
 
                             BarMark(
                                 x: .value("Mês", point.month),
                                 y: .value("Despesa", point.despesa)
                             )
-                            .foregroundStyle(FinancialColors.danger)
+                            .foregroundStyle(MeuFluxColors.danger)
                             .position(by: .value("Tipo", "Despesa"))
                         }
                     }
                     .frame(height: 180)
                     .chartLegend(.hidden)
+                    .chartXAxis {
+                        AxisMarks { _ in
+                            AxisValueLabel()
+                                .font(.caption2)
+                                .foregroundStyle(MeuFluxColors.textMuted)
+                        }
+                    }
+                    .chartYAxis {
+                        AxisMarks { _ in
+                            AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5, dash: [4]))
+                            AxisValueLabel()
+                                .font(.caption2)
+                                .foregroundStyle(MeuFluxColors.textMuted)
+                        }
+                    }
                 }
             }
         }
@@ -254,10 +314,10 @@ public struct DashboardView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Olá, \(displayName)!")
                     .font(.title2.weight(.bold))
-                    .foregroundStyle(FinancialColors.textPrimary)
+                    .foregroundStyle(MeuFluxColors.textPrimary)
                 Text("Visão consolidada das suas contas sincronizadas via Open Finance.")
                     .font(.subheadline)
-                    .foregroundStyle(FinancialColors.textMuted)
+                    .foregroundStyle(MeuFluxColors.textMuted)
             }
             Spacer(minLength: 8)
             if onConnect != nil {
@@ -268,10 +328,19 @@ public struct DashboardView: View {
                         .font(.caption.weight(.semibold))
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(FinancialColors.primary)
+                .tint(MeuFluxColors.primary)
                 .controlSize(.small)
             }
         }
+    }
+
+    private var siriHint: some View {
+        let name = Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String
+            ?? Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String
+            ?? "MeuFlux"
+        return Label("Siri: “Qual meu saldo no \(name)?”", systemImage: "mic.fill")
+            .font(.caption)
+            .foregroundStyle(MeuFluxColors.textMuted)
     }
 
     private func insightsAndRecap(_ snap: DashboardSnapshot) -> some View {
@@ -281,19 +350,26 @@ public struct DashboardView: View {
                     VStack(alignment: .leading, spacing: 10) {
                         SectionHeader("Insights", subtitle: "O que mudou nas suas finanças")
                         ForEach(snap.insights) { insight in
-                            Text(insight.text)
-                                .font(.subheadline)
-                                .foregroundStyle(FinancialColors.textPrimary)
-                                .padding(.vertical, 10)
-                                .padding(.horizontal, 12)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .background(FinancialColors.bgTertiary)
-                                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                                .overlay(alignment: .leading) {
-                                    RoundedRectangle(cornerRadius: 2)
-                                        .fill(insightBorder(insight.type))
-                                        .frame(width: 3)
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text(insight.text)
+                                    .font(.subheadline)
+                                    .foregroundStyle(MeuFluxColors.textPrimary)
+                                if insight.generatedOnDevice {
+                                    Text("Gerado no iPhone")
+                                        .font(.caption2.weight(.semibold))
+                                        .foregroundStyle(MeuFluxColors.textMuted)
                                 }
+                            }
+                            .padding(.vertical, 10)
+                            .padding(.horizontal, 12)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(MeuFluxColors.bgTertiary)
+                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            .overlay(alignment: .leading) {
+                                RoundedRectangle(cornerRadius: 2)
+                                    .fill(insightBorder(insight.type))
+                                    .frame(width: 3)
+                            }
                         }
                     }
                 }
@@ -304,31 +380,31 @@ public struct DashboardView: View {
                     SectionHeader("Recap da Semana", subtitle: "Últimos 7 dias")
                     Text("GASTOS")
                         .font(.caption2.weight(.semibold))
-                        .foregroundStyle(FinancialColors.textMuted)
+                        .foregroundStyle(MeuFluxColors.textMuted)
                     Text(snap.weeklyRecap.total.formatted())
                         .font(.title3.weight(.bold))
-                        .foregroundStyle(FinancialColors.textPrimary)
+                        .foregroundStyle(MeuFluxColors.textPrimary)
                     Text(momText(snap.weeklyRecap.deltaPct) + " vs semana anterior")
                         .font(.caption)
                         .foregroundStyle(
-                            snap.weeklyRecap.deltaPct > 0 ? FinancialColors.danger : FinancialColors.success
+                            snap.weeklyRecap.deltaPct > 0 ? MeuFluxColors.danger : MeuFluxColors.success
                         )
                     if let name = snap.weeklyRecap.topCategoryName,
                        let value = snap.weeklyRecap.topCategoryValue {
                         Text("Maior categoria: \(name) · \(value.formatted())")
                             .font(.subheadline)
-                            .foregroundStyle(FinancialColors.textSecondary)
+                            .foregroundStyle(MeuFluxColors.textSecondary)
                     }
                     Text("\(snap.summary.creditCount) cartão(ões) · fatura aberta \(snap.summary.openBillsTotal.formatted())")
                         .font(.caption)
-                        .foregroundStyle(FinancialColors.textMuted)
+                        .foregroundStyle(MeuFluxColors.textMuted)
                     if onAgenda != nil {
                         Button {
                             onAgenda?()
                         } label: {
                             Text("Ver agenda de contas →")
                                 .font(.caption.weight(.semibold))
-                                .foregroundStyle(FinancialColors.primary)
+                                .foregroundStyle(MeuFluxColors.primary)
                         }
                         .buttonStyle(.plain)
                     }
@@ -352,7 +428,7 @@ public struct DashboardView: View {
                         } label: {
                             Text("Ver todas →")
                                 .font(.caption.weight(.semibold))
-                                .foregroundStyle(FinancialColors.primary)
+                                .foregroundStyle(MeuFluxColors.primary)
                         }
                         .buttonStyle(.plain)
                     }
@@ -361,20 +437,21 @@ public struct DashboardView: View {
                 if snap.recentTransactions.isEmpty {
                     Text("Nenhuma transação recente encontrada.")
                         .font(.subheadline)
-                        .foregroundStyle(FinancialColors.textMuted)
+                        .foregroundStyle(MeuFluxColors.textMuted)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 24)
                 } else {
                     ForEach(snap.recentTransactions) { tx in
                         TransactionRow(
                             title: tx.description,
-                            subtitle: "\(tx.category) • \(tx.dateRelative)",
+                            subtitle: "\(LineItemDetail.translatedCategory(tx.category)) • \(tx.dateRelative)",
                             amountText: tx.isCredit
                                 ? "+ \(tx.amount.formatted())"
                                 : "- \(tx.amount.formatted())",
                             isCredit: tx.isCredit,
                             badge: nil,
-                            isPending: tx.isPending
+                            isPending: tx.isPending,
+                            action: { selectedDetail = LineItemDetail.from(dashboard: tx) }
                         )
                         if tx.id != snap.recentTransactions.last?.id {
                             Divider().opacity(0.35)
@@ -397,7 +474,7 @@ public struct DashboardView: View {
                         } label: {
                             Text("Gerenciar →")
                                 .font(.caption.weight(.semibold))
-                                .foregroundStyle(FinancialColors.primary)
+                                .foregroundStyle(MeuFluxColors.primary)
                         }
                         .buttonStyle(.plain)
                     }
@@ -408,28 +485,28 @@ public struct DashboardView: View {
                         HStack {
                             Text(budget.category)
                                 .font(.caption.weight(.bold))
-                                .foregroundStyle(FinancialColors.textPrimary)
+                                .foregroundStyle(MeuFluxColors.textPrimary)
                             Spacer()
                             Text("\(budget.spent.formatted()) / \(budget.limit.formatted())")
                                 .font(.caption)
-                                .foregroundStyle(FinancialColors.textMuted)
+                                .foregroundStyle(MeuFluxColors.textMuted)
                         }
+                        Text("\(budget.percent)% da verba liberada")
+                            .font(.caption2)
+                            .foregroundStyle(MeuFluxColors.textMuted)
                         GeometryReader { geo in
                             ZStack(alignment: .leading) {
                                 Capsule()
-                                    .fill(FinancialColors.bgTertiary)
+                                    .fill(MeuFluxColors.bgTertiary)
                                 Capsule()
-                                    .fill(color(from: budget.colorHex) ?? FinancialColors.primary)
+                                    .fill(color(from: budget.colorHex) ?? MeuFluxColors.primary)
                                     .frame(width: geo.size.width * CGFloat(budget.percent) / 100)
                             }
                         }
                         .frame(height: 8)
-                        Text("\(budget.percent)% do teto utilizado")
-                            .font(.caption2)
-                            .foregroundStyle(FinancialColors.textMuted)
                     }
                     .padding(10)
-                    .background(FinancialColors.bgTertiary)
+                    .background(MeuFluxColors.bgTertiary)
                     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 }
             }
@@ -443,21 +520,21 @@ public struct DashboardView: View {
                     HStack {
                         Text("INVESTIMENTOS")
                             .font(.caption2.weight(.semibold))
-                            .foregroundStyle(FinancialColors.textMuted)
+                            .foregroundStyle(MeuFluxColors.textMuted)
                         Spacer()
                         Image(systemName: "chart.line.uptrend.xyaxis")
-                            .foregroundStyle(FinancialColors.info)
+                            .foregroundStyle(MeuFluxColors.info)
                     }
                     Text(snap.summary.investmentTotal.formatted())
                         .font(.title3.weight(.bold))
-                        .foregroundStyle(FinancialColors.textPrimary)
+                        .foregroundStyle(MeuFluxColors.textPrimary)
                     if onInvestments != nil {
                         Button {
                             onInvestments?()
                         } label: {
                             Text("Ver carteira →")
                                 .font(.caption.weight(.semibold))
-                                .foregroundStyle(FinancialColors.primary)
+                                .foregroundStyle(MeuFluxColors.primary)
                         }
                         .buttonStyle(.plain)
                     }
@@ -469,21 +546,21 @@ public struct DashboardView: View {
                     HStack {
                         Text("SALDO DEVEDOR")
                             .font(.caption2.weight(.semibold))
-                            .foregroundStyle(FinancialColors.textMuted)
+                            .foregroundStyle(MeuFluxColors.textMuted)
                         Spacer()
                         Image(systemName: "creditcard.fill")
-                            .foregroundStyle(FinancialColors.danger)
+                            .foregroundStyle(MeuFluxColors.danger)
                     }
                     Text(snap.summary.creditDebt.formatted())
                         .font(.title3.weight(.bold))
-                        .foregroundStyle(FinancialColors.danger)
+                        .foregroundStyle(MeuFluxColors.danger)
                     if onCreditCards != nil {
                         Button {
                             onCreditCards?()
                         } label: {
                             Text("Ver cartões →")
                                 .font(.caption.weight(.semibold))
-                                .foregroundStyle(FinancialColors.primary)
+                                .foregroundStyle(MeuFluxColors.primary)
                         }
                         .buttonStyle(.plain)
                     }
@@ -509,7 +586,7 @@ public struct DashboardView: View {
                 HStack(alignment: .top) {
                     Text(title.uppercased())
                         .font(.caption2.weight(.semibold))
-                        .foregroundStyle(FinancialColors.textMuted)
+                        .foregroundStyle(MeuFluxColors.textMuted)
                         .lineLimit(2)
                     Spacer(minLength: 4)
                     Image(systemName: icon)
@@ -526,7 +603,7 @@ public struct DashboardView: View {
                     .lineLimit(1)
                 Text(subtitle)
                     .font(.caption2)
-                    .foregroundStyle(FinancialColors.textMuted)
+                    .foregroundStyle(MeuFluxColors.textMuted)
                     .lineLimit(2)
                 chart()
                     .frame(height: 36)
@@ -555,9 +632,9 @@ public struct DashboardView: View {
 
     private func insightBorder(_ type: String) -> Color {
         switch type {
-        case "positive": return FinancialColors.success
-        case "warning": return FinancialColors.danger
-        default: return FinancialColors.info
+        case "positive": return MeuFluxColors.success
+        case "warning": return MeuFluxColors.danger
+        default: return MeuFluxColors.info
         }
     }
 

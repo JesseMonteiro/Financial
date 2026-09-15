@@ -59,7 +59,7 @@ export function Header({ onOpenMore, isMobile = false }) {
 
       {isMobile && (
         <div style={{ flex: 1, minWidth: 0 }}>
-          <strong style={{ fontSize: 'var(--font-size-base)', fontWeight: 700 }}>FinanceHub</strong>
+          <strong style={{ fontSize: 'var(--font-size-base)', fontWeight: 700 }}>MeuFlux</strong>
         </div>
       )}
 

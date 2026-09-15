@@ -1,6 +1,6 @@
 import SwiftUI
-import FinancialDesignSystem
-import FinancialDomain
+import MeuFluxDesignSystem
+import MeuFluxDomain
 
 public struct BudgetView: View {
     @State private var viewModel: BudgetViewModel
@@ -8,9 +8,14 @@ public struct BudgetView: View {
 
     public init(
         repository: any BudgetRepository,
-        transactions: (any TransactionsRepository)? = nil
+        transactions: (any TransactionsRepository)? = nil,
+        purchaseCategories: (any PurchaseCategoriesRepository)? = nil
     ) {
-        _viewModel = State(initialValue: BudgetViewModel(repository: repository, transactions: transactions))
+        _viewModel = State(initialValue: BudgetViewModel(
+            repository: repository,
+            transactions: transactions,
+            purchaseCategories: purchaseCategories
+        ))
     }
 
     public init() {
@@ -25,10 +30,10 @@ public struct BudgetView: View {
             case .empty:
                 EmptyState(
                     title: "Sem orçamento",
-                    message: "Defina limites por categoria para acompanhar o mês.",
+                    message: "Defina uma meta por categoria (diária, semanal, quinzenal ou mensal).",
                     systemImage: "chart.pie",
-                    actionTitle: "Adicionar categoria",
-                    action: { showEditor = true }
+                    actionTitle: "Adicionar meta",
+                    action: { openCreate() }
                 )
             case .failed(let message):
                 ErrorState(message: message) { Task { await viewModel.retry() } }
@@ -36,36 +41,81 @@ public struct BudgetView: View {
                 content
             }
         }
-        .financialPageTitle("Orçamento")
+        .meuFluxPageTitle("Orçamento")
         .refreshable { await viewModel.load(force: true) }
         .task(id: viewModel.selectedMonth.key) { await viewModel.load() }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button {
-                    showEditor = true
+                    openCreate()
                 } label: {
                     Image(systemName: "plus")
                 }
+                .accessibilityLabel("Adicionar meta")
             }
         }
-        .sheet(isPresented: $showEditor) {
-            NavigationStack {
-                Form {
-                    TextField("Categoria", text: $viewModel.draftCategory)
-                    TextField("Limite (R$)", text: $viewModel.draftLimit)
-                        #if os(iOS)
-                        .keyboardType(.decimalPad)
-                        #endif
-                }
-                .navigationTitle("Nova categoria")
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("Cancelar") { showEditor = false }
+        .sheet(isPresented: $showEditor, onDismiss: { viewModel.cancelEditor() }) {
+            editorSheet
+        }
+        .alert(
+            "Orçamento",
+            isPresented: Binding(
+                get: { viewModel.errorMessage != nil },
+                set: { if !$0 { viewModel.errorMessage = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) { viewModel.errorMessage = nil }
+        } message: {
+            Text(viewModel.errorMessage ?? "")
+        }
+    }
+
+    private var editorSheet: some View {
+        NavigationStack {
+            Form {
+                if viewModel.isEditing {
+                    LabeledContent("Categoria", value: viewModel.draftCategory)
+                } else {
+                    Picker("Categoria", selection: $viewModel.draftCategory) {
+                        ForEach(
+                            viewModel.availableCategoriesForCreate.isEmpty
+                                ? viewModel.categoryPickerLabels
+                                : viewModel.availableCategoriesForCreate,
+                            id: \.self
+                        ) { label in
+                            Text(label).tag(label)
+                        }
                     }
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("Salvar") {
-                            Task {
-                                await viewModel.saveDraft()
+                }
+                Picker("Período", selection: $viewModel.draftPeriod) {
+                    ForEach(BudgetPeriod.allCases) { period in
+                        Text(period.title).tag(period)
+                    }
+                }
+                TextField("Valor da meta (R$)", text: $viewModel.draftLimit)
+                    #if os(iOS)
+                    .keyboardType(.decimalPad)
+                    #endif
+                Text("A verba diária, semanal e quinzenal acumula no mês e zera na virada. Compras de VA entram em supermercado e de VR em restaurantes.")
+                    .font(.caption)
+                    .foregroundStyle(MeuFluxColors.textMuted)
+            }
+            .navigationTitle(viewModel.isEditing ? "Editar meta" : "Nova meta")
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancelar") {
+                        viewModel.cancelEditor()
+                        showEditor = false
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Salvar") {
+                        Task {
+                            await viewModel.saveDraft()
+                            if viewModel.errorMessage == nil {
                                 showEditor = false
                             }
                         }
@@ -76,33 +126,319 @@ public struct BudgetView: View {
     }
 
     private var content: some View {
-        List {
-            Section {
-                LabeledContent("Gasto", value: viewModel.spentTotal.formatted())
-                LabeledContent("Limite", value: viewModel.limitTotal.formatted())
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                monthStrip
+                kpiGrid
+                categoriesSection
             }
-            Section("Categorias") {
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+        }
+    }
+
+    private var monthStrip: some View {
+        HStack {
+            Button {
+                viewModel.goToPreviousMonth()
+            } label: {
+                Image(systemName: "chevron.left")
+                    .font(.body.weight(.semibold))
+                    .frame(width: 36, height: 36)
+            }
+            .buttonStyle(.plain)
+
+            Spacer()
+
+            Text(viewModel.selectedMonth.displayName())
+                .font(.headline)
+
+            Spacer()
+
+            Button {
+                viewModel.goToNextMonth()
+            } label: {
+                Image(systemName: "chevron.right")
+                    .font(.body.weight(.semibold))
+                    .frame(width: 36, height: 36)
+            }
+            .buttonStyle(.plain)
+            .disabled(!viewModel.canGoNext)
+            .opacity(viewModel.canGoNext ? 1 : 0.35)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(MeuFluxColors.bgTertiary, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    private var kpiGrid: some View {
+        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+            MetricCard(
+                title: "Gasto real no mês",
+                value: viewModel.spentTotal.formatted(),
+                subtitle: "\(viewModel.limits.count) categorias",
+                tint: viewModel.isOverTotalAllowance ? MeuFluxColors.danger : MeuFluxColors.primary,
+                systemImage: "cart",
+                leadingAccent: true
+            )
+            MetricCard(
+                title: "Verba liberada",
+                value: viewModel.limitTotal.formatted(),
+                subtitle: "Teto \(viewModel.monthCapTotal.formatted()) · \(viewModel.categoriesWithBudget) metas",
+                tint: MeuFluxColors.info,
+                systemImage: "banknote",
+                leadingAccent: true
+            )
+            MetricCard(
+                title: "Saldo do orçamento",
+                value: viewModel.limitTotal.amount > 0
+                    ? viewModel.budgetBalance.formatted()
+                    : "—",
+                subtitle: viewModel.limitTotal.amount > 0
+                    ? (viewModel.isOverTotalAllowance ? "Verba excedida" : "Dentro da verba acumulada")
+                    : "Defina metas nas categorias",
+                tint: viewModel.limitTotal.amount > 0
+                    ? (viewModel.isOverTotalAllowance ? MeuFluxColors.danger : MeuFluxColors.success)
+                    : MeuFluxColors.textMuted,
+                systemImage: "scale.3d",
+                leadingAccent: true
+            )
+            MetricCard(
+                title: "Categorias estouradas",
+                value: "\(viewModel.overBudgetCount)",
+                subtitle: "de \(viewModel.categoriesWithBudget) com limite",
+                tint: viewModel.overBudgetCount > 0 ? MeuFluxColors.danger : MeuFluxColors.success,
+                systemImage: "exclamationmark.triangle",
+                leadingAccent: true
+            )
+        }
+    }
+
+    private var categoriesSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Orçamento por categoria")
+                        .font(.headline)
+                    Text("Gasto contra a verba já liberada no mês.")
+                        .font(.caption)
+                        .foregroundStyle(MeuFluxColors.textMuted)
+                }
+                Spacer()
+                Button {
+                    openCreate()
+                } label: {
+                    Label("Meta", systemImage: "plus")
+                        .font(.caption.weight(.semibold))
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+            }
+
+            if viewModel.limits.isEmpty {
+                Text("Nenhuma transação encontrada para este mês.")
+                    .font(.subheadline)
+                    .foregroundStyle(MeuFluxColors.textMuted)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 24)
+            } else {
                 ForEach(viewModel.limits) { limit in
-                    VStack(alignment: .leading, spacing: 6) {
-                        HStack {
-                            Text(limit.category)
-                            Spacer()
-                            Text("\(limit.spent.formatted()) / \(limit.limit.formatted())")
-                                .font(.caption)
-                                .foregroundStyle(FinancialColors.textSecondary)
-                        }
-                        ProgressView(value: NSDecimalNumber(decimal: min(1, max(0, limit.utilization))).doubleValue)
-                    }
-                    .swipeActions {
-                        Button(role: .destructive) {
-                            Task { await viewModel.delete(limit) }
-                        } label: {
-                            Label("Excluir", systemImage: "trash")
-                        }
+                    categoryRow(limit)
+                }
+            }
+
+            if viewModel.categoriesWithBudget == 0, !viewModel.limits.isEmpty {
+                GlassCard {
+                    HStack(alignment: .top, spacing: 10) {
+                        Image(systemName: "info.circle")
+                            .foregroundStyle(MeuFluxColors.info)
+                        Text("Você ainda não definiu metas. Toque em Editar em qualquer categoria ou use + Meta. A verba diária, semanal e quinzenal acumula no mês e zera na virada.")
+                            .font(.caption)
+                            .foregroundStyle(MeuFluxColors.textMuted)
                     }
                 }
             }
         }
+    }
+
+    @ViewBuilder
+    private func categoryRow(_ limit: BudgetLimit) -> some View {
+        let percent = utilizationPercent(limit)
+        let isOver = limit.hasLimit && limit.spent.amount > limit.limit.amount
+        let isNear = limit.hasLimit && !isOver && percent >= 75
+        let barColor: Color = isOver
+            ? MeuFluxColors.danger
+            : (isNear ? MeuFluxColors.warning : MeuFluxColors.success)
+
+        GlassCard {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .top, spacing: 8) {
+                    Circle()
+                        .fill(categoryTint(limit.category))
+                        .frame(width: 10, height: 10)
+                        .padding(.top, 5)
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack(alignment: .firstTextBaseline) {
+                            Text(limit.category)
+                                .font(.subheadline.weight(.semibold))
+                                .lineLimit(2)
+                            Spacer(minLength: 8)
+                            HStack(spacing: 2) {
+                                Text(limit.spent.formatted())
+                                    .font(.subheadline.weight(.bold).monospacedDigit())
+                                    .foregroundStyle(isOver ? MeuFluxColors.danger : MeuFluxColors.textPrimary)
+                                if limit.hasLimit {
+                                    Text("/ \(limit.limit.formatted())")
+                                        .font(.caption)
+                                        .foregroundStyle(MeuFluxColors.textMuted)
+                                }
+                            }
+                        }
+
+                        WrappingHStack(spacing: 6, lineSpacing: 4) {
+                            if isOver {
+                                StatusBadge("Estourado", style: .danger)
+                            } else if isNear {
+                                StatusBadge("Atenção", style: .warning)
+                            }
+                            if limit.hasLimit {
+                                StatusBadge(
+                                    "\(limit.periodAmount.formatted())\(limit.period.unitLabel)",
+                                    style: .neutral
+                                )
+                            } else {
+                                StatusBadge("sem meta", style: .neutral)
+                            }
+                        }
+                    }
+                }
+
+                if limit.hasLimit, limit.limit.amount > 0 {
+                    BudgetProgressBar(percent: min(100, percent), color: barColor)
+                        .accessibilityLabel("\(percent) por cento da verba liberada")
+
+                    Text(progressCaption(limit: limit, percent: percent, isOver: isOver))
+                        .font(.caption2)
+                        .foregroundStyle(MeuFluxColors.textMuted)
+                } else if viewModel.spentTotal.amount > 0 {
+                    let share = NSDecimalNumber(
+                        decimal: min(1, max(0, limit.spent.amount / viewModel.spentTotal.amount))
+                    ).doubleValue
+                    BudgetProgressBar(percent: Int((share * 100).rounded()), color: categoryTint(limit.category))
+                    Text("\(Int((share * 100).rounded()))% do total gasto no mês · defina uma meta")
+                        .font(.caption2)
+                        .foregroundStyle(MeuFluxColors.textMuted)
+                }
+
+                if limit.spentMeal.amount > 0 {
+                    Text("\(limit.spentBank.formatted()) banco/cartão · \(limit.spentMeal.formatted()) VA/VR")
+                        .font(.caption2)
+                        .foregroundStyle(MeuFluxColors.textMuted)
+                }
+
+                HStack(spacing: 12) {
+                    Button {
+                        openEdit(limit)
+                    } label: {
+                        Label(
+                            limit.hasLimit ? "Editar" : "Definir meta",
+                            systemImage: "pencil"
+                        )
+                        .font(.caption.weight(.semibold))
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+
+                    if limit.hasLimit {
+                        Button(role: .destructive) {
+                            Task { await viewModel.delete(limit) }
+                        } label: {
+                            Label("Excluir", systemImage: "trash")
+                                .font(.caption.weight(.semibold))
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                    }
+
+                    Spacer(minLength: 0)
+                }
+            }
+        }
+        .contextMenu {
+            Button {
+                openEdit(limit)
+            } label: {
+                Label(limit.hasLimit ? "Editar meta" : "Definir meta", systemImage: "pencil")
+            }
+            if limit.hasLimit {
+                Button(role: .destructive) {
+                    Task { await viewModel.delete(limit) }
+                } label: {
+                    Label("Excluir meta", systemImage: "trash")
+                }
+            }
+        }
+    }
+
+    private func openCreate() {
+        viewModel.beginCreate()
+        showEditor = true
+    }
+
+    private func openEdit(_ limit: BudgetLimit) {
+        viewModel.beginSetLimit(limit)
+        showEditor = true
+    }
+
+    private func utilizationPercent(_ limit: BudgetLimit) -> Int {
+        guard limit.hasLimit, limit.limit.amount > 0 else { return 0 }
+        let raw = NSDecimalNumber(decimal: limit.spent.amount / limit.limit.amount).doubleValue
+        return Int(min(150, max(0, (raw * 100).rounded())))
+    }
+
+    private func progressCaption(limit: BudgetLimit, percent: Int, isOver: Bool) -> String {
+        let period = limit.period.progressLabel(index: limit.periodIndex, count: limit.periodCount)
+        if isOver {
+            let excess = Money(amount: limit.spent.amount - limit.limit.amount)
+            return "\(period) · \(percent)% da verba liberada · Excedeu em \(excess.formatted())"
+        }
+        let remain = Money(amount: max(0, limit.limit.amount - limit.spent.amount))
+        return "\(period) · \(percent)% da verba liberada · Restam \(remain.formatted())"
+    }
+
+    private func categoryTint(_ category: String) -> Color {
+        let palette: [Color] = [
+            MeuFluxColors.primary,
+            MeuFluxColors.info,
+            MeuFluxColors.success,
+            MeuFluxColors.warning,
+            MeuFluxColors.danger,
+        ]
+        let hash = abs(category.hashValue)
+        return palette[hash % palette.count]
+    }
+}
+
+private struct BudgetProgressBar: View {
+    let percent: Int
+    let color: Color
+
+    private var fraction: CGFloat {
+        CGFloat(min(100, max(0, percent))) / 100
+    }
+
+    var body: some View {
+        GeometryReader { geometry in
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(MeuFluxColors.border.opacity(0.65))
+                Capsule()
+                    .fill(color)
+                    .frame(width: max(0, geometry.size.width * fraction))
+            }
+        }
+        .frame(height: 9)
     }
 }
 

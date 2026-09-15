@@ -118,6 +118,23 @@ export const useCreditDataStore = create((set, get) => ({
     return { transactions, bills };
   },
 
+  updateTransactionCategory: (id, categoryId, category) => {
+    if (!id) return;
+    set((state) => {
+      const transactionsByAccount = { ...state.transactionsByAccount };
+      let changed = false;
+      for (const [accountId, txs] of Object.entries(transactionsByAccount)) {
+        const index = (txs || []).findIndex((tx) => tx.id === id);
+        if (index === -1) continue;
+        const next = txs.slice();
+        next[index] = { ...next[index], categoryId, category: category || next[index].category };
+        transactionsByAccount[accountId] = next;
+        changed = true;
+      }
+      return changed ? { transactionsByAccount } : state;
+    });
+  },
+
   invalidateAccounts: (accountIds = []) => {
     const ids = [...new Set((accountIds || []).filter(Boolean))];
     if (!ids.length) return;

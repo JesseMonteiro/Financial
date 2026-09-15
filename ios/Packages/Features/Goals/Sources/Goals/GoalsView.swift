@@ -1,6 +1,6 @@
 import SwiftUI
-import FinancialDesignSystem
-import FinancialDomain
+import MeuFluxDesignSystem
+import MeuFluxDomain
 
 public struct GoalsView: View {
     @State private var viewModel: GoalsViewModel
@@ -33,7 +33,7 @@ public struct GoalsView: View {
                 content
             }
         }
-        .financialPageTitle("Metas")
+        .meuFluxPageTitle("Metas")
         .refreshable { await viewModel.load(force: true) }
         .task { await viewModel.load() }
         .toolbar {
@@ -85,7 +85,7 @@ public struct GoalsView: View {
                         }
                     }
                     .font(.caption)
-                    .foregroundStyle(FinancialColors.textSecondary)
+                    .foregroundStyle(MeuFluxColors.textSecondary)
                 }
                 .swipeActions {
                     Button(role: .destructive) {

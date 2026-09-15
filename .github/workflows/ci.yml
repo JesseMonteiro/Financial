@@ -51,3 +51,4 @@ jobs:
           node-version: 22
       - run: node scripts/validate-credit-fixtures.mjs
       - run: node --experimental-strip-types scripts/run-credit-bill-parity.mjs
+      - run: node scripts/run-budget-period.mjs

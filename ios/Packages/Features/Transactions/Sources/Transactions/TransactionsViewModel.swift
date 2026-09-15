@@ -1,7 +1,7 @@
 import Foundation
 import Observation
-import FinancialDomain
-import FinancialDesignSystem
+import MeuFluxDomain
+import MeuFluxDesignSystem
 
 @Observable
 @MainActor
@@ -9,6 +9,7 @@ public final class TransactionsViewModel {
     public private(set) var state: FeatureLoadState<[Transaction]> = .idle
     public private(set) var transactions: [Transaction] = []
     public private(set) var accountsById: [String: Account] = [:]
+    public private(set) var pluggyCategories: [TransactionCategory] = []
     public var searchText: String = ""
     public var selectedMonth: YearMonth? = YearMonth(from: Date())
     public var selectedAccountId: String?
@@ -38,9 +39,14 @@ public final class TransactionsViewModel {
         Array(Set(transactions.compactMap(\.category))).sorted()
     }
 
+    public var categoryOptions: [LineItemCategoryOption] {
+        LineItemCategoryOption.pluggyOptions(pluggyCategories)
+    }
+
     public var filteredTransactions: [Transaction] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         return transactions.filter { tx in
+            if let selectedMonth, tx.date.yearMonth != selectedMonth { return false }
             if let selectedAccountId, tx.accountId != selectedAccountId { return false }
             if let selectedKind, tx.kind != selectedKind { return false }
             if let selectedCategory, tx.category != selectedCategory { return false }
@@ -51,13 +57,16 @@ public final class TransactionsViewModel {
     }
 
     public func load(force: Bool = false) async {
-        let cacheKey = "transactions:\(selectedMonth?.key ?? "all"):\(selectedAccountId ?? "all")"
+        let cacheKey = "transactions:\(selectedAccountId ?? "all")"
         if ScreenCachePolicy.shouldSkipReload(
             force: force,
             lastLoadedAt: lastLoadedAt,
             lastCacheKey: lastCacheKey,
             cacheKey: cacheKey
         ) {
+            if pluggyCategories.isEmpty {
+                pluggyCategories = (try? await transactionsRepository?.fetchCategories(force: true)) ?? []
+            }
             return
         }
 
@@ -71,12 +80,14 @@ public final class TransactionsViewModel {
             async let accountsTask = accountsRepository?.fetchAccounts(force: force) ?? []
             async let txTask = transactionsRepository.fetchTransactions(
                 accountId: selectedAccountId,
-                month: selectedMonth,
+                month: nil,
                 force: force
             )
+            async let catsTask = transactionsRepository.fetchCategories(force: force)
             let (accounts, loaded) = try await (accountsTask, txTask)
             accountsById = Dictionary(uniqueKeysWithValues: accounts.map { ($0.id, $0) })
             transactions = loaded.sorted { $0.date > $1.date }
+            pluggyCategories = (try? await catsTask) ?? []
             csvURL = writeCSV(filteredTransactions)
             state = transactions.isEmpty ? .empty : .loaded(transactions)
             lastLoadedAt = Date()
@@ -106,6 +117,24 @@ public final class TransactionsViewModel {
 
     public func refreshCSV() {
         csvURL = writeCSV(filteredTransactions)
+    }
+
+    public func changeCategory(transactionId: String, option: LineItemCategoryOption) async {
+        guard let transactionsRepository else { return }
+        do {
+            try await transactionsRepository.updateCategory(id: transactionId, categoryId: option.id)
+            if let index = transactions.firstIndex(where: { $0.id == transactionId }) {
+                transactions[index].category = option.label
+                transactions[index].categoryId = option.id
+            }
+            csvURL = writeCSV(filteredTransactions)
+        } catch {
+            errorMessage = (error as? FinancialError)?.messagePT ?? error.localizedDescription
+        }
+    }
+
+    public func detail(for transaction: Transaction) -> LineItemDetail {
+        LineItemDetail.from(transaction: transaction, accountName: accountName(for: transaction))
     }
 
     private func writeCSV(_ rows: [Transaction]) -> URL? {

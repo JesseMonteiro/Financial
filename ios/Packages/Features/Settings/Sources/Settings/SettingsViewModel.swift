@@ -1,7 +1,7 @@
 import Foundation
 import Observation
-import FinancialDomain
-import FinancialDesignSystem
+import MeuFluxDomain
+import MeuFluxDesignSystem
 
 @Observable
 @MainActor
@@ -62,11 +62,13 @@ public final class SettingsViewModel {
         state = .loaded(settings)
         lastLoadedAt = Date()
         lastCacheKey = cacheKey
+        AppearancePreferences.shared.apply(settings.theme)
     }
 
     public func retry() async { await load(force: true) }
 
     public func persistAppearance() async {
+        AppearancePreferences.shared.apply(settings.theme)
         guard let settingsRepository else { return }
         do {
             try await settingsRepository.saveSettings(settings)

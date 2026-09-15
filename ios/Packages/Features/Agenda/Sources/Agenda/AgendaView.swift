@@ -1,12 +1,16 @@
 import SwiftUI
-import FinancialDesignSystem
-import FinancialDomain
+import MeuFluxDesignSystem
+import MeuFluxDomain
 
 public struct AgendaView: View {
     @State private var viewModel: AgendaViewModel
+    @State private var selectedDetail: LineItemDetail?
 
-    public init(repository: any AgendaRepository) {
-        _viewModel = State(initialValue: AgendaViewModel(repository: repository))
+    public init(
+        repository: any AgendaRepository,
+        togglePaid: (any ToggleManualExpensePaidUseCase)? = nil
+    ) {
+        _viewModel = State(initialValue: AgendaViewModel(repository: repository, togglePaid: togglePaid))
     }
 
     public init() {
@@ -30,9 +34,23 @@ public struct AgendaView: View {
                 content
             }
         }
-        .financialPageTitle("Agenda")
+        .meuFluxPageTitle("Agenda")
         .refreshable { await viewModel.load(force: true) }
         .task(id: viewModel.selectedMonth.key) { await viewModel.load() }
+        .sheet(item: $selectedDetail) { item in
+            LineItemDetailSheet(
+                item: item,
+                onTogglePaid: {
+                    if let agenda = viewModel.filtered.first(where: { $0.id == item.id })
+                        ?? viewModel.items.first(where: { $0.id == item.id }) {
+                        Task {
+                            await viewModel.toggleCustomPaid(agenda)
+                            selectedDetail = nil
+                        }
+                    }
+                }
+            )
+        }
     }
 
     private var content: some View {
@@ -47,23 +65,28 @@ public struct AgendaView: View {
                 .pickerStyle(.segmented)
             }
             ForEach(viewModel.filtered) { item in
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(item.title).font(.headline)
-                        Text("\(item.date.formatted()) · \(item.kind.rawValue)")
-                            .font(.caption)
-                            .foregroundStyle(FinancialColors.textSecondary)
-                    }
-                    Spacer()
-                    VStack(alignment: .trailing) {
-                        if let amount = item.amount {
-                            Text(amount.formatted())
+                Button {
+                    selectedDetail = LineItemDetail.from(agenda: item)
+                } label: {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(item.title).font(.headline)
+                            Text("\(item.date.formatted()) · \(item.kind.rawValue)")
+                                .font(.caption)
+                                .foregroundStyle(MeuFluxColors.textSecondary)
                         }
-                        Text(item.isCompleted ? "Pago" : "Pendente")
-                            .font(.caption2)
-                            .foregroundStyle(item.isCompleted ? FinancialColors.success : FinancialColors.warning)
+                        Spacer()
+                        VStack(alignment: .trailing) {
+                            if let amount = item.amount {
+                                Text(amount.formatted())
+                            }
+                            Text(item.isCompleted ? "Pago" : "Pendente")
+                                .font(.caption2)
+                                .foregroundStyle(item.isCompleted ? MeuFluxColors.success : MeuFluxColors.warning)
+                        }
                     }
                 }
+                .buttonStyle(.plain)
             }
         }
     }

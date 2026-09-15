@@ -1,8 +1,8 @@
 import Foundation
 import Observation
-import FinancialCore
-import FinancialDomain
-import FinancialDesignSystem
+import MeuFluxCore
+import MeuFluxDomain
+import MeuFluxDesignSystem
 
 @Observable
 @MainActor
@@ -32,10 +32,14 @@ public final class JointFinanceViewModel {
     public var savingMemberIds: Set<String> = []
     public var pendingManualIds: Set<String> = []
     public var errorMessage: String?
+    public private(set) var purchaseCategories: [PurchaseCategory] = PurchaseCategoryCatalog.defaults
 
     private let repository: any JointFinanceRepository
     private let investmentsRepository: (any InvestmentsRepository)?
     private let toggleManualExpensePaid: any ToggleManualExpensePaidUseCase
+    private let manuals: (any ManualExpensesRepository)?
+    private let receivables: (any ReceivablesRepository)?
+    private let purchaseCategoriesRepository: (any PurchaseCategoriesRepository)?
     private var lastLoadedAt: Date?
     private var lastCacheKey: String?
 
@@ -45,11 +49,17 @@ public final class JointFinanceViewModel {
     public init(
         repository: any JointFinanceRepository,
         investments: (any InvestmentsRepository)? = nil,
-        toggleManualExpensePaid: any ToggleManualExpensePaidUseCase = StubToggleManualExpensePaid()
+        toggleManualExpensePaid: any ToggleManualExpensePaidUseCase = StubToggleManualExpensePaid(),
+        manuals: (any ManualExpensesRepository)? = nil,
+        receivables: (any ReceivablesRepository)? = nil,
+        purchaseCategories: (any PurchaseCategoriesRepository)? = nil
     ) {
         self.repository = repository
         self.investmentsRepository = investments
         self.toggleManualExpensePaid = toggleManualExpensePaid
+        self.manuals = manuals
+        self.receivables = receivables
+        self.purchaseCategoriesRepository = purchaseCategories
         let current = YearMonth(from: Date())
         self.monthOptions = (-6...5).map { current.adding(months: $0) }
         self.selectedMonth = current
@@ -82,6 +92,9 @@ public final class JointFinanceViewModel {
             }
             let snapshot = try await repository.fetchMoment(month: selectedMonth, force: force)
             syncSalaryInputs(from: snapshot)
+            if let cats = try? await purchaseCategoriesRepository?.fetchCategories(force: force) {
+                purchaseCategories = PurchaseCategoryCatalog.resolved(cats)
+            }
             if showJointInvestments, let investmentsRepository {
                 jointInvestments = (try? await investmentsRepository.fetchJointInvestments(force: force)) ?? []
             }
@@ -150,6 +163,65 @@ public final class JointFinanceViewModel {
             try await toggleManualExpensePaid.execute(expenseId: expenseId, isPaid: isPaid)
         } catch {
             await load()
+            errorMessage = (error as? FinancialError)?.messagePT ?? error.localizedDescription
+        }
+    }
+
+    public func deleteManual(id: String) async {
+        guard let manuals else { return }
+        pendingManualIds.insert(id)
+        defer { pendingManualIds.remove(id) }
+        do {
+            try await manuals.deleteExpense(id: id)
+            await load(force: true)
+        } catch {
+            errorMessage = (error as? FinancialError)?.messagePT ?? error.localizedDescription
+        }
+    }
+
+    public func updateManualCategory(id: String, category: String) async {
+        guard let manuals else { return }
+        pendingManualIds.insert(id)
+        defer { pendingManualIds.remove(id) }
+        do {
+            guard var expense = try await manuals.fetchExpenses(month: nil, force: true).first(where: { $0.id == id }) else { return }
+            expense.category = category
+            try await manuals.updateExpense(expense)
+            await load(force: true)
+        } catch {
+            errorMessage = (error as? FinancialError)?.messagePT ?? error.localizedDescription
+        }
+    }
+
+    public func markReceivablePaid(id: String, installmentNumber: Int?) async {
+        guard let receivables else { return }
+        pendingManualIds.insert(id)
+        defer { pendingManualIds.remove(id) }
+        do {
+            guard var item = try await receivables.fetchReceivables(force: true).first(where: { $0.id == id }) else { return }
+            let number = installmentNumber ?? item.installmentHistory.first { !$0.isPaid }?.installmentNumber
+            if let number, let index = item.installmentHistory.firstIndex(where: { $0.installmentNumber == number }) {
+                item.installmentHistory[index].paidAt = InstantDate(from: Date())
+                item.paidInstallments = item.installmentHistory.filter(\.isPaid).count
+                if !item.isContinuous {
+                    item.isReceived = item.paidInstallments >= item.installments
+                }
+            }
+            try await receivables.saveReceivable(item)
+            await load(force: true)
+        } catch {
+            errorMessage = (error as? FinancialError)?.messagePT ?? error.localizedDescription
+        }
+    }
+
+    public func deleteReceivable(id: String) async {
+        guard let receivables else { return }
+        pendingManualIds.insert(id)
+        defer { pendingManualIds.remove(id) }
+        do {
+            try await receivables.deleteReceivable(id: id)
+            await load(force: true)
+        } catch {
             errorMessage = (error as? FinancialError)?.messagePT ?? error.localizedDescription
         }
     }

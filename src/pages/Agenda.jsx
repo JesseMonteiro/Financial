@@ -27,6 +27,8 @@ import {
 } from '../utils/agenda';
 import { isInitialEmpty } from '../utils/loading';
 import { AccountIcon, accountById } from '../components/AccountIcon';
+import { ItemDetailSheet } from '../components/ItemDetailSheet';
+import { fromAgendaItem, rowActivateProps } from '../utils/lineItemDetail';
 
 const FILTERS = [
   { id: 'all', label: 'Todas' },
@@ -86,6 +88,8 @@ export function Agenda() {
   const [selectedYm, setSelectedYm] = useState(() => currentYm());
   const [selectedDay, setSelectedDay] = useState(null);
   const [focusedItemId, setFocusedItemId] = useState(null);
+  const [selectedItem, setSelectedItem] = useState(null);
+  const [sheetBusy, setSheetBusy] = useState(false);
   const monthStripRef = useRef(null);
   const dayDetailsRef = useRef(null);
 
@@ -491,7 +495,7 @@ export function Agenda() {
                     <div
                       key={item.id}
                       id={`agenda-item-${item.id}`}
-                      className="list-row"
+                      {...rowActivateProps(() => setSelectedItem(fromAgendaItem(item)))}
                       style={{
                         padding: '0.75rem 1rem',
                         background: focused
@@ -552,12 +556,14 @@ export function Agenda() {
                           {formatCurrency(item.amount)}
                         </span>
                         {item.type === 'manual' && (
-                          <PaidCheckbox
-                            checked={Boolean(item.isPaid)}
-                            busy={Boolean(pending[item.sourceId])}
-                            size={18}
-                            onChange={(v) => handleToggleManualPaid(item, v)}
-                          />
+                          <span onClick={(e) => e.stopPropagation()} role="presentation">
+                            <PaidCheckbox
+                              checked={Boolean(item.isPaid)}
+                              busy={Boolean(pending[item.sourceId])}
+                              size={18}
+                              onChange={(v) => handleToggleManualPaid(item, v)}
+                            />
+                          </span>
                         )}
                       </div>
                     </div>
@@ -569,6 +575,24 @@ export function Agenda() {
         })
       )}
       </div>
+      {selectedItem && (
+        <ItemDetailSheet
+          item={selectedItem}
+          busy={sheetBusy}
+          onClose={() => setSelectedItem(null)}
+          onTogglePaid={selectedItem.kind === 'manualExpense' ? async () => {
+            const raw = selectedItem.raw;
+            if (!raw) return;
+            setSheetBusy(true);
+            try {
+              await handleToggleManualPaid(raw, !selectedItem.isPaid);
+            } finally {
+              setSheetBusy(false);
+              setSelectedItem(null);
+            }
+          } : undefined}
+        />
+      )}
     </div>
   );
 }

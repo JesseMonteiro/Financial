@@ -22,6 +22,7 @@ import {
   handleItems,
   handleLoans,
   handleTransactions,
+  handleCategories,
   handleWebhooks,
   PLUGGY_API,
   pluggyJson,
@@ -203,7 +204,7 @@ async function parseIntentWithGemini(text: string): Promise<{ intent: string; da
   const apiKey = Deno.env.get('GEMINI_API_KEY');
   if (!apiKey) return { intent: 'UNKNOWN', message: 'Assistente de linguagem natural indisponível no momento.' };
 
-  const system = `Você é o assistente do FinanceHub. Retorne APENAS JSON:
+  const system = `Você é o assistente do MeuFlux. Retorne APENAS JSON:
 {"intent":"ADD_TRANSACTION"|"GET_BALANCE"|"GET_CREDIT_BILLS"|"GET_TRANSACTIONS"|"GET_WEEKLY_SUMMARY"|"UNKNOWN","data":{"amount":number,"description":string,"category":string,"type":"DEBIT"|"CREDIT","date_offset_days":number},"message":string}
 Regras de intent:
 - GET_BALANCE: saldo de conta corrente/poupança/banco (ex: "qual meu saldo?", "saldo das contas"). NÃO use para fatura ou cartão.
@@ -787,7 +788,7 @@ async function handleTelegramWebhook(payload: unknown): Promise<void> {
   if (text.startsWith('/start')) {
     const token = text.split(/\s+/)[1];
     if (!token) {
-      await sendTelegramMessage(chatId, '👋 *Olá! Eu sou o assistente do FinanceHub.*\n\nVincule sua conta em *Configurações → Conectar Telegram*.');
+      await sendTelegramMessage(chatId, '👋 *Olá! Eu sou o assistente do MeuFlux.*\n\nVincule sua conta em *Configurações → Conectar Telegram*.');
       return;
     }
     const { data: linkResult, error } = await supabase.rpc('link_telegram_user', { p_token: token, p_chat_id: chatId });
@@ -801,7 +802,7 @@ async function handleTelegramWebhook(payload: unknown): Promise<void> {
 
   const { data: profile, error: profileError } = await supabase.rpc('get_profile_by_telegram_chat_id', { p_chat_id: chatId });
   if (profileError || !profile?.id) {
-    await sendTelegramMessage(chatId, '⚠️ *Conta não vinculada!*\nVá em Configurações do FinanceHub e conecte o Telegram.');
+    await sendTelegramMessage(chatId, '⚠️ *Conta não vinculada!*\nVá em Configurações do MeuFlux e conecte o Telegram.');
     return;
   }
 
@@ -1304,7 +1305,7 @@ Deno.serve(async (req: Request) => {
   if (resource === 'chatbot') {
     const action = segments[2];
 
-    // Public Telegram webhook — resolve FinanceHub user by telegram_chat_id
+    // Public Telegram webhook — resolve MeuFlux user by telegram_chat_id
     if (segments[1] === 'telegram' && action === 'webhook' && method === 'POST') {
       if (!verifyTelegramSecret(req)) {
         return errorResponse('Invalid Telegram webhook secret', 401);
@@ -1513,7 +1514,8 @@ Deno.serve(async (req: Request) => {
   try {
     switch (resource) {
       case 'accounts':     return await handleAccounts(clientConfig, url, actionOrId);
-      case 'transactions': return await handleTransactions(clientConfig, url, method, actionOrId);
+      case 'transactions': return await handleTransactions(clientConfig, url, method, actionOrId, body);
+      case 'categories':   return await handleCategories(clientConfig);
       case 'investments':  return await handleInvestments(clientConfig, url, actionOrId);
       case 'loans':        return await handleLoans(clientConfig, url, actionOrId);
       case 'bills':        return await handleBills(clientConfig, url, actionOrId, subPath);

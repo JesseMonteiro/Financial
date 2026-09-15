@@ -1,11 +1,18 @@
 import { supabase } from './supabaseClient.js';
-import { initStorage } from './storage.js';
+import { initStorage, migrateLocalStorageKeysOnce } from './storage.js';
 
-const MIGRATION_KEY = 'financehub_migration_completed';
+const MIGRATION_KEY = 'meuflux_migration_completed';
+const LEGACY_MIGRATION_KEY = 'financehub_migration_completed';
 
 export async function migrateLocalDataToSupabase() {
-  // 1. Check if migration already done
-  if (localStorage.getItem(MIGRATION_KEY)) return;
+  migrateLocalStorageKeysOnce();
+  // 1. Check if migration already done (including the pre-rebrand flag)
+  if (localStorage.getItem(MIGRATION_KEY) || localStorage.getItem(LEGACY_MIGRATION_KEY)) {
+    if (!localStorage.getItem(MIGRATION_KEY) && localStorage.getItem(LEGACY_MIGRATION_KEY)) {
+      localStorage.setItem(MIGRATION_KEY, localStorage.getItem(LEGACY_MIGRATION_KEY));
+    }
+    return;
+  }
   
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return;
@@ -100,10 +107,12 @@ export async function migrateLocalDataToSupabase() {
     // 7. Migrate settings from localStorage
     const settings = {};
     ['theme', 'primaryColor', 'density', 'animationsEnabled', 'currency'].forEach(key => {
-      const val = localStorage.getItem(`financehub_${key}`);
+      const val = localStorage.getItem(`meuflux_${key}`)
+        ?? localStorage.getItem(`financehub_${key}`);
       if (val) settings[key] = JSON.parse(val);
     });
-    const customNames = localStorage.getItem('financehub_custom_account_names');
+    const customNames = localStorage.getItem('meuflux_custom_account_names')
+      ?? localStorage.getItem('financehub_custom_account_names');
     if (Object.keys(settings).length || customNames) {
       await supabase.from('profiles').update({
         theme: settings.theme,

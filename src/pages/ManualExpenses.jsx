@@ -2,6 +2,7 @@ import React, { useEffect, useState, useMemo, useId } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useTransactionStore } from '../stores/transactionStore';
 import { useAccountStore } from '../stores/accountStore';
+import { useCategoryStore } from '../stores/categoryStore';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
@@ -9,11 +10,13 @@ import { PaidCheckbox } from '../components/ui/PaidCheckbox';
 import { IconBusyButton, SavingScope } from '../components/ui/Spinner';
 import { SkeletonList } from '../components/ui/Skeleton';
 import { formatCurrency, formatDate } from '../utils/formatters';
-import { translateCategory } from '../utils/categories';
+import { resolveCategoryLabel, resolveCategoryColor, userCategoryOptions } from '../utils/categories';
 import { getCategoryColor } from '../utils/colors';
 import { isInitialEmpty } from '../utils/loading';
 import { previewInstallmentSplit, totalFromStoredInstallments } from '../utils/manualAccounts';
 import { AccountIcon, accountById } from '../components/AccountIcon';
+import { ItemDetailSheet } from '../components/ItemDetailSheet';
+import { fromManualExpense, categoryOptionsForItem, applyingCategory } from '../utils/lineItemDetail';
 import {
   Plus,
   Trash2,
@@ -27,18 +30,6 @@ import {
   Check,
   X,
 } from 'lucide-react';
-
-const CATEGORY_OPTIONS = [
-  { value: 'Food', label: 'Alimentação' },
-  { value: 'Groceries', label: 'Supermercado' },
-  { value: 'Rent', label: 'Aluguel / Habitação' },
-  { value: 'Utilities', label: 'Contas de Consumo (Água, Luz)' },
-  { value: 'Transport', label: 'Transporte' },
-  { value: 'Entertainment', label: 'Lazer / Entretenimento' },
-  { value: 'Health', label: 'Saúde' },
-  { value: 'Education', label: 'Educação' },
-  { value: 'Other', label: 'Outros' },
-];
 
 function AmountEditRow({ value, onChange, onSave, onCancel, hint, busy = false }) {
   return (
@@ -102,8 +93,6 @@ function AmountEditRow({ value, onChange, onSave, onCancel, hint, busy = false }
   );
 }
 
-export const MANUAL_CATEGORY_OPTIONS = CATEGORY_OPTIONS;
-
 export function ExpenseFormFields({
   description,
   setDescription,
@@ -121,8 +110,10 @@ export function ExpenseFormFields({
   setFrequency,
   occurrences,
   setOccurrences,
+  categoryOptions,
 }) {
   const radioName = `recurrence_type_${useId()}`;
+  const options = categoryOptions?.length ? categoryOptions : userCategoryOptions();
   const splitPreview = previewInstallmentSplit(amount, {
     isRecurring,
     isContinuous,
@@ -174,7 +165,7 @@ export function ExpenseFormFields({
             className="input"
             style={{ width: '100%' }}
           >
-            {CATEGORY_OPTIONS.map((opt) => (
+            {options.map((opt) => (
               <option key={opt.value} value={opt.value}>{opt.label}</option>
             ))}
           </select>
@@ -293,8 +284,20 @@ function blankFormState(accountId = 'manual') {
 }
 
 export function PurchaseModal({ account, onClose, onSave, saving }) {
+  const { categories, loadCategories } = useCategoryStore();
   const [form, setForm] = useState(() => blankFormState(account?.id));
   const setField = (key) => (value) => setForm((prev) => ({ ...prev, [key]: value }));
+  const categoryOptions = userCategoryOptions(categories);
+
+  useEffect(() => {
+    loadCategories();
+  }, []);
+
+  useEffect(() => {
+    if (!categoryOptions.some((opt) => opt.value === form.category) && categoryOptions[0]) {
+      setForm((prev) => ({ ...prev, category: categoryOptions[0].value }));
+    }
+  }, [categoryOptions, form.category]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -340,6 +343,7 @@ export function PurchaseModal({ account, onClose, onSave, saving }) {
               setFrequency={setField('frequency')}
               occurrences={form.occurrences}
               setOccurrences={setField('occurrences')}
+              categoryOptions={categoryOptions}
             />
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
               <Button variant="outline" type="button" onClick={onClose} disabled={saving}>Cancelar</Button>
@@ -361,11 +365,13 @@ export function ManualExpenses() {
     deleteManualTransaction,
     setManualPaid,
     updateManualAmount,
+    updateManualCategory,
     loading,
     pending,
     lastUpdated,
   } = useTransactionStore();
   const { accounts, loadAccounts } = useAccountStore();
+  const { categories, loadCategories } = useCategoryStore();
   const [searchParams] = useSearchParams();
   const prefillAccountId = searchParams.get('accountId') || 'manual';
 
@@ -387,10 +393,14 @@ export function ManualExpenses() {
   /** Inline amount edit for a single installment only */
   /** @type {[null|{ id: string, groupKey: string, draft: string }, Function]} */
   const [editingAmount, setEditingAmount] = useState(null);
+  const [selectedItem, setSelectedItem] = useState(null);
+  const [sheetBusy, setSheetBusy] = useState(false);
+  const categoryOptions = userCategoryOptions(categories);
 
   useEffect(() => {
     loadTransactions();
     loadAccounts();
+    loadCategories();
   }, []);
 
   useEffect(() => {
@@ -600,6 +610,7 @@ export function ManualExpenses() {
               setFrequency={setFormField('frequency')}
               occurrences={form.occurrences}
               setOccurrences={setFormField('occurrences')}
+              categoryOptions={categoryOptions}
             />
 
             <div>
@@ -709,13 +720,27 @@ export function ManualExpenses() {
                             <DollarSign size={18} />
                           </div>
                         )}
-                        <div style={{ minWidth: 0 }}>
+                        <div
+                          style={{ minWidth: 0, cursor: 'pointer' }}
+                          onClick={() => {
+                            if (single) {
+                              setSelectedItem(fromManualExpense(single, accountById(accounts, single.accountId)?.name));
+                            }
+                          }}
+                          onKeyDown={(e) => {
+                            if ((e.key === 'Enter' || e.key === ' ') && single) {
+                              setSelectedItem(fromManualExpense(single, accountById(accounts, single.accountId)?.name));
+                            }
+                          }}
+                          role="button"
+                          tabIndex={0}
+                        >
                           <h4 style={{ fontWeight: 600, fontSize: 'var(--font-size-sm)', color: 'var(--text-primary)' }}>
                             {group.description}
                           </h4>
                           <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', marginTop: '0.2rem', flexWrap: 'wrap' }}>
-                            <Badge variant="neutral" style={{ backgroundColor: getCategoryColor(group.category) + '11', color: getCategoryColor(group.category) }}>
-                              {translateCategory(group.category)}
+                            <Badge variant="neutral" style={{ backgroundColor: (resolveCategoryColor(group.category, categories) || getCategoryColor(resolveCategoryLabel(group.category, categories))) + '11', color: resolveCategoryColor(group.category, categories) || getCategoryColor(resolveCategoryLabel(group.category, categories)) }}>
+                              {resolveCategoryLabel(group.category, categories)}
                             </Badge>
                             {group.isRecurring && (
                               <Badge variant={group.isContinuous ? 'info' : 'warning'}>
@@ -816,7 +841,17 @@ export function ManualExpenses() {
                                 opacity: inst.isPaid ? 0.92 : 1,
                               }}
                             >
-                              <div style={{ minWidth: 0, flex: '1 1 8rem' }}>
+                              <div
+                                style={{ minWidth: 0, flex: '1 1 8rem', cursor: 'pointer' }}
+                                onClick={() => setSelectedItem(fromManualExpense(inst, accountById(accounts, inst.accountId)?.name))}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter' || e.key === ' ') {
+                                    setSelectedItem(fromManualExpense(inst, accountById(accounts, inst.accountId)?.name));
+                                  }
+                                }}
+                                role="button"
+                                tabIndex={0}
+                              >
                                 <span style={{
                                   fontSize: 'var(--font-size-xs)',
                                   fontWeight: 600,
@@ -891,6 +926,47 @@ export function ManualExpenses() {
           </div>
         )}
       </Card>
+      {selectedItem && (
+        <ItemDetailSheet
+          item={selectedItem}
+          busy={sheetBusy}
+          onClose={() => setSelectedItem(null)}
+          onTogglePaid={async () => {
+            setSheetBusy(true);
+            try {
+              await setManualPaid(selectedItem.sourceId, !selectedItem.isPaid);
+            } finally {
+              setSheetBusy(false);
+              setSelectedItem(null);
+            }
+          }}
+          onEdit={() => {
+            const group = groupedManualTxs.find((g) => g.allInstallments.some((t) => t.id === selectedItem.sourceId));
+            if (group) openEditForm(group);
+            setSelectedItem(null);
+          }}
+          onDelete={async () => {
+            const group = groupedManualTxs.find((g) => g.allInstallments.some((t) => t.id === selectedItem.sourceId));
+            setSheetBusy(true);
+            try {
+              await deleteManualTransaction(group?.id || selectedItem.sourceId);
+            } finally {
+              setSheetBusy(false);
+              setSelectedItem(null);
+            }
+          }}
+          categoryOptions={categoryOptionsForItem(selectedItem, [], categories)}
+          onChangeCategory={async (option) => {
+            setSheetBusy(true);
+            try {
+              await updateManualCategory(selectedItem.sourceId, option.value);
+              setSelectedItem(applyingCategory(selectedItem, option));
+            } finally {
+              setSheetBusy(false);
+            }
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { fetchTransactions } from '../services/api';
+import { fetchTransactions, patchTransactionCategory } from '../services/api';
 import {
   getCurrentUserId,
   getStoredManualTransactions,
@@ -217,6 +217,32 @@ export const useTransactionStore = create((set, get) => ({
     } finally {
       set((state) => ({ pending: removePending(state.pending, [id]) }));
     }
+  },
+
+  updateOpenFinanceCategory: async (id, categoryId, label) => {
+    const updated = await patchTransactionCategory(id, categoryId);
+    const nextCategory = label || updated?.category;
+    set((state) => ({
+      transactions: state.transactions.map((t) => (
+        t.id === id ? { ...t, categoryId, category: nextCategory } : t
+      )),
+    }));
+    return updated;
+  },
+
+  updateManualCategory: async (id, category) => {
+    const { transactions } = get();
+    const tx = transactions.find((t) => t.id === id && t.isManual);
+    if (!tx) return;
+    const siblings = tx.parentId
+      ? transactions.filter((t) => t.isManual && t.parentId === tx.parentId)
+      : [tx];
+    const updated = siblings.map((s) => ({ ...s, category }));
+    await saveStoredManualTransactions(updated);
+    const ids = new Set(updated.map((s) => s.id));
+    set((state) => ({
+      transactions: state.transactions.map((t) => (ids.has(t.id) ? { ...t, category } : t)),
+    }));
   },
 
   /**

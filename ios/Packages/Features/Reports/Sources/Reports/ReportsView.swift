@@ -1,6 +1,6 @@
 import SwiftUI
-import FinancialDesignSystem
-import FinancialDomain
+import MeuFluxDesignSystem
+import MeuFluxDomain
 
 public struct ReportsView: View {
     @State private var viewModel: ReportsViewModel
@@ -30,7 +30,7 @@ public struct ReportsView: View {
                 content
             }
         }
-        .financialPageTitle("Relatórios")
+        .meuFluxPageTitle("Relatórios")
         .refreshable { await viewModel.load(force: true) }
         .task(id: "\(viewModel.months.rawValue)-\(viewModel.accountId ?? "all")") {
             await viewModel.load()
