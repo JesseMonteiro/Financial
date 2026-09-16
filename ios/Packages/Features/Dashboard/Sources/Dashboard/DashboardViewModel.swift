@@ -186,6 +186,65 @@ enum DailyFlowBuilder {
     }
 
     static func creditPurchases(
+        from screen: CreditCardsScreen,
+        days: Int,
+        now: Date = Date(),
+        limit: Int = 24
+    ) -> [DashboardRecentTransaction] {
+        let start = windowStart(days: days, now: now)
+        let today = InstantDate(from: now, calendar: saoPauloCalendar())
+        let cal = saoPauloCalendar()
+
+        var seen = Set<String>()
+        var rows: [(day: InstantDate, line: CreditBillLine)] = []
+        for period in screen.periods.values {
+            for bill in period.bills {
+                for line in bill.items {
+                    if line.isPayment || line.isProjected || line.isCredit { continue }
+                    if let n = line.installmentNumber, n > 1 { continue }
+                    // Prefer purchaseDate (matches Fluxo Diário).
+                    guard let day = line.purchaseDate else { continue }
+                    guard day >= start && day <= today else { continue }
+                    if seen.contains(line.id) { continue }
+                    seen.insert(line.id)
+                    rows.append((day, line))
+                }
+            }
+        }
+
+        rows.sort {
+            if $0.day != $1.day { return $0.day > $1.day }
+            return $0.line.id > $1.line.id
+        }
+
+        let todayKey = InstantDate(from: now, calendar: cal)
+        return rows.prefix(limit).map { row in
+            let relative: String
+            if row.day == todayKey {
+                relative = "Hoje"
+            } else if let yest = cal.date(byAdding: .day, value: -1, to: now),
+                      row.day == InstantDate(from: yest, calendar: cal) {
+                relative = "Ontem"
+            } else {
+                relative = String(format: "%02d/%02d/%04d", row.day.day, row.day.month, row.day.year)
+            }
+            return DashboardRecentTransaction(
+                id: row.line.id,
+                description: row.line.description,
+                category: row.line.category ?? "",
+                categoryId: row.line.categoryId,
+                date: row.day.isoString,
+                dateRelative: relative,
+                amount: Money(amount: abs(row.line.amount.amount)),
+                isCredit: false,
+                isPending: row.line.isPending,
+                accountId: row.line.accountId,
+                accountName: row.line.accountName
+            )
+        }
+    }
+
+    static func creditPurchases(
         from transactions: [Transaction],
         creditAccountIds: Set<String>,
         days: Int,
@@ -256,6 +315,7 @@ public final class DashboardViewModel {
     private let loadDashboard: any LoadDashboardUseCase
     private let transactions: (any TransactionsRepository)?
     private let accounts: (any AccountsRepository)?
+    private let creditCards: (any CreditCardsRepository)?
     private let purchaseCategoriesRepository: (any PurchaseCategoriesRepository)?
     private var lastLoadedAt: Date?
     private var lastCacheKey: String?
@@ -269,11 +329,13 @@ public final class DashboardViewModel {
         loadDashboard: any LoadDashboardUseCase,
         transactions: (any TransactionsRepository)? = nil,
         accounts: (any AccountsRepository)? = nil,
+        creditCards: (any CreditCardsRepository)? = nil,
         purchaseCategories: (any PurchaseCategoriesRepository)? = nil
     ) {
         self.loadDashboard = loadDashboard
         self.transactions = transactions
         self.accounts = accounts
+        self.creditCards = creditCards
         self.purchaseCategoriesRepository = purchaseCategories
         self.selectedMonth = YearMonth(from: Date())
     }
@@ -346,6 +408,15 @@ public final class DashboardViewModel {
             cacheKey: cacheKey
         ) {
             if categoryOptions.isEmpty { await loadCategories(force: true) }
+            // Dashboard snapshot may be fresh while the purchases strip was never filled
+            // (stale BFF payload / first paint before credit-ledger load).
+            if recentCreditPurchases.isEmpty {
+                if case .loaded(let snap) = state {
+                    await loadRecentCreditPurchases(from: snap, force: false)
+                } else {
+                    await loadRecentCreditPurchases(from: nil, force: false)
+                }
+            }
             return
         }
 
@@ -461,14 +532,29 @@ public final class DashboardViewModel {
         }
     }
 
-    private func loadRecentCreditPurchases(from snapshot: DashboardSnapshot, force: Bool) async {
-        let windowed = DailyFlowBuilder.creditPurchases(
-            from: snapshot.recentCreditPurchases,
-            days: Self.recentCreditPurchaseDays
-        )
-        if !windowed.isEmpty {
-            recentCreditPurchases = windowed
-            return
+    private func loadRecentCreditPurchases(from snapshot: DashboardSnapshot?, force: Bool) async {
+        if let snapshot {
+            let windowed = DailyFlowBuilder.creditPurchases(
+                from: snapshot.recentCreditPurchases,
+                days: Self.recentCreditPurchaseDays
+            )
+            if !windowed.isEmpty {
+                recentCreditPurchases = windowed
+                return
+            }
+        }
+
+        // Same ledger as Cartões — purchaseDate already matches Fluxo Diário.
+        if let creditCards,
+           let screen = try? await creditCards.fetchScreen(force: force) {
+            let fromCards = DailyFlowBuilder.creditPurchases(
+                from: screen,
+                days: Self.recentCreditPurchaseDays
+            )
+            if !fromCards.isEmpty {
+                recentCreditPurchases = fromCards
+                return
+            }
         }
 
         guard let transactions else {
@@ -478,24 +564,25 @@ public final class DashboardViewModel {
 
         let now = Date()
         let current = YearMonth(from: now)
-        var collected: [Transaction] = []
-        for month in [current.adding(months: -1), current] {
-            let batch = (try? await transactions.fetchTransactions(
-                accountId: nil,
-                month: month,
-                force: force
-            )) ?? []
-            collected.append(contentsOf: batch)
-        }
-
         var creditIds = Set<String>()
         if let accounts,
            let list = try? await accounts.fetchAccounts(force: false) {
             creditIds = Set(list.filter(\.isCreditCard).map(\.id))
         }
-        guard !creditIds.isEmpty else {
-            recentCreditPurchases = []
-            return
+
+        var collected: [Transaction] = []
+        let accountTargets: [String?] = creditIds.isEmpty
+            ? [nil]
+            : creditIds.map { Optional($0) }
+        for accountId in accountTargets {
+            for month in [current.adding(months: -1), current] {
+                let batch = (try? await transactions.fetchTransactions(
+                    accountId: accountId,
+                    month: month,
+                    force: force
+                )) ?? []
+                collected.append(contentsOf: batch)
+            }
         }
 
         recentCreditPurchases = DailyFlowBuilder.creditPurchases(

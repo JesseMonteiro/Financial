@@ -149,7 +149,7 @@ export function PageLoadingSkeleton({
               key={i}
               className={kpiCount === 2 ? undefined : kpiCount <= 3 ? 'col-4' : 'col-3'}
               lines={kpiCount === 2 ? 5 : 3}
-              style={kpiCount === 2 ? { aspectRatio: '1' } : undefined}
+              style={kpiCount === 2 ? { aspectRatio: '1', maxHeight: '17rem' } : undefined}
             />
           ))}
         </div>

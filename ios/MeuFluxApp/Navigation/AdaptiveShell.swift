@@ -212,6 +212,7 @@ struct AdaptiveShell: View {
                     loadDashboard: composition.loadDashboard,
                     transactions: composition.transactionsRepository,
                     accounts: composition.accountsRepository,
+                    creditCards: composition.creditCardsRepository,
                     purchaseCategories: composition.purchaseCategoriesRepository
                 ),
                 accountName: composition.accountDisplayName,
@@ -340,18 +341,24 @@ struct AdaptiveShell: View {
 @MainActor
 private final class DashboardViewModelCache {
     private var cached: DashboardViewModel?
+    private var fingerprint: String = ""
 
     func viewModel(
         loadDashboard: any LoadDashboardUseCase,
         transactions: (any TransactionsRepository)?,
         accounts: (any AccountsRepository)? = nil,
+        creditCards: (any CreditCardsRepository)? = nil,
         purchaseCategories: (any PurchaseCategoriesRepository)? = nil
     ) -> DashboardViewModel {
-        if let cached { return cached }
+        let next =
+            "tx:\(transactions != nil)|acc:\(accounts != nil)|cards:\(creditCards != nil)|cats:\(purchaseCategories != nil)"
+        if let cached, fingerprint == next { return cached }
+        fingerprint = next
         let created = DashboardViewModel(
             loadDashboard: loadDashboard,
             transactions: transactions,
             accounts: accounts,
+            creditCards: creditCards,
             purchaseCategories: purchaseCategories
         )
         cached = created

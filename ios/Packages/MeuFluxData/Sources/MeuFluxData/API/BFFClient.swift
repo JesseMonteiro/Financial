@@ -252,7 +252,7 @@ public struct BFFClient: Sendable {
             path: "dashboard",
             queryItems: [URLQueryItem(name: "month", value: month.key)]
         )
-        let data = try await cachedRaw("bff:dashboard:v2:\(month.key)", force: force, request)
+        let data = try await cachedRaw("bff:dashboard:v3:\(month.key)", force: force, request)
         return try await decode(DashboardDTO.self, from: data)
     }
 

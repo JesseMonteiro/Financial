@@ -51,17 +51,19 @@ body {
   min-width: 0;
 }
 
-/* Insights + KPI carousels: always side-by-side */
+/* Insights + KPI carousels: always side-by-side, capped size */
 .dashboard-summary-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
+  display: flex;
+  flex-wrap: nowrap;
   gap: var(--element-gap);
   width: 100%;
-  align-items: stretch;
+  align-items: flex-start;
 }
 
 .dashboard-summary-row > * {
+  flex: 1 1 0;
   min-width: 0;
+  max-width: 17rem; /* ~272px — avoids huge squares on wide layouts */
 }
 
 .col-12 { grid-column: span 12; }
