@@ -217,6 +217,106 @@ export function isNewPurchaseTx(
   return true;
 }
 
+/** Inclusive window length for the home “últimas compras” carousel. */
+export const RECENT_CREDIT_PURCHASE_DAYS = 15;
+
+export function saoPauloDateKey(now: Date = new Date()): string {
+  const sp = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  return sp.format(now);
+}
+
+/** First calendar day of an inclusive `days`-long window ending today (SP). */
+export function recentPurchaseWindowStart(
+  days: number = RECENT_CREDIT_PURCHASE_DAYS,
+  now: Date = new Date(),
+): string {
+  const today = saoPauloDateKey(now);
+  const [ty, tm, td] = today.split("-").map(Number);
+  const utc = new Date(Date.UTC(ty, tm - 1, td - (Math.max(1, days) - 1)));
+  return `${utc.getUTCFullYear()}-${String(utc.getUTCMonth() + 1).padStart(2, "0")}-${String(utc.getUTCDate()).padStart(2, "0")}`;
+}
+
+export function purchaseDayOf(tx: AnyRec): string {
+  return purchaseDay(tx);
+}
+
+/**
+ * Latest credit-card purchases in the last `days` (by purchase date, SP calendar).
+ * Sorted newest → oldest. Uses the same purchase rules as daily spend.
+ */
+export function buildRecentCreditPurchases(
+  transactions: AnyRec[] = [],
+  creditAccountIds: Set<string> = new Set(),
+  opts: {
+    days?: number;
+    limit?: number;
+    now?: Date;
+    accountNameById?: Map<string, string>;
+    formatRelativeDate?: (iso: string) => string;
+    translateCategory?: (raw: unknown) => string;
+  } = {},
+): AnyRec[] {
+  const days = opts.days ?? RECENT_CREDIT_PURCHASE_DAYS;
+  const limit = opts.limit ?? 24;
+  const now = opts.now ?? new Date();
+  const from = recentPurchaseWindowStart(days, now);
+  const today = saoPauloDateKey(now);
+  const accountNameById = opts.accountNameById ?? new Map<string, string>();
+  const rel = opts.formatRelativeDate ?? ((iso: string) => iso);
+  const cat = opts.translateCategory ?? ((raw: unknown) => String(raw || ""));
+
+  const seenIds = new Set<string>();
+  const seenPurchases = new Set<string>();
+  const rows: { day: string; tx: AnyRec }[] = [];
+
+  for (const tx of transactions) {
+    const id = String(tx?.id || "");
+    if (id) {
+      if (seenIds.has(id)) continue;
+      seenIds.add(id);
+    }
+    if (!isNewPurchaseTx(tx, creditAccountIds)) continue;
+    const day = purchaseDay(tx);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) continue;
+    if (day < from || day > today) continue;
+    const identity = purchaseIdentity(tx);
+    if (identity) {
+      if (seenPurchases.has(identity)) continue;
+      seenPurchases.add(identity);
+    }
+    rows.push({ day, tx });
+  }
+
+  rows.sort((a, b) => {
+    const byDay = b.day.localeCompare(a.day);
+    if (byDay !== 0) return byDay;
+    return String(b.tx.id || "").localeCompare(String(a.tx.id || ""));
+  });
+
+  return rows.slice(0, limit).map(({ day, tx }) => {
+    const amount = Math.abs(Number(tx.amount) || 0);
+    const accountId = String(tx.accountId || tx.account_id || "");
+    return {
+      id: String(tx.id || `${accountId}-${day}-${amount}`),
+      description: String(tx.description || "Compra"),
+      category: cat(tx.category),
+      categoryId: tx.categoryId ? String(tx.categoryId) : null,
+      date: day,
+      dateRelative: rel(day),
+      amount,
+      isCredit: false,
+      isPending: String(tx.status || "").toUpperCase() === "PENDING",
+      accountId: accountId || null,
+      accountName: accountNameById.get(accountId) || null,
+    };
+  });
+}
+
 function totalReservedBalances(accounts: AnyRec[] = []): number {
   let sum = 0;
   for (const a of accounts) {

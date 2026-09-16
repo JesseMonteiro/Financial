@@ -1,6 +1,7 @@
-import { isBillPayment } from './creditBillPeriod.js';
+import { isBillPayment, installmentNumberOf, resolvePurchaseDate } from './creditBillPeriod.js';
 import { translateCategory } from './categories.js';
 import { calculateNetWorth } from './calculations.js';
+import { formatDateRelative } from './formatters.js';
 
 const MONTHS_SHORT = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 
@@ -58,6 +59,110 @@ export function isIncomeTx(tx) {
   if (!tx || isBillPayment(tx)) return false;
   if (tx.type === 'DEBIT') return false;
   return Number(tx.amount) > 0 || tx.type === 'CREDIT' || tx.type === 'CREDIT_INCOME';
+}
+
+/** Inclusive window for the home credit-purchase carousel (matches Fluxo Diário). */
+export const RECENT_CREDIT_PURCHASE_DAYS = 15;
+
+export function saoPauloDateKey(now = new Date()) {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(now);
+}
+
+export function recentPurchaseWindowStart(days = RECENT_CREDIT_PURCHASE_DAYS, now = new Date()) {
+  const today = saoPauloDateKey(now);
+  const [ty, tm, td] = today.split('-').map(Number);
+  const utc = new Date(Date.UTC(ty, tm - 1, td - (Math.max(1, days) - 1)));
+  return `${utc.getUTCFullYear()}-${String(utc.getUTCMonth() + 1).padStart(2, '0')}-${String(
+    utc.getUTCDate()
+  ).padStart(2, '0')}`;
+}
+
+function purchaseDayKey(tx) {
+  const resolved = resolvePurchaseDate(tx);
+  const iso = String(resolved || '').slice(0, 10);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso;
+  return String(tx?.date || '').slice(0, 10);
+}
+
+function purchaseIdentityKey(tx) {
+  const iso = purchaseDayKey(tx);
+  const desc = String(tx?.description || '')
+    .toUpperCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+  const total = Math.abs(
+    Number(tx?.creditCardMetadata?.totalAmount ?? tx?.totalAmount ?? tx?.amount) || 0
+  );
+  return `${iso}|${desc}|${total.toFixed(2)}`;
+}
+
+/**
+ * Latest credit-card purchases in the last `days` (by purchase date).
+ * Same intent as BFF `buildRecentCreditPurchases` / daily spend.
+ */
+export function buildRecentCreditPurchases(
+  transactions = [],
+  creditAccounts = [],
+  { days = RECENT_CREDIT_PURCHASE_DAYS, limit = 24, now = new Date() } = {}
+) {
+  const creditIds = new Set(
+    (creditAccounts || []).map((a) => String(a?.id || '')).filter(Boolean)
+  );
+  if (creditIds.size === 0) return [];
+
+  const from = recentPurchaseWindowStart(days, now);
+  const today = saoPauloDateKey(now);
+  const nameById = new Map(
+    (creditAccounts || []).map((a) => [String(a.id), a.name || 'Cartão'])
+  );
+
+  const seenIds = new Set();
+  const seenPurchases = new Set();
+  const rows = [];
+
+  for (const tx of transactions) {
+    const id = String(tx?.id || '');
+    if (id) {
+      if (seenIds.has(id)) continue;
+      seenIds.add(id);
+    }
+    if (!creditIds.has(String(tx?.accountId || ''))) continue;
+    if (!isExpenseTx(tx) || isBillPayment(tx) || tx.isProjected) continue;
+    if (Number(installmentNumberOf(tx)) > 1) continue;
+
+    const day = purchaseDayKey(tx);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) continue;
+    if (day < from || day > today) continue;
+
+    const identity = purchaseIdentityKey(tx);
+    if (identity) {
+      if (seenPurchases.has(identity)) continue;
+      seenPurchases.add(identity);
+    }
+    rows.push({ day, tx });
+  }
+
+  rows.sort((a, b) => {
+    const byDay = b.day.localeCompare(a.day);
+    if (byDay !== 0) return byDay;
+    return String(b.tx.id || '').localeCompare(String(a.tx.id || ''));
+  });
+
+  return rows.slice(0, limit).map(({ day, tx }) => ({
+    id: tx.id,
+    description: tx.description || 'Compra',
+    category: tx.category,
+    amount: Math.abs(Number(tx.amount) || 0),
+    date: day,
+    dateRelative: formatDateRelative(day),
+    accountName: nameById.get(String(tx.accountId)) || null,
+    source: tx,
+  }));
 }
 
 /**

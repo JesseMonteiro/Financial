@@ -160,6 +160,84 @@ enum DailyFlowBuilder {
         let days = cal.range(of: .day, in: .month, for: now)?.count ?? 30
         return min(1, Double(day) / Double(max(days, 1)))
     }
+
+    static func windowStart(days: Int, now: Date = Date()) -> InstantDate {
+        let cal = saoPauloCalendar()
+        let today = InstantDate(from: now, calendar: cal)
+        guard let todayDate = today.date(calendar: cal),
+              let start = cal.date(byAdding: .day, value: -(max(days, 1) - 1), to: todayDate)
+        else { return today }
+        return InstantDate(from: start, calendar: cal)
+    }
+
+    static func creditPurchases(
+        from purchases: [DashboardRecentTransaction],
+        days: Int,
+        now: Date = Date()
+    ) -> [DashboardRecentTransaction] {
+        let start = windowStart(days: days, now: now)
+        let today = InstantDate(from: now, calendar: saoPauloCalendar())
+        return purchases
+            .filter { purchase in
+                guard let day = InstantDate(isoString: purchase.date) else { return false }
+                return day >= start && day <= today && !purchase.isCredit
+            }
+            .sorted { $0.date > $1.date }
+    }
+
+    static func creditPurchases(
+        from transactions: [Transaction],
+        creditAccountIds: Set<String>,
+        days: Int,
+        now: Date = Date(),
+        limit: Int = 24
+    ) -> [DashboardRecentTransaction] {
+        let start = windowStart(days: days, now: now)
+        let today = InstantDate(from: now, calendar: saoPauloCalendar())
+        let cal = saoPauloCalendar()
+
+        var seen = Set<String>()
+        var rows: [(day: InstantDate, tx: Transaction)] = []
+        for tx in transactions {
+            if !creditAccountIds.isEmpty, !creditAccountIds.contains(tx.accountId) { continue }
+            guard isExpense(tx) else { continue }
+            let day = tx.date
+            guard day >= start && day <= today else { continue }
+            if seen.contains(tx.id) { continue }
+            seen.insert(tx.id)
+            rows.append((day, tx))
+        }
+
+        rows.sort {
+            if $0.day != $1.day { return $0.day > $1.day }
+            return $0.tx.id > $1.tx.id
+        }
+
+        let todayKey = InstantDate(from: now, calendar: cal)
+        return rows.prefix(limit).map { row in
+            let relative: String
+            if row.day == todayKey {
+                relative = "Hoje"
+            } else if let yest = cal.date(byAdding: .day, value: -1, to: now),
+                      row.day == InstantDate(from: yest, calendar: cal) {
+                relative = "Ontem"
+            } else {
+                relative = String(format: "%02d/%02d/%04d", row.day.day, row.day.month, row.day.year)
+            }
+            return DashboardRecentTransaction(
+                id: row.tx.id,
+                description: row.tx.description,
+                category: row.tx.category ?? "",
+                categoryId: row.tx.categoryId,
+                date: row.day.isoString,
+                dateRelative: relative,
+                amount: Money(amount: abs(row.tx.amount.amount)),
+                isCredit: false,
+                isPending: row.tx.isPending,
+                accountId: row.tx.accountId
+            )
+        }
+    }
 }
 
 @Observable
@@ -170,23 +248,33 @@ public final class DashboardViewModel {
     public var errorMessage: String?
 
     public private(set) var dailySpend: [DailySpendPoint] = []
+    public private(set) var recentCreditPurchases: [DashboardRecentTransaction] = []
     public private(set) var todayTransactionCount: Int = 0
     public var dailyRange: DailyFlowRange = .days7
     public var selectedDay: InstantDate?
 
     private let loadDashboard: any LoadDashboardUseCase
     private let transactions: (any TransactionsRepository)?
+    private let accounts: (any AccountsRepository)?
+    private let purchaseCategoriesRepository: (any PurchaseCategoriesRepository)?
     private var lastLoadedAt: Date?
     private var lastCacheKey: String?
     private var loadGeneration = 0
     public private(set) var categoryOptions: [LineItemCategoryOption] = []
+    public private(set) var purchaseCategories: [PurchaseCategory] = PurchaseCategoryCatalog.defaults
+
+    public static let recentCreditPurchaseDays = 15
 
     public init(
         loadDashboard: any LoadDashboardUseCase,
-        transactions: (any TransactionsRepository)? = nil
+        transactions: (any TransactionsRepository)? = nil,
+        accounts: (any AccountsRepository)? = nil,
+        purchaseCategories: (any PurchaseCategoriesRepository)? = nil
     ) {
         self.loadDashboard = loadDashboard
         self.transactions = transactions
+        self.accounts = accounts
+        self.purchaseCategoriesRepository = purchaseCategories
         self.selectedMonth = YearMonth(from: Date())
     }
 
@@ -272,6 +360,7 @@ public final class DashboardViewModel {
                 recent: snapshot.recentTransactions,
                 snapshot: snapshot.dailySpend
             )
+            await loadRecentCreditPurchases(from: snapshot, force: force)
             guard generation == loadGeneration else { return }
             let hasAccounts = snapshot.summary.bankCount + snapshot.summary.creditCount > 0
             let hasActivity = !snapshot.recentTransactions.isEmpty
@@ -325,10 +414,15 @@ public final class DashboardViewModel {
     }
 
     private func loadCategories(force: Bool) async {
-        guard let transactions else { return }
-        let cats = (try? await transactions.fetchCategories(force: force)) ?? []
-        if !cats.isEmpty {
-            categoryOptions = LineItemCategoryOption.pluggyOptions(cats)
+        if let transactions {
+            let cats = (try? await transactions.fetchCategories(force: force)) ?? []
+            if !cats.isEmpty {
+                categoryOptions = LineItemCategoryOption.pluggyOptions(cats)
+            }
+        }
+        if let purchaseCategoriesRepository,
+           let cats = try? await purchaseCategoriesRepository.fetchCategories(force: force) {
+            purchaseCategories = PurchaseCategoryCatalog.resolved(cats)
         }
     }
 
@@ -365,5 +459,50 @@ public final class DashboardViewModel {
             selectedDay = dailySpend.last(where: { $0.amount > 0 })?.day
                 ?? InstantDate(from: now, calendar: cal)
         }
+    }
+
+    private func loadRecentCreditPurchases(from snapshot: DashboardSnapshot, force: Bool) async {
+        let windowed = DailyFlowBuilder.creditPurchases(
+            from: snapshot.recentCreditPurchases,
+            days: Self.recentCreditPurchaseDays
+        )
+        if !windowed.isEmpty {
+            recentCreditPurchases = windowed
+            return
+        }
+
+        guard let transactions else {
+            recentCreditPurchases = []
+            return
+        }
+
+        let now = Date()
+        let current = YearMonth(from: now)
+        var collected: [Transaction] = []
+        for month in [current.adding(months: -1), current] {
+            let batch = (try? await transactions.fetchTransactions(
+                accountId: nil,
+                month: month,
+                force: force
+            )) ?? []
+            collected.append(contentsOf: batch)
+        }
+
+        var creditIds = Set<String>()
+        if let accounts,
+           let list = try? await accounts.fetchAccounts(force: false) {
+            creditIds = Set(list.filter(\.isCreditCard).map(\.id))
+        }
+        guard !creditIds.isEmpty else {
+            recentCreditPurchases = []
+            return
+        }
+
+        recentCreditPurchases = DailyFlowBuilder.creditPurchases(
+            from: collected,
+            creditAccountIds: creditIds,
+            days: Self.recentCreditPurchaseDays,
+            now: now
+        )
     }
 }

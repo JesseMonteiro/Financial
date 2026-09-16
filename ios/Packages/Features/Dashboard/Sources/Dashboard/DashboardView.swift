@@ -10,6 +10,7 @@ public struct DashboardView: View {
     @State private var selectedDetail: LineItemDetail?
     @State private var kpiSlideIndex = 0
     @State private var insightSlideIndex = 0
+    @State private var purchaseSlideIndex = 0
     @State private var kpiAutoToken = 0
     @State private var insightAutoToken = 0
 
@@ -187,6 +188,7 @@ public struct DashboardView: View {
         }
 
         summaryCarousels(snap)
+        creditPurchasesCarousel
         dailyFlowCard
 
         netWorthChart(snap)
@@ -323,6 +325,96 @@ public struct DashboardView: View {
             @unknown default: break
             }
         }
+    }
+
+    @ViewBuilder
+    private var creditPurchasesCarousel: some View {
+        let purchases = viewModel.recentCreditPurchases
+        if !purchases.isEmpty {
+            GlassCard(padding: 0) {
+                TabView(selection: $purchaseSlideIndex) {
+                    ForEach(Array(purchases.enumerated()), id: \.element.id) { offset, purchase in
+                        creditPurchaseSlide(purchase)
+                            .tag(offset)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                selectedDetail = LineItemDetail.from(dashboard: purchase)
+                            }
+                    }
+                }
+                .tabViewStyle(.page(indexDisplayMode: .never))
+                .frame(height: 76)
+            }
+            .clipped()
+            .onChange(of: purchases.count) { _, newCount in
+                purchaseSlideIndex = clampedIndex(purchaseSlideIndex, count: max(newCount, 1))
+            }
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Últimas compras no cartão")
+            .accessibilityValue(purchases[clampedIndex(purchaseSlideIndex, count: purchases.count)].description)
+            .accessibilityAdjustableAction { direction in
+                let count = purchases.count
+                guard count > 0 else { return }
+                switch direction {
+                case .increment:
+                    purchaseSlideIndex = (clampedIndex(purchaseSlideIndex, count: count) + 1) % count
+                case .decrement:
+                    purchaseSlideIndex = (clampedIndex(purchaseSlideIndex, count: count) - 1 + count) % count
+                @unknown default: break
+                }
+            }
+        }
+    }
+
+    private func creditPurchaseSlide(_ purchase: DashboardRecentTransaction) -> some View {
+        let category = LineItemDetail.translatedCategory(purchase.category)
+        let cardLabel = purchase.accountName?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let subtitleParts = [category, purchase.dateRelative, cardLabel].compactMap { part -> String? in
+            guard let part, !part.isEmpty else { return nil }
+            return part
+        }
+
+        return HStack(spacing: 12) {
+            Image(systemName: PurchaseCategoryCatalog.systemImage(for: purchase.category))
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(purchaseTint(purchase.category))
+                .frame(width: 36, height: 36)
+                .background(purchaseTint(purchase.category).opacity(0.12), in: Circle())
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Últimas compras")
+                    .font(.system(size: 10, weight: .bold))
+                    .tracking(0.5)
+                    .foregroundStyle(MeuFluxColors.textMuted)
+                    .lineLimit(1)
+                Text(purchase.description)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(MeuFluxColors.textPrimary)
+                    .lineLimit(1)
+                Text(subtitleParts.joined(separator: " · "))
+                    .font(.caption)
+                    .foregroundStyle(MeuFluxColors.textMuted)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 8)
+
+            Text("- \(purchase.amount.formatted())")
+                .font(.subheadline.weight(.bold).monospacedDigit())
+                .foregroundStyle(MeuFluxColors.textPrimary)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+    }
+
+    private func purchaseTint(_ category: String) -> Color {
+        if let hex = PurchaseCategoryCatalog.color(for: category),
+           let color = Color(hexString: hex) {
+            return color
+        }
+        return MeuFluxColors.danger
     }
 
     @ViewBuilder
@@ -814,6 +906,7 @@ public struct DashboardView: View {
                             badge: nil,
                             isPending: tx.isPending,
                             categoryKey: tx.category,
+                            purchaseCategories: viewModel.purchaseCategories,
                             action: { selectedDetail = LineItemDetail.from(dashboard: tx) }
                         )
                         if tx.id != snap.recentTransactions.last?.id {

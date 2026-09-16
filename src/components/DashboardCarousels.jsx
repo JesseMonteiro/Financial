@@ -1,9 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Wallet, Sparkles, Percent, PiggyBank, Smartphone, TrendingDown, ShoppingCart } from 'lucide-react';
 import { Sparkline } from './charts/Sparkline';
+import { CategoryIcon } from './CategoryIcon';
 import { usePrefersReducedMotion } from '../hooks/usePrefersReducedMotion';
 import { attrSelector, bindSnapSelect, centerChild } from '../utils/snapCarousel';
 import { formatCurrency } from '../utils/formatters';
+import { translateCategory } from '../utils/categories';
 
 function insightAccent(type) {
   if (type === 'positive') return 'var(--success)';
@@ -34,7 +36,7 @@ function highlightPercents(text, accent) {
   );
 }
 
-function useSnapCarousel(length, attr) {
+function useSnapCarousel(length, attr, { autoPlay = true } = {}) {
   const trackRef = useRef(null);
   const ignoreRef = useRef(false);
   const [index, setIndex] = useState(0);
@@ -74,12 +76,12 @@ function useSnapCarousel(length, attr) {
   }, [attr, index, length, reduceMotion]);
 
   useEffect(() => {
-    if (reduceMotion || length <= 1) return undefined;
+    if (!autoPlay || reduceMotion || length <= 1) return undefined;
     const id = window.setInterval(() => {
       setIndex((prev) => (prev + 1) % length);
     }, 3000);
     return () => clearInterval(id);
-  }, [autoToken, length, reduceMotion]);
+  }, [autoPlay, autoToken, length, reduceMotion]);
 
   return { trackRef, index, setIndex, setAutoToken };
 }
@@ -246,6 +248,53 @@ export function KpiCarousel({
             <div className="dash-carousel__spark">
               <Sparkline data={slide.sparkline.data} dataKey={slide.sparkline.dataKey} color={slide.sparkline.color} />
             </div>
+          </div>
+        );
+      })}
+    </CarouselShell>
+  );
+}
+
+export function CreditPurchasesCarousel({ purchases = [], onSelect }) {
+  const slides = purchases.length > 0 ? purchases : [];
+  const { trackRef } = useSnapCarousel(slides.length, 'data-purchase-slide', { autoPlay: false });
+
+  if (slides.length === 0) return null;
+
+  return (
+    <CarouselShell className="dash-carousel--purchases surface" trackRef={trackRef} label="Últimas compras no cartão">
+      {slides.map((purchase, i) => {
+        const subtitle = [translateCategory(purchase.category), purchase.dateRelative, purchase.accountName]
+          .filter(Boolean)
+          .join(' · ');
+        return (
+          <div
+            key={purchase.id}
+            className="dash-carousel__slide dash-carousel__slide--purchase list-row--clickable"
+            data-purchase-slide={i}
+            role={onSelect ? 'button' : undefined}
+            tabIndex={onSelect ? 0 : undefined}
+            onClick={onSelect ? () => onSelect(purchase) : undefined}
+            onKeyDown={
+              onSelect
+                ? (event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      onSelect(purchase);
+                    }
+                  }
+                : undefined
+            }
+          >
+            <CategoryIcon category={purchase.category} size={36} emptyFallback="receipt" />
+            <div className="dash-carousel__purchase-main">
+              <span className="dash-carousel__eyebrow dash-carousel__eyebrow--muted">Últimas compras</span>
+              <p className="dash-carousel__purchase-title">{purchase.description}</p>
+              <span className="dash-carousel__purchase-meta">{subtitle}</span>
+            </div>
+            <span className="dash-carousel__purchase-amount">
+              - {formatCurrency(Math.abs(Number(purchase.amount) || 0))}
+            </span>
           </div>
         );
       })}

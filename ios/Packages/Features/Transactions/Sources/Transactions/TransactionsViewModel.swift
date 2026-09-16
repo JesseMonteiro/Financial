@@ -20,15 +20,19 @@ public final class TransactionsViewModel {
 
     private let transactionsRepository: (any TransactionsRepository)?
     private let accountsRepository: (any AccountsRepository)?
+    private let purchaseCategoriesRepository: (any PurchaseCategoriesRepository)?
     private var lastLoadedAt: Date?
     private var lastCacheKey: String?
+    public private(set) var purchaseCategories: [PurchaseCategory] = PurchaseCategoryCatalog.defaults
 
     public init(
         transactionsRepository: (any TransactionsRepository)? = nil,
-        accountsRepository: (any AccountsRepository)? = nil
+        accountsRepository: (any AccountsRepository)? = nil,
+        purchaseCategoriesRepository: (any PurchaseCategoriesRepository)? = nil
     ) {
         self.transactionsRepository = transactionsRepository
         self.accountsRepository = accountsRepository
+        self.purchaseCategoriesRepository = purchaseCategoriesRepository
     }
 
     public var accounts: [Account] {
@@ -84,10 +88,14 @@ public final class TransactionsViewModel {
                 force: force
             )
             async let catsTask = transactionsRepository.fetchCategories(force: force)
+            async let purchaseCatsTask = purchaseCategoriesRepository?.fetchCategories(force: force)
             let (accounts, loaded) = try await (accountsTask, txTask)
             accountsById = Dictionary(uniqueKeysWithValues: accounts.map { ($0.id, $0) })
             transactions = loaded.sorted { $0.date > $1.date }
             pluggyCategories = (try? await catsTask) ?? []
+            if let cats = try? await purchaseCatsTask {
+                purchaseCategories = PurchaseCategoryCatalog.resolved(cats)
+            }
             csvURL = writeCSV(filteredTransactions)
             state = transactions.isEmpty ? .empty : .loaded(transactions)
             lastLoadedAt = Date()

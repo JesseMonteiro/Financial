@@ -70,6 +70,28 @@ public struct CategoriesView: View {
                             }
                         }
                     }
+                    Section("Ícone") {
+                        let tint = Color(hexString: viewModel.draftColor) ?? MeuFluxColors.primary
+                        LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 6), spacing: 10) {
+                            ForEach(CategoryIconCatalog.options) { option in
+                                Image(systemName: option.systemImage)
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(tint)
+                                    .frame(width: 36, height: 36)
+                                    .background(tint.opacity(0.14), in: Circle())
+                                    .overlay {
+                                        if viewModel.draftIcon == option.id {
+                                            Circle()
+                                                .strokeBorder(MeuFluxColors.textPrimary, lineWidth: 2)
+                                        }
+                                    }
+                                    .onTapGesture { viewModel.draftIcon = option.id }
+                                    .accessibilityLabel(option.label)
+                                    .accessibilityAddTraits(viewModel.draftIcon == option.id ? .isSelected : [])
+                            }
+                        }
+                        .padding(.vertical, 4)
+                    }
                 }
                 .navigationTitle(viewModel.editingID == nil ? "Nova categoria" : "Editar categoria")
                 .toolbar {
@@ -94,7 +116,7 @@ public struct CategoriesView: View {
             ForEach(viewModel.categories) { category in
                 HStack(spacing: 12) {
                     let tint = Color(hexString: category.color ?? "#64748b") ?? MeuFluxColors.primary
-                    Image(systemName: PurchaseCategoryCatalog.systemImage(for: category.key))
+                    Image(systemName: PurchaseCategoryCatalog.systemImage(for: category.key, in: [category]))
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(tint)
                         .frame(width: 32, height: 32)

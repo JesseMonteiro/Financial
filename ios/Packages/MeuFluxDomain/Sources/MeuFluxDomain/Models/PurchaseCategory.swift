@@ -5,6 +5,8 @@ public struct PurchaseCategory: Sendable, Identifiable, Hashable, Codable {
     public var key: String
     public var label: String
     public var color: String?
+    /// Shared catalog id (`CategoryIconCatalog`), e.g. `utensils`, `car`.
+    public var icon: String?
     public var sortOrder: Int
 
     public init(
@@ -12,27 +14,29 @@ public struct PurchaseCategory: Sendable, Identifiable, Hashable, Codable {
         key: String,
         label: String,
         color: String? = nil,
+        icon: String? = nil,
         sortOrder: Int = 0
     ) {
         self.id = id
         self.key = key
         self.label = label
         self.color = color
+        self.icon = icon ?? CategoryIconCatalog.defaultIconId(forKey: key)
         self.sortOrder = sortOrder
     }
 }
 
 public enum PurchaseCategoryCatalog {
     public static let defaults: [PurchaseCategory] = [
-        PurchaseCategory(id: "default-Food", key: "Food", label: "Alimentação", color: "#f97316", sortOrder: 0),
-        PurchaseCategory(id: "default-Groceries", key: "Groceries", label: "Supermercado", color: "#fb923c", sortOrder: 1),
-        PurchaseCategory(id: "default-Rent", key: "Rent", label: "Aluguel / Habitação", color: "#a855f7", sortOrder: 2),
-        PurchaseCategory(id: "default-Utilities", key: "Utilities", label: "Contas de Consumo (Água, Luz)", color: "#c084fc", sortOrder: 3),
-        PurchaseCategory(id: "default-Transport", key: "Transport", label: "Transporte", color: "#0ea5e9", sortOrder: 4),
-        PurchaseCategory(id: "default-Entertainment", key: "Entertainment", label: "Lazer / Entretenimento", color: "#ec4899", sortOrder: 5),
-        PurchaseCategory(id: "default-Health", key: "Health", label: "Saúde", color: "#10b981", sortOrder: 6),
-        PurchaseCategory(id: "default-Education", key: "Education", label: "Educação", color: "#eab308", sortOrder: 7),
-        PurchaseCategory(id: "default-Other", key: "Other", label: "Outros", color: "#64748b", sortOrder: 8),
+        PurchaseCategory(id: "default-Food", key: "Food", label: "Alimentação", color: "#f97316", icon: "utensils", sortOrder: 0),
+        PurchaseCategory(id: "default-Groceries", key: "Groceries", label: "Supermercado", color: "#fb923c", icon: "cart", sortOrder: 1),
+        PurchaseCategory(id: "default-Rent", key: "Rent", label: "Aluguel / Habitação", color: "#a855f7", icon: "home", sortOrder: 2),
+        PurchaseCategory(id: "default-Utilities", key: "Utilities", label: "Contas de Consumo (Água, Luz)", color: "#c084fc", icon: "bolt", sortOrder: 3),
+        PurchaseCategory(id: "default-Transport", key: "Transport", label: "Transporte", color: "#0ea5e9", icon: "car", sortOrder: 4),
+        PurchaseCategory(id: "default-Entertainment", key: "Entertainment", label: "Lazer / Entretenimento", color: "#ec4899", icon: "ticket", sortOrder: 5),
+        PurchaseCategory(id: "default-Health", key: "Health", label: "Saúde", color: "#10b981", icon: "crosscase", sortOrder: 6),
+        PurchaseCategory(id: "default-Education", key: "Education", label: "Educação", color: "#eab308", icon: "graduationcap", sortOrder: 7),
+        PurchaseCategory(id: "default-Other", key: "Other", label: "Outros", color: "#64748b", icon: "ellipsis", sortOrder: 8),
     ]
 
     public static let presetColors: [String] = [
@@ -73,11 +77,21 @@ public enum PurchaseCategoryCatalog {
         return nil
     }
 
-    public static func systemImage(for raw: String?) -> String {
-        guard let raw, !raw.isEmpty else { return ExpenseCategoryKind.other.systemImage }
-        if let kind = ExpenseCategoryKind(rawValue: raw) { return kind.systemImage }
-        if let kind = kind(forPluggyOrKey: raw) { return kind.systemImage }
-        return ExpenseCategoryKind.other.systemImage
+    public static func iconId(for raw: String?, in categories: [PurchaseCategory] = defaults) -> String {
+        guard let raw, !raw.isEmpty else {
+            return CategoryIconCatalog.defaultIconId(for: .other)
+        }
+        if let match = categories.first(where: { $0.key == raw })?.icon, !match.isEmpty {
+            return match
+        }
+        if let match = defaults.first(where: { $0.key == raw })?.icon, !match.isEmpty {
+            return match
+        }
+        return CategoryIconCatalog.defaultIconId(forKey: raw)
+    }
+
+    public static func systemImage(for raw: String?, in categories: [PurchaseCategory] = defaults) -> String {
+        CategoryIconCatalog.systemImage(forIconId: iconId(for: raw, in: categories))
     }
 
     /// Maps Pluggy / legacy category labels onto the closed purchase set.

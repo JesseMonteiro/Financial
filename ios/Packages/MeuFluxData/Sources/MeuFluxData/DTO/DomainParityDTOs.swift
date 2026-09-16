@@ -141,6 +141,7 @@ struct DomainPurchaseCategoryRowDTO: Decodable, Sendable {
     let key: String
     let label: String
     let color: String?
+    let icon: String?
     let sortOrder: Int
 
     init(from decoder: Decoder) throws {
@@ -149,11 +150,12 @@ struct DomainPurchaseCategoryRowDTO: Decodable, Sendable {
         key = try c.decodeIfPresent(String.self, forKey: .key) ?? "Other"
         label = try c.decodeIfPresent(String.self, forKey: .label) ?? key
         color = try c.decodeIfPresent(String.self, forKey: .color)
+        icon = try c.decodeIfPresent(String.self, forKey: .icon)
         sortOrder = try c.decodeIfPresent(Int.self, forKey: .sortOrder) ?? 0
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, key, label, color, sortOrder
+        case id, key, label, color, icon, sortOrder
     }
 }
 

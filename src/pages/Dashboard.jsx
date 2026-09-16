@@ -13,7 +13,7 @@ import { Stagger, StaggerItem } from '../components/motion/Stagger';
 import { BalanceChart } from '../components/charts/BalanceChart';
 import { ExpenseByCategoryChart } from '../components/charts/ExpenseByCategoryChart';
 import { IncomeVsExpenseChart } from '../components/charts/IncomeVsExpenseChart';
-import { InsightsCarousel, KpiCarousel } from '../components/DashboardCarousels';
+import { InsightsCarousel, KpiCarousel, CreditPurchasesCarousel } from '../components/DashboardCarousels';
 import { CategoryIcon } from '../components/CategoryIcon';
 import { useAccountStore } from '../stores/accountStore';
 import { useTransactionStore } from '../stores/transactionStore';
@@ -21,12 +21,14 @@ import { useInvestmentStore } from '../stores/investmentStore';
 import { useBudgetStore } from '../stores/budgetStore';
 import { useMealBenefitStore } from '../stores/mealBenefitStore';
 import { useAuthStore } from '../stores/authStore';
+import { useCategoryStore } from '../stores/categoryStore';
 import { formatCurrency, formatDateRelative } from '../utils/formatters';
 import { translateCategory } from '../utils/categories';
 import { getCategoryColor } from '../utils/colors';
 import {
   buildIncomeExpenseSeries,
   buildNetWorthSeries,
+  buildRecentCreditPurchases,
   monthCashflow,
   monthOverMonth,
   weeklyRecap,
@@ -43,6 +45,7 @@ import { fetchCategories } from '../services/api';
 import { accountById } from '../components/AccountIcon';
 import { asOfForBudgetMonth, mergeBudgetRows } from '../utils/budgetPeriod';
 import { mealSpendByCategory } from '../utils/mealBenefits';
+import { useCreditDataStore } from '../stores/creditDataStore';
 
 function insightAccent(type) {
   if (type === 'positive') return 'var(--success)';
@@ -56,6 +59,8 @@ export function Dashboard() {
   const { loadInvestments, investments, getTotalInvested } = useInvestmentStore();
   const { loadBudgets, budgets } = useBudgetStore();
   const { loadMealBenefits, benefits: mealBenefits, purchases: mealPurchases } = useMealBenefitStore();
+  const { loadCategories, categories: purchaseCategories } = useCategoryStore();
+  const { loadForAccounts, transactionsByAccount } = useCreditDataStore();
   const user = useAuthStore((s) => s.user);
   const [selectedItem, setSelectedItem] = useState(null);
   const [pluggyCategories, setPluggyCategories] = useState([]);
@@ -67,8 +72,17 @@ export function Dashboard() {
     loadInvestments();
     loadBudgets();
     loadMealBenefits();
+    loadCategories();
     fetchCategories({ force: true }).then((list) => setPluggyCategories(Array.isArray(list) ? list : [])).catch(() => setPluggyCategories([]));
   }, []);
+
+  const creditCards = useMemo(() => accounts.filter((a) => a.type === 'CREDIT'), [accounts]);
+  const creditCardIds = useMemo(() => creditCards.map((c) => c.id).filter(Boolean), [creditCards]);
+
+  useEffect(() => {
+    if (accLoading || creditCardIds.length === 0) return;
+    loadForAccounts(creditCardIds);
+  }, [accLoading, creditCardIds.join(','), loadForAccounts]);
 
   const summary = useMemo(
     () => calculateNetWorth(accounts, investments, loans),
@@ -128,8 +142,13 @@ export function Dashboard() {
   }, [transactions, budgets, ym, mealBenefits, mealPurchases]);
 
   const bankCount = accounts.filter((a) => a.type === 'BANK').length;
-  const creditCount = accounts.filter((a) => a.type === 'CREDIT').length;
+  const creditCount = creditCards.length;
   const openBillsTotal = useMemo(() => sumOpenBillsTotal(accounts), [accounts]);
+  const recentCreditPurchases = useMemo(() => {
+    const fromLedger = creditCardIds.flatMap((id) => transactionsByAccount[id] || []);
+    const pool = fromLedger.length > 0 ? fromLedger : transactions;
+    return buildRecentCreditPurchases(pool, creditCards, { days: 15, limit: 24 });
+  }, [creditCardIds, creditCards, transactionsByAccount, transactions]);
   const isInitialLoad =
     isInitialEmpty(accounts, accLoading, accAt) || isInitialEmpty(transactions, txLoading, txAt);
 
@@ -164,14 +183,14 @@ export function Dashboard() {
         </div>
       </div>
 
-      <Stagger className="dashboard-grid">
-        <StaggerItem className="col-6">
+      <Stagger className="dashboard-summary-row">
+        <StaggerItem>
           <InsightsCarousel
             insights={insights}
             onShowAll={insights.length > 0 ? () => setShowAllInsights(true) : undefined}
           />
         </StaggerItem>
-        <StaggerItem className="col-6">
+        <StaggerItem>
           <KpiCarousel
             summary={summary}
             totalInvestments={totalInvestments}
@@ -183,6 +202,15 @@ export function Dashboard() {
           />
         </StaggerItem>
       </Stagger>
+
+      <CreditPurchasesCarousel
+        purchases={recentCreditPurchases}
+        onSelect={(purchase) =>
+          setSelectedItem(
+            fromTransaction(purchase.source, purchase.accountName || undefined)
+          )
+        }
+      />
 
       {recap.current.total > 0 && (
         <Card title="Recap da Semana" subtitle="Últimos 7 dias">
@@ -259,6 +287,7 @@ export function Dashboard() {
                   <div className="list-row-main" style={{ gap: '0.75rem' }}>
                     <CategoryIcon
                       category={tx.category}
+                      categories={purchaseCategories}
                       isCredit={tx.amount >= 0}
                       size={32}
                     />

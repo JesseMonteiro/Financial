@@ -143,11 +143,11 @@ export function PageLoadingSkeleton({
       </span>
 
       {showKpis && (
-        <div className="dashboard-grid">
+        <div className={kpiCount === 2 ? 'dashboard-summary-row' : 'dashboard-grid'}>
           {Array.from({ length: kpiCount }).map((_, i) => (
             <SkeletonCard
               key={i}
-              className={kpiCount === 2 ? 'col-6' : kpiCount <= 3 ? 'col-4' : 'col-3'}
+              className={kpiCount === 2 ? undefined : kpiCount <= 3 ? 'col-4' : 'col-3'}
               lines={kpiCount === 2 ? 5 : 3}
               style={kpiCount === 2 ? { aspectRatio: '1' } : undefined}
             />

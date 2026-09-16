@@ -46,5 +46,24 @@ final class PurchaseCategoryTests: XCTestCase {
         XCTAssertEqual(mapped.label, "Alimentação")
         XCTAssertEqual(mapped.color, "#f97316")
         XCTAssertEqual(mapped.sortOrder, 3)
+        XCTAssertEqual(mapped.icon, "utensils") // default for Food when missing
+    }
+
+    func testDomainMapperPurchaseCategoryWithIcon() {
+        let json = """
+        {"id":"cat-2","key":"Pets","label":"Pets","color":"#111111","icon":"pawprint","sort_order":1}
+        """.data(using: .utf8)!
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let dto = try! decoder.decode(DomainPurchaseCategoryRowDTO.self, from: json)
+        let mapped = DomainMapper.purchaseCategory(dto)
+        XCTAssertEqual(mapped.icon, "pawprint")
+    }
+
+    func testIconCatalogHasStableDefaults() {
+        XCTAssertEqual(CategoryIconCatalog.defaultIconId(for: .food), "utensils")
+        XCTAssertEqual(PurchaseCategoryCatalog.systemImage(for: "Food"), "fork.knife")
+        let custom = [PurchaseCategory(id: "1", key: "Food", label: "Comida", color: "#f97316", icon: "cup", sortOrder: 0)]
+        XCTAssertEqual(PurchaseCategoryCatalog.systemImage(for: "Food", in: custom), "cup.and.saucer.fill")
     }
 }

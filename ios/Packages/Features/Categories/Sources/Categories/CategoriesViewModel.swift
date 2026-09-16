@@ -11,6 +11,7 @@ public final class CategoriesViewModel {
     public var errorMessage: String?
     public var draftLabel = ""
     public var draftColor = PurchaseCategoryCatalog.presetColors[0]
+    public var draftIcon = CategoryIconCatalog.defaultIconId(for: .other)
     public var editingID: String?
 
     private let repository: (any PurchaseCategoriesRepository)?
@@ -61,12 +62,15 @@ public final class CategoriesViewModel {
         editingID = nil
         draftLabel = ""
         draftColor = PurchaseCategoryCatalog.presetColors[0]
+        draftIcon = "tag"
     }
 
     public func beginEdit(_ category: PurchaseCategory) {
         editingID = category.id
         draftLabel = category.label
         draftColor = category.color ?? PurchaseCategoryCatalog.presetColors[0]
+        draftIcon = category.icon
+            ?? CategoryIconCatalog.defaultIconId(forKey: category.key)
     }
 
     public func saveDraft() async {
@@ -84,6 +88,7 @@ public final class CategoriesViewModel {
                 key: existing.key,
                 label: label,
                 color: draftColor,
+                icon: draftIcon,
                 sortOrder: existing.sortOrder
             )
         } else {
@@ -94,6 +99,7 @@ public final class CategoriesViewModel {
                 key: key,
                 label: label,
                 color: draftColor,
+                icon: draftIcon,
                 sortOrder: nextOrder
             )
         }

@@ -379,6 +379,14 @@ public extension LineItemDetail {
 
     static func from(dashboard: DashboardRecentTransaction) -> LineItemDetail {
         let category = translatedCategory(dashboard.category)
+        var metadata = [
+            LineItemMetadataRow(label: "Quando", value: dashboard.dateRelative),
+            LineItemMetadataRow(label: "Data", value: dashboard.date),
+            LineItemMetadataRow(label: "Categoria", value: category),
+        ]
+        if let accountName = dashboard.accountName, !accountName.isEmpty {
+            metadata.append(LineItemMetadataRow(label: "Cartão", value: accountName))
+        }
         return LineItemDetail(
             id: dashboard.id,
             kind: .openFinanceTransaction,
@@ -388,13 +396,10 @@ public extension LineItemDetail {
             category: category,
             categoryKey: dashboard.category,
             categoryId: dashboard.categoryId,
+            accountLabel: dashboard.accountName,
             statusLabel: dashboard.isPending ? "Pendente" : "Confirmada",
             badges: dashboard.isPending ? ["Pendente"] : [],
-            metadata: [
-                LineItemMetadataRow(label: "Quando", value: dashboard.dateRelative),
-                LineItemMetadataRow(label: "Data", value: dashboard.date),
-                LineItemMetadataRow(label: "Categoria", value: category),
-            ],
+            metadata: metadata,
             capabilities: .changeCategory
         )
     }

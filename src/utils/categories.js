@@ -43,31 +43,95 @@ export function allTranslations() {
 }
 
 export const DEFAULT_PURCHASE_CATEGORIES = [
-  { key: 'Food', label: 'Alimentação', color: '#f97316', sortOrder: 0 },
-  { key: 'Groceries', label: 'Supermercado', color: '#fb923c', sortOrder: 1 },
-  { key: 'Rent', label: 'Aluguel / Habitação', color: '#a855f7', sortOrder: 2 },
-  { key: 'Utilities', label: 'Contas de Consumo (Água, Luz)', color: '#c084fc', sortOrder: 3 },
-  { key: 'Transport', label: 'Transporte', color: '#0ea5e9', sortOrder: 4 },
-  { key: 'Entertainment', label: 'Lazer / Entretenimento', color: '#ec4899', sortOrder: 5 },
-  { key: 'Health', label: 'Saúde', color: '#10b981', sortOrder: 6 },
-  { key: 'Education', label: 'Educação', color: '#eab308', sortOrder: 7 },
-  { key: 'Other', label: 'Outros', color: '#64748b', sortOrder: 8 },
+  { key: 'Food', label: 'Alimentação', color: '#f97316', icon: 'utensils', sortOrder: 0 },
+  { key: 'Groceries', label: 'Supermercado', color: '#fb923c', icon: 'cart', sortOrder: 1 },
+  { key: 'Rent', label: 'Aluguel / Habitação', color: '#a855f7', icon: 'home', sortOrder: 2 },
+  { key: 'Utilities', label: 'Contas de Consumo (Água, Luz)', color: '#c084fc', icon: 'bolt', sortOrder: 3 },
+  { key: 'Transport', label: 'Transporte', color: '#0ea5e9', icon: 'car', sortOrder: 4 },
+  { key: 'Entertainment', label: 'Lazer / Entretenimento', color: '#ec4899', icon: 'ticket', sortOrder: 5 },
+  { key: 'Health', label: 'Saúde', color: '#10b981', icon: 'crosscase', sortOrder: 6 },
+  { key: 'Education', label: 'Educação', color: '#eab308', icon: 'graduationcap', sortOrder: 7 },
+  { key: 'Other', label: 'Outros', color: '#64748b', icon: 'ellipsis', sortOrder: 8 },
 ];
 
 const PURCHASE_CATEGORY_KEYS = new Set(DEFAULT_PURCHASE_CATEGORIES.map((c) => c.key));
 
-/** Lucide icon name per purchase category key (mirrors iOS SF Symbols). */
-export const CATEGORY_ICON_NAMES = {
+/** Shared icon ids (aligned with iOS CategoryIconCatalog). */
+export const CATEGORY_ICON_OPTIONS = [
+  { id: 'utensils', label: 'Alimentação' },
+  { id: 'cart', label: 'Supermercado' },
+  { id: 'bag', label: 'Sacola' },
+  { id: 'cup', label: 'Café' },
+  { id: 'takeout', label: 'Delivery' },
+  { id: 'wineglass', label: 'Bar' },
+  { id: 'home', label: 'Casa' },
+  { id: 'building', label: 'Prédio' },
+  { id: 'sofa', label: 'Móveis' },
+  { id: 'bolt', label: 'Energia' },
+  { id: 'drop', label: 'Água' },
+  { id: 'flame', label: 'Gás' },
+  { id: 'wifi', label: 'Internet' },
+  { id: 'phone', label: 'Telefone' },
+  { id: 'car', label: 'Carro' },
+  { id: 'bus', label: 'Ônibus' },
+  { id: 'tram', label: 'Metrô' },
+  { id: 'fuelpump', label: 'Combustível' },
+  { id: 'bicycle', label: 'Bicicleta' },
+  { id: 'airplane', label: 'Viagem' },
+  { id: 'bed', label: 'Hotel' },
+  { id: 'ticket', label: 'Ingresso' },
+  { id: 'film', label: 'Cinema' },
+  { id: 'gamecontroller', label: 'Games' },
+  { id: 'music', label: 'Música' },
+  { id: 'tv', label: 'Streaming' },
+  { id: 'party', label: 'Festa' },
+  { id: 'heart', label: 'Saúde' },
+  { id: 'crosscase', label: 'Farmácia' },
+  { id: 'pills', label: 'Remédios' },
+  { id: 'figure', label: 'Esporte' },
+  { id: 'graduationcap', label: 'Educação' },
+  { id: 'book', label: 'Livros' },
+  { id: 'pencil', label: 'Estudos' },
+  { id: 'briefcase', label: 'Trabalho' },
+  { id: 'creditcard', label: 'Cartão' },
+  { id: 'banknote', label: 'Dinheiro' },
+  { id: 'chart', label: 'Investimentos' },
+  { id: 'percent', label: 'Juros' },
+  { id: 'gift', label: 'Presente' },
+  { id: 'pawprint', label: 'Pets' },
+  { id: 'tshirt', label: 'Roupas' },
+  { id: 'scissors', label: 'Beleza' },
+  { id: 'wrench', label: 'Serviços' },
+  { id: 'hammer', label: 'Reforma' },
+  { id: 'leaf', label: 'Natureza' },
+  { id: 'baby', label: 'Família' },
+  { id: 'stroller', label: 'Bebê' },
+  { id: 'handraised', label: 'Doação' },
+  { id: 'shield', label: 'Seguro' },
+  { id: 'doc', label: 'Documentos' },
+  { id: 'envelope', label: 'Correios' },
+  { id: 'cartbadge', label: 'Compras+' },
+  { id: 'storefront', label: 'Loja' },
+  { id: 'tag', label: 'Etiqueta' },
+  { id: 'star', label: 'Favorito' },
+  { id: 'sparkles', label: 'Destaque' },
+  { id: 'ellipsis', label: 'Outros' },
+];
+
+const DEFAULT_ICON_BY_KIND = {
   Food: 'utensils',
-  Groceries: 'shopping-cart',
+  Groceries: 'cart',
   Rent: 'home',
-  Utilities: 'zap',
+  Utilities: 'bolt',
   Transport: 'car',
   Entertainment: 'ticket',
-  Health: 'heart-pulse',
-  Education: 'graduation-cap',
-  Other: 'circle-ellipsis',
+  Health: 'crosscase',
+  Education: 'graduationcap',
+  Other: 'ellipsis',
 };
+
+/** @deprecated use DEFAULT_ICON_BY_KIND / getCategoryIconId */
+export const CATEGORY_ICON_NAMES = DEFAULT_ICON_BY_KIND;
 
 const PLUGGY_TO_KIND = {
   'Eating out': 'Food',
@@ -158,10 +222,22 @@ export function resolveCategoryKind(raw) {
   return PLUGGY_TO_KIND[key] || null;
 }
 
-/** Lucide icon name aligned with iOS SF Symbols per category. */
-export function getCategoryIconName(raw) {
+/** Stable icon id for a category key (honors stored `icon` on user categories). */
+export function getCategoryIconId(raw, categories = []) {
+  const list = Array.isArray(categories) ? categories : [];
+  if (raw) {
+    const match = list.find((c) => c.key === raw);
+    if (match?.icon) return match.icon;
+    const def = DEFAULT_PURCHASE_CATEGORIES.find((c) => c.key === raw);
+    if (def?.icon) return def.icon;
+  }
   const kind = resolveCategoryKind(raw) || 'Other';
-  return CATEGORY_ICON_NAMES[kind] || CATEGORY_ICON_NAMES.Other;
+  return DEFAULT_ICON_BY_KIND[kind] || 'ellipsis';
+}
+
+/** @deprecated use getCategoryIconId */
+export function getCategoryIconName(raw, categories = []) {
+  return getCategoryIconId(raw, categories);
 }
 
 /** Hex tint for a category key (defaults when custom color missing). */

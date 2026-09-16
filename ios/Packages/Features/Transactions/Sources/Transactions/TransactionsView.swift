@@ -9,12 +9,14 @@ public struct TransactionsView: View {
 
     public init(
         transactions: any TransactionsRepository,
-        accounts: any AccountsRepository
+        accounts: any AccountsRepository,
+        purchaseCategories: (any PurchaseCategoriesRepository)? = nil
     ) {
         _viewModel = State(
             initialValue: TransactionsViewModel(
                 transactionsRepository: transactions,
-                accountsRepository: accounts
+                accountsRepository: accounts,
+                purchaseCategoriesRepository: purchaseCategories
             )
         )
     }
@@ -147,6 +149,7 @@ public struct TransactionsView: View {
                                     badge: tx.category.map(LineItemDetail.translatedCategory),
                                     isPending: tx.isPending,
                                     categoryKey: tx.category,
+                                    purchaseCategories: viewModel.purchaseCategories,
                                     action: {
                                         selectedDetail = viewModel.detail(for: tx)
                                     }

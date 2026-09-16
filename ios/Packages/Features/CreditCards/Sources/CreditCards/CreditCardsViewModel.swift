@@ -18,10 +18,12 @@ public final class CreditCardsViewModel {
     private let parseBillUseCase: (any ParseBillUseCase)?
     private let receivables: (any ReceivablesRepository)?
     private let transactions: (any TransactionsRepository)?
+    private let purchaseCategoriesRepository: (any PurchaseCategoriesRepository)?
     private var lastLoadedAt: Date?
     private var lastCacheKey: String?
     public private(set) var linkedTransactionIDs: Set<String> = []
     public private(set) var categoryOptions: [LineItemCategoryOption] = []
+    public private(set) var purchaseCategories: [PurchaseCategory] = PurchaseCategoryCatalog.defaults
 
     public var purchaseDescription = ""
     public var purchaseAmount = ""
@@ -35,13 +37,15 @@ public final class CreditCardsViewModel {
         manuals: (any ManualExpensesRepository)? = nil,
         parseBill: (any ParseBillUseCase)? = nil,
         receivables: (any ReceivablesRepository)? = nil,
-        transactions: (any TransactionsRepository)? = nil
+        transactions: (any TransactionsRepository)? = nil,
+        purchaseCategories: (any PurchaseCategoriesRepository)? = nil
     ) {
         self.repository = repository
         self.manuals = manuals
         self.parseBillUseCase = parseBill
         self.receivables = receivables
         self.transactions = transactions
+        self.purchaseCategoriesRepository = purchaseCategories
     }
 
     public var isAllCards: Bool { selectedCardId == CreditCardsScreen.allCardsId }
@@ -211,10 +215,15 @@ public final class CreditCardsViewModel {
     }
 
     private func loadCategories(force: Bool) async {
-        guard let transactions else { return }
-        let cats = (try? await transactions.fetchCategories(force: force)) ?? []
-        if !cats.isEmpty {
-            categoryOptions = LineItemCategoryOption.pluggyOptions(cats)
+        if let transactions {
+            let cats = (try? await transactions.fetchCategories(force: force)) ?? []
+            if !cats.isEmpty {
+                categoryOptions = LineItemCategoryOption.pluggyOptions(cats)
+            }
+        }
+        if let purchaseCategoriesRepository,
+           let cats = try? await purchaseCategoriesRepository.fetchCategories(force: force) {
+            purchaseCategories = PurchaseCategoryCatalog.resolved(cats)
         }
     }
 

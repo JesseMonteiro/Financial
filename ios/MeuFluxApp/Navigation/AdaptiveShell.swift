@@ -210,7 +210,9 @@ struct AdaptiveShell: View {
             DashboardView(
                 viewModel: dashboardCache.viewModel(
                     loadDashboard: composition.loadDashboard,
-                    transactions: composition.transactionsRepository
+                    transactions: composition.transactionsRepository,
+                    accounts: composition.accountsRepository,
+                    purchaseCategories: composition.purchaseCategoriesRepository
                 ),
                 accountName: composition.accountDisplayName,
                 accountEmail: composition.accountEmail,
@@ -231,7 +233,8 @@ struct AdaptiveShell: View {
         case .transactions:
             TransactionsView(
                 transactions: composition.transactionsRepository,
-                accounts: composition.accountsRepository
+                accounts: composition.accountsRepository,
+                purchaseCategories: composition.purchaseCategoriesRepository
             )
         case .investments:
             InvestmentsView(
@@ -246,6 +249,7 @@ struct AdaptiveShell: View {
                 parseBill: composition.parseBill,
                 receivables: composition.receivablesRepository,
                 transactions: composition.transactionsRepository,
+                purchaseCategories: composition.purchaseCategoriesRepository,
                 onReceivables: { composition.selectedRoute = .receivables }
             )
         case .loans:
@@ -339,12 +343,16 @@ private final class DashboardViewModelCache {
 
     func viewModel(
         loadDashboard: any LoadDashboardUseCase,
-        transactions: (any TransactionsRepository)?
+        transactions: (any TransactionsRepository)?,
+        accounts: (any AccountsRepository)? = nil,
+        purchaseCategories: (any PurchaseCategoriesRepository)? = nil
     ) -> DashboardViewModel {
         if let cached { return cached }
         let created = DashboardViewModel(
             loadDashboard: loadDashboard,
-            transactions: transactions
+            transactions: transactions,
+            accounts: accounts,
+            purchaseCategories: purchaseCategories
         )
         cached = created
         return created

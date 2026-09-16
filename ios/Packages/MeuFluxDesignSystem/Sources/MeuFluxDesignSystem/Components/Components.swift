@@ -609,6 +609,8 @@ public struct TransactionRow: View {
     public var isPending: Bool
     /// Purchase / Pluggy category key — drives the leading circle icon when set.
     public var categoryKey: String?
+    /// User purchase categories (custom icons/colors). Falls back to catalog defaults.
+    public var purchaseCategories: [PurchaseCategory]
     public var action: (() -> Void)?
 
     public init(
@@ -619,6 +621,7 @@ public struct TransactionRow: View {
         badge: String? = nil,
         isPending: Bool = false,
         categoryKey: String? = nil,
+        purchaseCategories: [PurchaseCategory] = PurchaseCategoryCatalog.defaults,
         action: (() -> Void)? = nil
     ) {
         self.title = title
@@ -628,19 +631,20 @@ public struct TransactionRow: View {
         self.badge = badge
         self.isPending = isPending
         self.categoryKey = categoryKey
+        self.purchaseCategories = purchaseCategories
         self.action = action
     }
 
     private var leadingIcon: String {
         if let categoryKey, !categoryKey.isEmpty {
-            return PurchaseCategoryCatalog.systemImage(for: categoryKey)
+            return PurchaseCategoryCatalog.systemImage(for: categoryKey, in: purchaseCategories)
         }
         return isCredit ? "arrow.down.left" : "arrow.up.right"
     }
 
     private var leadingTint: Color {
         if let categoryKey, !categoryKey.isEmpty,
-           let hex = PurchaseCategoryCatalog.color(for: categoryKey),
+           let hex = PurchaseCategoryCatalog.color(for: categoryKey, in: purchaseCategories),
            let color = Color(hexString: hex) {
             return color
         }

@@ -4,9 +4,10 @@ import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { IconBusyButton, SavingScope } from '../components/ui/Spinner';
 import { PageLoadingSkeleton } from '../components/ui/Skeleton';
-import { CategoryMark } from '../components/CategoryIcon';
+import { CategoryMark, resolveLucideIcon } from '../components/CategoryIcon';
 import { useCategoryStore } from '../stores/categoryStore';
 import { isInitialEmpty } from '../utils/loading';
+import { CATEGORY_ICON_OPTIONS } from '../utils/categories';
 
 const PRESET_COLORS = [
   '#f97316',
@@ -36,6 +37,7 @@ export function Categories() {
   const [saving, setSaving] = useState(false);
   const [label, setLabel] = useState('');
   const [color, setColor] = useState(PRESET_COLORS[0]);
+  const [icon, setIcon] = useState('tag');
 
   useEffect(() => {
     loadCategories();
@@ -45,6 +47,7 @@ export function Categories() {
     setEditing(null);
     setLabel('');
     setColor(PRESET_COLORS[0]);
+    setIcon('tag');
     setShowModal(true);
   };
 
@@ -52,6 +55,7 @@ export function Categories() {
     setEditing(category);
     setLabel(category.label);
     setColor(category.color || PRESET_COLORS[0]);
+    setIcon(category.icon || 'tag');
     setShowModal(true);
   };
 
@@ -70,6 +74,7 @@ export function Categories() {
         id: editing?.id,
         label: label.trim(),
         color,
+        icon,
       });
       setShowModal(false);
       setEditing(null);
@@ -136,6 +141,8 @@ export function Categories() {
                   <CategoryMark
                     categoryKey={category.key}
                     color={category.color}
+                    icon={category.icon}
+                    categories={categories}
                     size={32}
                   />
                   <div style={{ minWidth: 0 }}>
@@ -169,7 +176,7 @@ export function Categories() {
       {showModal && (
         <div className="modal-overlay" onClick={closeModal}>
           <SavingScope active={saving}>
-            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 480 }}>
               <h2 style={{ fontSize: 'var(--font-size-xl)', fontWeight: 700, marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <Tags size={22} />
                 {editing ? 'Editar categoria' : 'Nova categoria'}
@@ -213,6 +220,49 @@ export function Categories() {
                       aria-label="Cor personalizada"
                       style={{ width: 36, height: 28, padding: 0, border: 'none', background: 'transparent', cursor: 'pointer' }}
                     />
+                  </div>
+                </div>
+                <div>
+                  <label style={{ fontSize: 'var(--font-size-sm)', fontWeight: 500 }}>Ícone</label>
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(auto-fill, minmax(40px, 1fr))',
+                      gap: '0.45rem',
+                      marginTop: '0.5rem',
+                      maxHeight: 220,
+                      overflowY: 'auto',
+                      padding: '0.25rem',
+                    }}
+                  >
+                    {CATEGORY_ICON_OPTIONS.map((option) => {
+                      const Icon = resolveLucideIcon(option.id);
+                      const selected = icon === option.id;
+                      return (
+                        <button
+                          key={option.id}
+                          type="button"
+                          title={option.label}
+                          aria-label={option.label}
+                          aria-pressed={selected}
+                          onClick={() => setIcon(option.id)}
+                          style={{
+                            width: 40,
+                            height: 40,
+                            borderRadius: 999,
+                            border: selected ? '2px solid var(--text-primary)' : '2px solid transparent',
+                            backgroundColor: `${color}24`,
+                            color,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          <Icon size={18} strokeWidth={2.25} />
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '1rem' }}>

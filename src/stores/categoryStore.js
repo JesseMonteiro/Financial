@@ -54,12 +54,14 @@ export const useCategoryStore = create((set, get) => ({
           ...existing.find((c) => c.id === input.id),
           label,
           color: input.color || existing.find((c) => c.id === input.id)?.color,
+          icon: input.icon || existing.find((c) => c.id === input.id)?.icon,
         }
       : {
           id: crypto.randomUUID(),
           key: slugifyCategoryKey(label, existing.map((c) => c.key)),
           label,
           color: input.color || '#6366f1',
+          icon: input.icon || 'tag',
           sortOrder: existing.reduce((max, c) => Math.max(max, c.sortOrder ?? 0), -1) + 1,
         };
 

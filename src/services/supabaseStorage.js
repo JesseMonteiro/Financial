@@ -122,15 +122,15 @@ export async function deleteStoredGoal(goalId) {
 }
 
 const DEFAULT_PURCHASE_CATEGORY_SEED = [
-  { key: 'Food', label: 'Alimentação', color: '#f97316', sortOrder: 0 },
-  { key: 'Groceries', label: 'Supermercado', color: '#fb923c', sortOrder: 1 },
-  { key: 'Rent', label: 'Aluguel / Habitação', color: '#a855f7', sortOrder: 2 },
-  { key: 'Utilities', label: 'Contas de Consumo (Água, Luz)', color: '#c084fc', sortOrder: 3 },
-  { key: 'Transport', label: 'Transporte', color: '#0ea5e9', sortOrder: 4 },
-  { key: 'Entertainment', label: 'Lazer / Entretenimento', color: '#ec4899', sortOrder: 5 },
-  { key: 'Health', label: 'Saúde', color: '#10b981', sortOrder: 6 },
-  { key: 'Education', label: 'Educação', color: '#eab308', sortOrder: 7 },
-  { key: 'Other', label: 'Outros', color: '#64748b', sortOrder: 8 },
+  { key: 'Food', label: 'Alimentação', color: '#f97316', icon: 'utensils', sortOrder: 0 },
+  { key: 'Groceries', label: 'Supermercado', color: '#fb923c', icon: 'cart', sortOrder: 1 },
+  { key: 'Rent', label: 'Aluguel / Habitação', color: '#a855f7', icon: 'home', sortOrder: 2 },
+  { key: 'Utilities', label: 'Contas de Consumo (Água, Luz)', color: '#c084fc', icon: 'bolt', sortOrder: 3 },
+  { key: 'Transport', label: 'Transporte', color: '#0ea5e9', icon: 'car', sortOrder: 4 },
+  { key: 'Entertainment', label: 'Lazer / Entretenimento', color: '#ec4899', icon: 'ticket', sortOrder: 5 },
+  { key: 'Health', label: 'Saúde', color: '#10b981', icon: 'crosscase', sortOrder: 6 },
+  { key: 'Education', label: 'Educação', color: '#eab308', icon: 'graduationcap', sortOrder: 7 },
+  { key: 'Other', label: 'Outros', color: '#64748b', icon: 'ellipsis', sortOrder: 8 },
 ];
 
 async function seedPurchaseCategories(userId) {
@@ -139,6 +139,7 @@ async function seedPurchaseCategories(userId) {
     key: row.key,
     label: row.label,
     color: row.color,
+    icon: row.icon,
     sort_order: row.sortOrder,
   }));
   const { data, error } = await supabase.from('purchase_categories').insert(rows).select('*');

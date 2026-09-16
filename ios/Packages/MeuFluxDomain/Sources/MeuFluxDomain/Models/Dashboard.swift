@@ -13,6 +13,8 @@ public struct DashboardSnapshot: Sendable, Hashable {
     public var insights: [DashboardInsight]
     public var weeklyRecap: DashboardWeeklyRecap
     public var recentTransactions: [DashboardRecentTransaction]
+    /// Latest credit-card purchases (new charges only), for the compact home carousel.
+    public var recentCreditPurchases: [DashboardRecentTransaction]
     public var dailySpend: [DashboardDailySpendPoint]
     public var budgetCategories: [DashboardBudgetCategory]
     public var calculationVersion: String?
@@ -29,6 +31,7 @@ public struct DashboardSnapshot: Sendable, Hashable {
         insights: [DashboardInsight],
         weeklyRecap: DashboardWeeklyRecap,
         recentTransactions: [DashboardRecentTransaction],
+        recentCreditPurchases: [DashboardRecentTransaction] = [],
         dailySpend: [DashboardDailySpendPoint] = [],
         budgetCategories: [DashboardBudgetCategory],
         calculationVersion: String? = nil
@@ -44,6 +47,7 @@ public struct DashboardSnapshot: Sendable, Hashable {
         self.insights = insights
         self.weeklyRecap = weeklyRecap
         self.recentTransactions = recentTransactions
+        self.recentCreditPurchases = recentCreditPurchases
         self.dailySpend = dailySpend
         self.budgetCategories = budgetCategories
         self.calculationVersion = calculationVersion
@@ -201,6 +205,8 @@ public struct DashboardRecentTransaction: Sendable, Hashable, Identifiable {
     public var amount: Money
     public var isCredit: Bool
     public var isPending: Bool
+    public var accountId: String?
+    public var accountName: String?
 
     public init(
         id: String,
@@ -211,7 +217,9 @@ public struct DashboardRecentTransaction: Sendable, Hashable, Identifiable {
         dateRelative: String,
         amount: Money,
         isCredit: Bool,
-        isPending: Bool
+        isPending: Bool,
+        accountId: String? = nil,
+        accountName: String? = nil
     ) {
         self.id = id
         self.description = description
@@ -222,6 +230,8 @@ public struct DashboardRecentTransaction: Sendable, Hashable, Identifiable {
         self.amount = amount
         self.isCredit = isCredit
         self.isPending = isPending
+        self.accountId = accountId
+        self.accountName = accountName
     }
 }
 

@@ -30,17 +30,7 @@ public enum ExpenseCategoryKind: String, Sendable, Codable, CaseIterable, Hashab
 
     /// SF Symbol used in transaction rows and category lists.
     public var systemImage: String {
-        switch self {
-        case .food: return "fork.knife"
-        case .groceries: return "cart.fill"
-        case .rent: return "house.fill"
-        case .utilities: return "bolt.fill"
-        case .transport: return "car.fill"
-        case .entertainment: return "ticket.fill"
-        case .health: return "cross.case.fill"
-        case .education: return "graduationcap.fill"
-        case .other: return "ellipsis.circle.fill"
-        }
+        CategoryIconCatalog.systemImage(forIconId: CategoryIconCatalog.defaultIconId(for: self))
     }
 
     public func mealBudgetCategory(merchant: String?) -> String {

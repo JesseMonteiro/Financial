@@ -7,6 +7,7 @@ import { SkeletonList } from '../components/ui/Skeleton';
 import { CategoryIcon } from '../components/CategoryIcon';
 import { useTransactionStore } from '../stores/transactionStore';
 import { useAccountStore } from '../stores/accountStore';
+import { useCategoryStore } from '../stores/categoryStore';
 import { formatCurrency, formatDateRelative, formatDate } from '../utils/formatters';
 import { translateCategory } from '../utils/categories';
 import { isInitialEmpty } from '../utils/loading';
@@ -18,12 +19,14 @@ import { AccountIcon, accountById } from '../components/AccountIcon';
 export function Transactions() {
   const { loadTransactions, getFilteredTransactions, transactions: rawTransactions, filters, setFilters, loading, lastUpdated, updateOpenFinanceCategory } = useTransactionStore();
   const { accounts, loadAccounts } = useAccountStore();
+  const { loadCategories, categories: purchaseCategories } = useCategoryStore();
   const [selectedItem, setSelectedItem] = useState(null);
   const [pluggyCategories, setPluggyCategories] = useState([]);
 
   useEffect(() => {
     loadTransactions();
     loadAccounts();
+    loadCategories();
     fetchCategories({ force: true }).then((list) => setPluggyCategories(Array.isArray(list) ? list : [])).catch(() => setPluggyCategories([]));
   }, []);
 
@@ -170,6 +173,7 @@ export function Transactions() {
                   <div className="list-row-main">
                     <CategoryIcon
                       category={tx.category}
+                      categories={purchaseCategories}
                       isCredit={isIncome}
                       size={38}
                     />

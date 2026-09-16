@@ -435,6 +435,9 @@ public struct BFFClient: Sendable {
         if let color = category.color {
             body["color"] = color
         }
+        if let icon = category.icon {
+            body["icon"] = icon
+        }
         try await domainWrite(path: "v1/domain/purchase-categories", method: .post, body: body)
         await invalidateCaches(matching: ["bff:domain:purchase-categories"])
     }

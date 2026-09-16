@@ -10,6 +10,7 @@ import {
   calculateNetWorth,
   currentYm,
   buildDailySpend,
+  buildRecentCreditPurchases,
   expensesByCategory,
   isIncomeTx,
   monthCashflow,
@@ -204,6 +205,21 @@ export async function handleDashboard(
     };
   });
 
+  const accountNameById = new Map(
+    creditCards.map((c) => [String(c.id || ""), String(c.name || "Cartão")]),
+  );
+  const recentCreditPurchases = buildRecentCreditPurchases(
+    transactions,
+    creditAccountIds,
+    {
+      days: 15,
+      limit: 24,
+      accountNameById,
+      formatRelativeDate,
+      translateCategory,
+    },
+  );
+
   return jsonResponse({
     displayName,
     selectedMonth: ym,
@@ -240,6 +256,7 @@ export async function handleDashboard(
       topCategory: recap.current.topCategory,
     },
     recentTransactions,
+    recentCreditPurchases,
     dailySpend,
     budgetCategories,
   });

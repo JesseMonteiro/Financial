@@ -371,6 +371,7 @@ public enum DomainMapper {
             key: dto.key,
             label: dto.label,
             color: dto.color,
+            icon: dto.icon,
             sortOrder: dto.sortOrder
         )
     }
@@ -836,7 +837,24 @@ public enum DomainMapper {
                     dateRelative: tx.dateRelative,
                     amount: money(tx.amount),
                     isCredit: tx.isCredit,
-                    isPending: tx.isPending
+                    isPending: tx.isPending,
+                    accountId: tx.accountId,
+                    accountName: tx.accountName
+                )
+            },
+            recentCreditPurchases: (dto.recentCreditPurchases ?? []).map { tx in
+                DashboardRecentTransaction(
+                    id: tx.id,
+                    description: tx.description,
+                    category: tx.category,
+                    categoryId: tx.categoryId,
+                    date: tx.date,
+                    dateRelative: tx.dateRelative,
+                    amount: money(tx.amount),
+                    isCredit: tx.isCredit,
+                    isPending: tx.isPending,
+                    accountId: tx.accountId,
+                    accountName: tx.accountName
                 )
             },
             dailySpend: (dto.dailySpend ?? []).map {

@@ -30,6 +30,7 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGri
 import { AccountIcon } from '../components/AccountIcon';
 import { CategoryIcon } from '../components/CategoryIcon';
 import { CreditCardFace } from '../components/CreditCardFace';
+import { useCategoryStore } from '../stores/categoryStore';
 import { useIsMobile } from '../hooks/useMediaQuery';
 import {
   buildCreditCardBills,
@@ -66,6 +67,7 @@ export function CreditCards() {
     updateTransactionCategory,
   } = useCreditDataStore();
   const { addManualTransaction } = useTransactionStore();
+  const { loadCategories, categories: purchaseCategories } = useCategoryStore();
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [purchaseAccount, setPurchaseAccount] = useState(null);
@@ -86,7 +88,12 @@ export function CreditCards() {
   selectedCardIdRef.current = selectedCardId;
 
   // ── Accounts & Receivables ──────────────────────────────────────────────────
-  useEffect(() => { loadAccounts(); loadReceivables(); fetchCategories({ force: true }).then((list) => setPluggyCategories(Array.isArray(list) ? list : [])).catch(() => setPluggyCategories([])); }, []);
+  useEffect(() => {
+    loadAccounts();
+    loadReceivables();
+    loadCategories();
+    fetchCategories({ force: true }).then((list) => setPluggyCategories(Array.isArray(list) ? list : [])).catch(() => setPluggyCategories([]));
+  }, []);
 
   const creditCards = useMemo(() => accounts.filter(a => a.type === 'CREDIT'), [accounts]);
   const activeCard = selectedCardId === 'all'
@@ -800,6 +807,7 @@ export function CreditCards() {
                     <div className="list-row-main" style={{ gap: '0.75rem' }}>
                       <CategoryIcon
                         category={isPayment ? null : tx.category}
+                        categories={purchaseCategories}
                         isPayment={isPayment}
                         isCredit={isCredit && !isPayment}
                         emptyFallback="receipt"

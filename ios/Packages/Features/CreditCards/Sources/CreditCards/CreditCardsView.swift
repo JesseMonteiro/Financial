@@ -19,6 +19,7 @@ public struct CreditCardsView: View {
         parseBill: (any ParseBillUseCase)? = nil,
         receivables: (any ReceivablesRepository)? = nil,
         transactions: (any TransactionsRepository)? = nil,
+        purchaseCategories: (any PurchaseCategoriesRepository)? = nil,
         onReceivables: (() -> Void)? = nil
     ) {
         _viewModel = State(initialValue: CreditCardsViewModel(
@@ -26,7 +27,8 @@ public struct CreditCardsView: View {
             manuals: manuals,
             parseBill: parseBill,
             receivables: receivables,
-            transactions: transactions
+            transactions: transactions,
+            purchaseCategories: purchaseCategories
         ))
         self.onReceivables = onReceivables
     }
@@ -695,7 +697,7 @@ public struct CreditCardsView: View {
     private func statementIcon(for line: CreditBillLine) -> String {
         if line.isPayment { return "checkmark.circle.fill" }
         if let category = line.category, !category.isEmpty {
-            return PurchaseCategoryCatalog.systemImage(for: category)
+            return PurchaseCategoryCatalog.systemImage(for: category, in: viewModel.purchaseCategories)
         }
         return "receipt"
     }
@@ -703,7 +705,7 @@ public struct CreditCardsView: View {
     private func statementIconTint(for line: CreditBillLine) -> Color {
         if line.isPayment { return MeuFluxColors.success }
         if let category = line.category, !category.isEmpty,
-           let hex = PurchaseCategoryCatalog.color(for: category),
+           let hex = PurchaseCategoryCatalog.color(for: category, in: viewModel.purchaseCategories),
            let color = Color(hexString: hex) {
             return color
         }

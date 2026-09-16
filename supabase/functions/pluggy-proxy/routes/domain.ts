@@ -24,15 +24,15 @@ const TABLE_MAP: Record<string, DomainTable> = {
 };
 
 const DEFAULT_PURCHASE_CATEGORIES = [
-  { key: "Food", label: "Alimentação", color: "#f97316", sort_order: 0 },
-  { key: "Groceries", label: "Supermercado", color: "#fb923c", sort_order: 1 },
-  { key: "Rent", label: "Aluguel / Habitação", color: "#a855f7", sort_order: 2 },
-  { key: "Utilities", label: "Contas de Consumo (Água, Luz)", color: "#c084fc", sort_order: 3 },
-  { key: "Transport", label: "Transporte", color: "#0ea5e9", sort_order: 4 },
-  { key: "Entertainment", label: "Lazer / Entretenimento", color: "#ec4899", sort_order: 5 },
-  { key: "Health", label: "Saúde", color: "#10b981", sort_order: 6 },
-  { key: "Education", label: "Educação", color: "#eab308", sort_order: 7 },
-  { key: "Other", label: "Outros", color: "#64748b", sort_order: 8 },
+  { key: "Food", label: "Alimentação", color: "#f97316", icon: "utensils", sort_order: 0 },
+  { key: "Groceries", label: "Supermercado", color: "#fb923c", icon: "cart", sort_order: 1 },
+  { key: "Rent", label: "Aluguel / Habitação", color: "#a855f7", icon: "home", sort_order: 2 },
+  { key: "Utilities", label: "Contas de Consumo (Água, Luz)", color: "#c084fc", icon: "bolt", sort_order: 3 },
+  { key: "Transport", label: "Transporte", color: "#0ea5e9", icon: "car", sort_order: 4 },
+  { key: "Entertainment", label: "Lazer / Entretenimento", color: "#ec4899", icon: "ticket", sort_order: 5 },
+  { key: "Health", label: "Saúde", color: "#10b981", icon: "crosscase", sort_order: 6 },
+  { key: "Education", label: "Educação", color: "#eab308", icon: "graduationcap", sort_order: 7 },
+  { key: "Other", label: "Outros", color: "#64748b", icon: "ellipsis", sort_order: 8 },
 ];
 
 async function listPurchaseCategories(
