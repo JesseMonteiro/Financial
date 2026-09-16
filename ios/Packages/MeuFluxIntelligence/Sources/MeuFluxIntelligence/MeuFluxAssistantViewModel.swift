@@ -5,6 +5,12 @@ import MeuFluxCore
 @Observable
 @MainActor
 public final class MeuFluxAssistantViewModel {
+    public static let suggestedPrompts = [
+        "Qual meu saldo?",
+        "Qual cartão tem mais gastos?",
+        "Onde gastei mais este mês?",
+    ]
+
     public private(set) var messages: [AssistantChatMessage]
     public var draft = ""
     public private(set) var isResponding = false
@@ -20,8 +26,17 @@ public final class MeuFluxAssistantViewModel {
             self.availabilityCaption = "Apple Intelligence indisponível. Uso o resumo financeiro salvo neste iPhone."
         }
         self.messages = [
-            .assistant("Oi! Pergunte sobre saldo, gastos da semana, faturas ou orçamento.")
+            .assistant("Oi! Pergunte sobre saldo, cartões, categorias, faturas ou orçamento.")
         ]
+    }
+
+    public var showsSuggestions: Bool {
+        messages.count == 1 && !isResponding
+    }
+
+    public func sendSuggested(_ text: String) async {
+        draft = text
+        await send()
     }
 
     public func send() async {

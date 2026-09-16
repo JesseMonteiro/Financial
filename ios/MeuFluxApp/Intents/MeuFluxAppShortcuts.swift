@@ -7,38 +7,47 @@ public struct MeuFluxAppShortcuts: AppShortcutsProvider {
         AppShortcut(
             intent: GetBalanceIntent(),
             phrases: [
-                "Qual meu saldo no \(.applicationName)",
-                "Qual é o meu saldo no \(.applicationName)",
-                "Meu saldo no \(.applicationName)",
-                "Quanto eu tenho no \(.applicationName)",
+                "No \(.applicationName) qual meu saldo",
+                "No \(.applicationName) meu saldo",
+                "\(.applicationName) saldo",
                 "Saldo no \(.applicationName)",
-                "What's my balance in \(.applicationName)",
+                "Quanto eu tenho no \(.applicationName)",
             ],
             shortTitle: "Saldo",
-            systemImageName: "wallet.pass"
+            systemImageName: "banknote"
         )
         AppShortcut(
             intent: GetWeeklySpendIntent(),
             phrases: [
-                "Quanto gastei esta semana no \(.applicationName)",
+                "No \(.applicationName) quanto gastei esta semana",
                 "Gastos da semana no \(.applicationName)",
             ],
             shortTitle: "Gastos da semana",
             systemImageName: "chart.bar"
         )
         AppShortcut(
+            intent: GetTopCardSpendIntent(),
+            phrases: [
+                "No \(.applicationName) qual cartão gastei mais",
+                "No \(.applicationName) cartão com mais gastos",
+                "\(.applicationName) maior fatura",
+            ],
+            shortTitle: "Maior fatura",
+            systemImageName: "creditcard.and.123"
+        )
+        AppShortcut(
             intent: GetOpenBillsIntent(),
             phrases: [
+                "No \(.applicationName) faturas abertas",
                 "Faturas abertas no \(.applicationName)",
-                "Quanto está a fatura no \(.applicationName)",
             ],
             shortTitle: "Faturas",
-            systemImageName: "creditcard.and.123"
+            systemImageName: "doc.text"
         )
         AppShortcut(
             intent: GetBudgetStatusIntent(),
             phrases: [
-                "Como está meu orçamento no \(.applicationName)",
+                "No \(.applicationName) como está meu orçamento",
                 "Status do orçamento no \(.applicationName)",
             ],
             shortTitle: "Orçamento",
@@ -64,7 +73,10 @@ public struct MeuFluxAppShortcuts: AppShortcutsProvider {
         )
         AppShortcut(
             intent: OpenCreditCardsIntent(),
-            phrases: ["Abrir cartões no \(.applicationName)"],
+            phrases: [
+                "Abrir cartões no \(.applicationName)",
+                "No \(.applicationName) abrir cartões",
+            ],
             shortTitle: "Cartões",
             systemImageName: "creditcard"
         )

@@ -81,6 +81,9 @@ targets:
         product: MeuFluxIntelligence
     entitlements:
       path: MeuFluxApp/MeuFlux.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.meuflux.app
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.meuflux.app
@@ -101,6 +104,10 @@ targets:
     platform: iOS
     sources:
       - path: MeuFluxTests
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.meuflux.MeuFluxTests
     dependencies:
       - target: MeuFlux
       - package: MeuFlux
@@ -126,6 +133,9 @@ targets:
         product: MeuFluxCore
     entitlements:
       path: MeuFluxWidgets/MeuFluxWidgets.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.meuflux.app
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.meuflux.app.widgets
@@ -135,6 +145,9 @@ targets:
         INFOPLIST_KEY_CFBundleDisplayName: MeuFlux Widgets
         CURRENT_PROJECT_VERSION: 1
         MARKETING_VERSION: "1.0.0"
+      configs:
+        Debug:
+          PRODUCT_BUNDLE_IDENTIFIER: com.meuflux.app.debug.widgets
 schemes:
   MeuFlux:
     build:

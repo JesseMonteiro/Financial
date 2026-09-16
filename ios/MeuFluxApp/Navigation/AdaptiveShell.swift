@@ -163,6 +163,7 @@ struct AdaptiveShell: View {
             DashboardView(
                 loadDashboard: composition.loadDashboard,
                 transactions: composition.transactionsRepository,
+                assistantFactory: { composition.makeAssistantViewModel() },
                 onConnect: { composition.selectedRoute = .bankConnections },
                 onTransactions: { composition.selectedRoute = .transactions },
                 onCreditCards: { composition.selectedRoute = .creditCards },
@@ -306,6 +307,7 @@ private struct SiriBalanceTip: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             SiriTipView(intent: GetBalanceIntent())
+            SiriTipView(intent: GetTopCardSpendIntent())
             ShortcutsLink()
         }
     }

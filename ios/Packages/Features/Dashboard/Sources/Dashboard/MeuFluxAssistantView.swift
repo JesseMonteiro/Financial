@@ -25,6 +25,9 @@ public struct MeuFluxAssistantView: View {
                             bubble(message)
                                 .id(message.id)
                         }
+                        if model.showsSuggestions {
+                            suggestions
+                        }
                     }
                     .padding(16)
                 }
@@ -50,6 +53,26 @@ public struct MeuFluxAssistantView: View {
             .padding(16)
         }
         .meuFluxPageTitle("Assistente")
+    }
+
+    private var suggestions: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(MeuFluxAssistantViewModel.suggestedPrompts, id: \.self) { prompt in
+                Button {
+                    Task { await model.sendSuggested(prompt) }
+                } label: {
+                    Text(prompt)
+                        .font(.subheadline)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(MeuFluxColors.bgTertiary)
+                        .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(MeuFluxColors.textPrimary)
+            }
+        }
+        .padding(.top, 4)
     }
 
     private func bubble(_ message: AssistantChatMessage) -> some View {

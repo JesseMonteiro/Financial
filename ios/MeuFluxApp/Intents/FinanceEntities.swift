@@ -74,7 +74,7 @@ struct BudgetCategoryEntity: AppEntity, IndexedEntity {
 }
 
 struct AccountSummaryEntity: AppEntity, IndexedEntity {
-    static let typeDisplayRepresentation = TypeDisplayRepresentation(name: "Saldo")
+    static let typeDisplayRepresentation = TypeDisplayRepresentation(name: "Conta")
     static let defaultQuery = AccountSummaryEntityQuery()
 
     var id: String
@@ -95,7 +95,7 @@ struct AccountSummaryEntity: AppEntity, IndexedEntity {
 }
 
 struct BillSummaryEntity: AppEntity, IndexedEntity {
-    static let typeDisplayRepresentation = TypeDisplayRepresentation(name: "Fatura")
+    static let typeDisplayRepresentation = TypeDisplayRepresentation(name: "Cartão")
     static let defaultQuery = BillSummaryEntityQuery()
 
     var id: String
@@ -187,7 +187,7 @@ struct OpenAccountSummaryIntent: OpenIntent {
     static var title: LocalizedStringResource { "Abrir contas" }
     static var openAppWhenRun: Bool { true }
 
-    @Parameter(title: "Saldo")
+    @Parameter(title: "Conta")
     var target: AccountSummaryEntity
 
     @MainActor
@@ -201,7 +201,7 @@ struct OpenBillSummaryIntent: OpenIntent {
     static var title: LocalizedStringResource { "Abrir faturas" }
     static var openAppWhenRun: Bool { true }
 
-    @Parameter(title: "Fatura")
+    @Parameter(title: "Cartão")
     var target: BillSummaryEntity
 
     @MainActor
@@ -223,13 +223,27 @@ enum SpotlightFinanceIndexer {
                 percent: $0.percent
             )
         }
-        let accounts = [
-            AccountSummaryEntity(id: "bank-balance", name: "Saldo em contas", amountLabel: snapshot.bankBalanceLabel),
-            AccountSummaryEntity(id: "net-worth", name: "Patrimônio líquido", amountLabel: snapshot.netWorthLabel),
-        ]
-        let bills = [
-            BillSummaryEntity(id: "open-bills", name: "Faturas abertas", amountLabel: snapshot.openBillsLabel)
-        ]
+        let accounts: [AccountSummaryEntity] = {
+            if !snapshot.accounts.isEmpty {
+                return snapshot.accounts.map {
+                    AccountSummaryEntity(id: $0.id, name: $0.name, amountLabel: $0.amountLabel)
+                }
+            }
+            return [
+                AccountSummaryEntity(id: "bank-balance", name: "Saldo em contas", amountLabel: snapshot.bankBalanceLabel),
+                AccountSummaryEntity(id: "net-worth", name: "Patrimônio líquido", amountLabel: snapshot.netWorthLabel),
+            ]
+        }()
+        let bills: [BillSummaryEntity] = {
+            if !snapshot.cards.isEmpty {
+                return snapshot.cards.map {
+                    BillSummaryEntity(id: $0.id, name: $0.name, amountLabel: $0.openTotalLabel)
+                }
+            }
+            return [
+                BillSummaryEntity(id: "open-bills", name: "Faturas abertas", amountLabel: snapshot.openBillsLabel)
+            ]
+        }()
         do {
             try await CSSearchableIndex.default().indexAppEntities(transactions)
             try await CSSearchableIndex.default().indexAppEntities(budgets)
@@ -265,6 +279,11 @@ enum SpotlightFinanceIndexer {
 
     static func accounts() -> [AccountSummaryEntity] {
         guard let snapshot = SiriSnapshotStore().load() else { return [] }
+        if !snapshot.accounts.isEmpty {
+            return snapshot.accounts.map {
+                AccountSummaryEntity(id: $0.id, name: $0.name, amountLabel: $0.amountLabel)
+            }
+        }
         return [
             AccountSummaryEntity(id: "bank-balance", name: "Saldo em contas", amountLabel: snapshot.bankBalanceLabel),
             AccountSummaryEntity(id: "net-worth", name: "Patrimônio líquido", amountLabel: snapshot.netWorthLabel),
@@ -273,6 +292,11 @@ enum SpotlightFinanceIndexer {
 
     static func bills() -> [BillSummaryEntity] {
         guard let snapshot = SiriSnapshotStore().load() else { return [] }
+        if !snapshot.cards.isEmpty {
+            return snapshot.cards.map {
+                BillSummaryEntity(id: $0.id, name: $0.name, amountLabel: $0.openTotalLabel)
+            }
+        }
         return [
             BillSummaryEntity(id: "open-bills", name: "Faturas abertas", amountLabel: snapshot.openBillsLabel)
         ]

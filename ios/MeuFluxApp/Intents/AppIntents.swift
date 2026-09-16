@@ -141,7 +141,7 @@ public struct GetWeeklySpendIntent: AppIntent {
     public static let title: LocalizedStringResource = "Gastos da semana"
     public static let description = IntentDescription(
         "Informa quanto você gastou nos últimos 7 dias.",
-        categoryName: "Finanças",
+        categoryName: "MeuFlux",
         searchKeywords: ["gastos", "semana", "recap"]
     )
     public static let supportedModes: IntentModes = [.background, .foreground(.dynamic)]
@@ -153,22 +153,16 @@ public struct GetWeeklySpendIntent: AppIntent {
         guard let snapshot = SiriSnapshotStore().load() else {
             return .result(dialog: SiriQueryDialog.missingSnapshot)
         }
-        var text = "Nos últimos 7 dias você gastou \(snapshot.weeklySpendLabel)."
-        let sign = snapshot.weeklyDeltaPct > 0 ? "+" : ""
-        text += " Isso é \(sign)\(Int(snapshot.weeklyDeltaPct.rounded()))% vs a semana anterior."
-        if let top = snapshot.weeklyTopCategory {
-            text += " Maior categoria: \(top)."
-        }
-        return .result(dialog: IntentDialog("\(text)"))
+        return .result(dialog: IntentDialog("\(snapshot.weeklySpendDialog)"))
     }
 }
 
 public struct GetBalanceIntent: AppIntent {
-    public static let title: LocalizedStringResource = "Qual meu saldo"
+    public static let title: LocalizedStringResource = "Saldo no MeuFlux"
     public static let description = IntentDescription(
-        "Informa o saldo consolidado das contas.",
-        categoryName: "Finanças",
-        searchKeywords: ["saldo", "conta", "dinheiro", "patrimônio"]
+        "Responde o saldo das contas Open Finance no app MeuFlux. Não consulta a Carteira da Apple nem o Apple Cash.",
+        categoryName: "MeuFlux",
+        searchKeywords: ["MeuFlux", "Open Finance", "saldo das contas", "patrimônio"]
     )
     public static let supportedModes: IntentModes = [.background, .foreground(.dynamic)]
     public static let isDiscoverable = true
@@ -179,8 +173,7 @@ public struct GetBalanceIntent: AppIntent {
         guard let snapshot = SiriSnapshotStore().load() else {
             return .result(dialog: SiriQueryDialog.missingSnapshot)
         }
-        let text = "Seu saldo em contas é \(snapshot.bankBalanceLabel). Patrimônio líquido: \(snapshot.netWorthLabel)."
-        return .result(dialog: IntentDialog("\(text)"))
+        return .result(dialog: IntentDialog("\(snapshot.balanceDialog)"))
     }
 }
 
@@ -188,8 +181,8 @@ public struct GetOpenBillsIntent: AppIntent {
     public static let title: LocalizedStringResource = "Faturas abertas"
     public static let description = IntentDescription(
         "Informa o total das faturas abertas.",
-        categoryName: "Finanças",
-        searchKeywords: ["fatura", "cartão", "bill"]
+        categoryName: "MeuFlux",
+        searchKeywords: ["MeuFlux", "fatura", "Open Finance"]
     )
     public static let supportedModes: IntentModes = [.background, .foreground(.dynamic)]
     public static let isDiscoverable = true
@@ -200,8 +193,27 @@ public struct GetOpenBillsIntent: AppIntent {
         guard let snapshot = SiriSnapshotStore().load() else {
             return .result(dialog: SiriQueryDialog.missingSnapshot)
         }
-        let text = "Há \(snapshot.creditCount) cartão(ões) com fatura aberta de \(snapshot.openBillsLabel)."
-        return .result(dialog: IntentDialog("\(text)"))
+        return .result(dialog: IntentDialog("\(snapshot.openBillsDialog)"))
+    }
+}
+
+public struct GetTopCardSpendIntent: AppIntent {
+    public static let title: LocalizedStringResource = "Maior fatura no MeuFlux"
+    public static let description = IntentDescription(
+        "Diz qual cartão Open Finance do MeuFlux tem a maior fatura aberta. Não usa Apple Cash nem a Carteira da Apple.",
+        categoryName: "MeuFlux",
+        searchKeywords: ["MeuFlux", "fatura", "Open Finance", "gastos do cartão"]
+    )
+    public static let supportedModes: IntentModes = [.background, .foreground(.dynamic)]
+    public static let isDiscoverable = true
+
+    public init() {}
+
+    public func perform() async throws -> some IntentResult & ProvidesDialog {
+        guard let snapshot = SiriSnapshotStore().load() else {
+            return .result(dialog: SiriQueryDialog.missingSnapshot)
+        }
+        return .result(dialog: IntentDialog("\(snapshot.cardSpendDialog)"))
     }
 }
 
@@ -209,7 +221,7 @@ public struct GetBudgetStatusIntent: AppIntent {
     public static let title: LocalizedStringResource = "Status do orçamento"
     public static let description = IntentDescription(
         "Informa o uso das verbas do mês.",
-        categoryName: "Finanças",
+        categoryName: "MeuFlux",
         searchKeywords: ["orçamento", "verba", "budget"]
     )
     public static let supportedModes: IntentModes = [.background, .foreground(.dynamic)]
@@ -221,13 +233,7 @@ public struct GetBudgetStatusIntent: AppIntent {
         guard let snapshot = SiriSnapshotStore().load() else {
             return .result(dialog: SiriQueryDialog.missingSnapshot)
         }
-        if snapshot.budgets.isEmpty {
-            return .result(dialog: "Não há categorias de orçamento no resumo deste mês.")
-        }
-        let lines = snapshot.budgets.prefix(5).map {
-            "\($0.category): \($0.spentLabel) de \($0.limitLabel) (\($0.percent)%)."
-        }
-        return .result(dialog: IntentDialog("\(lines.joined(separator: " "))"))
+        return .result(dialog: IntentDialog("\(snapshot.budgetDialog)"))
     }
 }
 
@@ -235,7 +241,7 @@ public struct GetInsightsIntent: AppIntent {
     public static let title: LocalizedStringResource = "Insights financeiros"
     public static let description = IntentDescription(
         "Lê os insights da visão geral.",
-        categoryName: "Finanças",
+        categoryName: "MeuFlux",
         searchKeywords: ["insight", "dica", "finanças"]
     )
     public static let supportedModes: IntentModes = [.background, .foreground(.dynamic)]
@@ -247,11 +253,7 @@ public struct GetInsightsIntent: AppIntent {
         guard let snapshot = SiriSnapshotStore().load() else {
             return .result(dialog: "Ainda não há insights no resumo local. Abra a Visão Geral uma vez.")
         }
-        if snapshot.insights.isEmpty {
-            return .result(dialog: "Ainda não há insights no resumo local.")
-        }
-        let text = snapshot.insights.prefix(3).map(\.text).joined(separator: " ")
-        return .result(dialog: IntentDialog("\(text)"))
+        return .result(dialog: IntentDialog("\(snapshot.insightsDialog)"))
     }
 }
 

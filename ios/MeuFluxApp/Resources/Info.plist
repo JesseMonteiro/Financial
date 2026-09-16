@@ -22,6 +22,21 @@
 	<string>1.0.0</string>
 	<key>CFBundleSpokenName</key>
 	<string>MeuFlux</string>
+	<key>INAlternativeAppNames</key>
+	<array>
+		<dict>
+			<key>INAlternativeAppName</key>
+			<string>Meu Flux</string>
+			<key>INAlternativeAppNamePronunciationHint</key>
+			<string>meu flux</string>
+		</dict>
+		<dict>
+			<key>INAlternativeAppName</key>
+			<string>Flux</string>
+			<key>INAlternativeAppNamePronunciationHint</key>
+			<string>flux</string>
+		</dict>
+	</array>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>

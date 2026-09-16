@@ -205,6 +205,207 @@ final class MeuFluxAssistantRouterTests: XCTestCase {
         XCTAssertTrue(reply.contains("R$ 1.500,00"))
         XCTAssertTrue(reply.contains("R$ 9.000,00"))
     }
+
+    func testCardSpendQuestionRanksHighestOpenTotal() {
+        let snapshot = SiriFinanceSnapshot(
+            displayName: "Jesse",
+            monthKey: "2026-09",
+            bankBalanceLabel: "R$ 10,00",
+            netWorthLabel: "R$ 20,00",
+            weeklySpendLabel: "R$ 0,00",
+            weeklyDeltaPct: 0,
+            weeklyTopCategory: nil,
+            openBillsLabel: "R$ 800,00",
+            creditCount: 2,
+            insights: [],
+            budgets: [],
+            recentTransactions: [],
+            cards: [
+                .init(
+                    id: "c1",
+                    name: "Inter",
+                    institutionName: "Inter",
+                    lastFour: "1111",
+                    openTotalLabel: "R$ 200,00",
+                    openTotalAmount: 200,
+                    outstandingLabel: "R$ 200,00"
+                ),
+                .init(
+                    id: "c2",
+                    name: "Nubank",
+                    institutionName: "Nubank",
+                    lastFour: "2222",
+                    openTotalLabel: "R$ 600,00",
+                    openTotalAmount: 600,
+                    outstandingLabel: "R$ 700,00"
+                ),
+            ],
+            updatedAt: Date()
+        )
+        let reply = MeuFluxAssistantRouter.cannedReply(
+            question: "qual cartão eu tenho mais gastos?",
+            snapshot: snapshot
+        )
+        XCTAssertTrue(reply.contains("Nubank"), reply)
+        XCTAssertTrue(reply.contains("R$ 600,00"), reply)
+        XCTAssertFalse(reply.contains("cartão(ões) com fatura aberta"), reply)
+    }
+
+    func testBareCardQuestionDoesNotUseSpendRanking() {
+        let snapshot = SiriFinanceSnapshot(
+            displayName: "Jesse",
+            monthKey: "2026-09",
+            bankBalanceLabel: "R$ 10,00",
+            netWorthLabel: "R$ 20,00",
+            weeklySpendLabel: "R$ 0,00",
+            weeklyDeltaPct: 0,
+            weeklyTopCategory: nil,
+            openBillsLabel: "R$ 80,00",
+            creditCount: 2,
+            insights: [],
+            budgets: [],
+            recentTransactions: [],
+            updatedAt: Date()
+        )
+        let reply = MeuFluxAssistantRouter.cannedReply(question: "Como está a fatura?", snapshot: snapshot)
+        XCTAssertTrue(reply.contains("R$ 80,00"), reply)
+        XCTAssertFalse(MeuFluxAssistantRouter.isCardSpendQuestion("Como está a fatura?"))
+    }
+
+    func testCategoryQuestionUsesMonthlyBreakdown() {
+        let snapshot = SiriFinanceSnapshot(
+            displayName: "Jesse",
+            monthKey: "2026-09",
+            bankBalanceLabel: "R$ 10,00",
+            netWorthLabel: "R$ 20,00",
+            weeklySpendLabel: "R$ 0,00",
+            weeklyDeltaPct: 0,
+            weeklyTopCategory: nil,
+            openBillsLabel: "R$ 0,00",
+            creditCount: 0,
+            insights: [],
+            budgets: [],
+            recentTransactions: [],
+            categories: [
+                .init(name: "Alimentação", amountLabel: "R$ 900,00", amount: 900),
+                .init(name: "Transporte", amountLabel: "R$ 120,00", amount: 120),
+            ],
+            updatedAt: Date()
+        )
+        let reply = MeuFluxAssistantRouter.cannedReply(
+            question: "Onde gastei mais este mês?",
+            snapshot: snapshot
+        )
+        XCTAssertTrue(reply.contains("Alimentação"), reply)
+        XCTAssertTrue(reply.contains("R$ 900,00"), reply)
+    }
+}
+
+final class SiriSnapshotMapperTests: XCTestCase {
+    func testMapsCategoriesAndCashflow() {
+        var snapshot = StubLoadDashboard().makeSnapshot(budgets: [])
+        snapshot.categoryExpenses = [
+            DashboardCategoryExpense(name: "Alimentação", value: 500, colorHex: "#f00"),
+            DashboardCategoryExpense(name: "Transporte", value: 80, colorHex: "#0f0"),
+        ]
+        snapshot.cashflow = DashboardCashflow(
+            income: Money(amount: 3000),
+            expense: Money(amount: 1200),
+            net: Money(amount: 1800),
+            savingsRate: 0.6
+        )
+        let siri = SiriSnapshotMapper.make(from: snapshot)
+        XCTAssertEqual(siri.categories.first?.name, "Alimentação")
+        XCTAssertEqual(siri.incomeLabel, Money(amount: 3000).formatted())
+        XCTAssertEqual(siri.expenseLabel, Money(amount: 1200).formatted())
+    }
+
+    func testMapsCardsByOpenTotal() {
+        let screen = CreditCardsScreen(
+            cards: [
+                CreditCardSummary(
+                    id: "inter",
+                    name: "Inter",
+                    institutionName: "Inter",
+                    lastFour: "1111",
+                    outstanding: Money(amount: 200),
+                    openTotal: Money(amount: 200)
+                ),
+                CreditCardSummary(
+                    id: "nubank",
+                    name: "Nubank",
+                    institutionName: "Nubank",
+                    lastFour: "2222",
+                    outstanding: Money(amount: 700),
+                    openTotal: Money(amount: 600)
+                ),
+            ],
+            outstandingTotal: Money(amount: 900),
+            creditLimitTotal: .zero,
+            availableLimitTotal: .zero,
+            periods: [:]
+        )
+        let cards = SiriSnapshotMapper.cards(from: screen)
+        XCTAssertEqual(cards.count, 2)
+        XCTAssertEqual(cards.max(by: { $0.openTotalAmount < $1.openTotalAmount })?.name, "Nubank")
+    }
+
+    func testPreservesExistingCardsWhenDashboardHasNone() {
+        let previous = SiriFinanceSnapshot(
+            displayName: "Jesse",
+            monthKey: "2026-09",
+            bankBalanceLabel: "R$ 1,00",
+            netWorthLabel: "R$ 2,00",
+            weeklySpendLabel: "R$ 0,00",
+            weeklyDeltaPct: 0,
+            weeklyTopCategory: nil,
+            openBillsLabel: "R$ 0,00",
+            creditCount: 1,
+            insights: [],
+            budgets: [],
+            recentTransactions: [],
+            cards: [
+                .init(
+                    id: "c1",
+                    name: "Nubank",
+                    institutionName: "Nubank",
+                    lastFour: "2222",
+                    openTotalLabel: "R$ 10,00",
+                    openTotalAmount: 10,
+                    outstandingLabel: "R$ 10,00"
+                )
+            ],
+            updatedAt: Date()
+        )
+        let mapped = SiriSnapshotMapper.make(from: StubLoadDashboard().makeSnapshot(budgets: []))
+            .preservingLists(from: previous)
+        XCTAssertEqual(mapped.cards.first?.name, "Nubank")
+    }
+
+    func testDecodesLegacySnapshotWithoutNewFields() throws {
+        let json = """
+        {
+          "displayName":"Jesse",
+          "monthKey":"2026-09",
+          "bankBalanceLabel":"R$ 10,00",
+          "netWorthLabel":"R$ 20,00",
+          "weeklySpendLabel":"R$ 5,00",
+          "weeklyDeltaPct":10,
+          "openBillsLabel":"R$ 1,00",
+          "creditCount":1,
+          "insights":[],
+          "budgets":[],
+          "recentTransactions":[],
+          "updatedAt":"1970-01-01T00:16:40Z"
+        }
+        """
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let snapshot = try decoder.decode(SiriFinanceSnapshot.self, from: Data(json.utf8))
+        XCTAssertEqual(snapshot.bankBalanceLabel, "R$ 10,00")
+        XCTAssertTrue(snapshot.cards.isEmpty)
+        XCTAssertTrue(snapshot.categories.isEmpty)
+    }
 }
 
 private extension StubLoadDashboard {

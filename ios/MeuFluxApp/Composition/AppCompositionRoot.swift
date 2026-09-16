@@ -89,6 +89,8 @@ final class AppCompositionRoot {
     let buildFinancialMoment: any BuildFinancialMomentUseCase
     let buildFinancialMomentDetail: any BuildFinancialMomentDetailUseCase
     let widgetStore: FinancialMomentWidgetStore
+    let jointWidgetStore: JointFinanceWidgetStore
+    let budgetWidgetStore: BudgetWidgetStore
     let siriSnapshotStore: SiriSnapshotStore
     let notificationImportStore: LiveNotificationImportStore
     let notificationImportService: NotificationImportService
@@ -126,25 +128,52 @@ final class AppCompositionRoot {
         self.bff = BFFClient(api: apiClient, cache: cache)
         self.offlineQueue = OfflineMutationQueue(logger: logger)
 
-        self.accountsRepository = LiveAccountsRepository(bff: bff)
+        self.widgetStore = FinancialMomentWidgetStore()
+        self.jointWidgetStore = JointFinanceWidgetStore()
+        self.budgetWidgetStore = BudgetWidgetStore()
+        self.siriSnapshotStore = SiriSnapshotStore()
+        let indexSnapshot: @Sendable (SiriFinanceSnapshot) async -> Void = { snapshot in
+            await SpotlightFinanceIndexer.index(snapshot)
+        }
+        let publishingAccounts = IntelligencePublishingAccounts(
+            inner: LiveAccountsRepository(bff: bff),
+            store: siriSnapshotStore,
+            onIndexed: indexSnapshot
+        )
+        let publishingCards = IntelligencePublishingCreditCards(
+            inner: LiveCreditCardsRepository(bff: bff),
+            store: siriSnapshotStore,
+            onIndexed: indexSnapshot
+        )
+        self.accountsRepository = publishingAccounts
         self.transactionsRepository = LiveTransactionsRepository(bff: bff)
         self.billsRepository = LiveBillsRepository(bff: bff)
         self.investmentsRepository = LiveInvestmentsRepository(bff: bff)
         self.loansRepository = LiveLoansRepository(bff: bff)
-        self.budgetRepository = LiveBudgetRepository(bff: bff)
+        self.budgetRepository = WidgetPublishingBudget(
+            inner: LiveBudgetRepository(bff: bff),
+            store: budgetWidgetStore,
+            clock: clock,
+            enabled: env.featureFlags.widgetsEnabled
+        )
         self.goalsRepository = LiveGoalsRepository(bff: bff)
         self.purchaseCategoriesRepository = LivePurchaseCategoriesRepository(bff: bff)
         self.mealBenefitsRepository = LiveMealBenefitsRepository(bff: bff)
         self.receivablesRepository = LiveReceivablesRepository(bff: bff)
         self.manualExpensesRepository = LiveManualExpensesRepository(bff: bff)
-        self.jointRepository = LiveJointFinanceRepository(bff: bff)
+        self.jointRepository = WidgetPublishingJointFinance(
+            inner: LiveJointFinanceRepository(bff: bff),
+            store: jointWidgetStore,
+            clock: clock,
+            enabled: env.featureFlags.widgetsEnabled
+        )
         self.subscriptionsRepository = LiveSubscriptionsRepository(bff: bff)
         self.agendaRepository = LiveAgendaRepository(bff: bff)
         self.reportsRepository = LiveReportsRepository(bff: bff)
         self.profileRepository = LiveProfileRepository(bff: bff)
         self.settingsRepository = LiveSettingsRepository(bff: bff)
         self.bankConnectionsRepository = LiveBankConnectionsRepository(bff: bff)
-        self.creditCardsRepository = LiveCreditCardsRepository(bff: bff)
+        self.creditCardsRepository = publishingCards
         self.notificationImportStore = LiveNotificationImportStore()
         self.notificationImportService = NotificationImportService(
             store: notificationImportStore,
@@ -156,18 +185,18 @@ final class AppCompositionRoot {
             parseAssistant: NotificationParseAssistant()
         )
 
-        self.siriSnapshotStore = SiriSnapshotStore()
         self.loadDashboard = IntelligencePublishingDashboard(
             inner: LiveLoadDashboard(bff: bff),
             store: siriSnapshotStore,
             narrator: InsightNarrator(),
-            onIndexed: { snapshot in
-                await SpotlightFinanceIndexer.index(snapshot)
+            onIndexed: indexSnapshot,
+            enrich: {
+                _ = try? await publishingCards.fetchScreen(force: false)
+                _ = try? await publishingAccounts.fetchAccounts(force: false)
             }
         )
         self.syncBankItem = LiveSyncBankItem(bff: bff)
         self.parseBill = LiveParseBill(bff: bff)
-        self.widgetStore = FinancialMomentWidgetStore()
         self.buildFinancialMomentDetail = WidgetPublishingFinancialMomentDetail(
             inner: LiveBuildFinancialMomentDetail(bffClient: bff),
             store: widgetStore,
@@ -268,6 +297,12 @@ final class AppCompositionRoot {
 
     func refreshWidgetSnapshot(force: Bool = false) async {
         guard env.featureFlags.widgetsEnabled else { return }
+        if !AppGroup.isAvailable {
+            logger.error(
+                "App Group \(AppGroup.identifier) indisponível. O widget não recebe o snapshot (mostra “Abra o app”). Confira as entitlements de MeuFlux e MeuFluxWidgets e o signing.",
+                category: .cache
+            )
+        }
         if await !authSession.isAuthenticated() {
             await clearWidgetSnapshot()
             return
@@ -277,25 +312,70 @@ final class AppCompositionRoot {
             return
         }
         widgetStore.setAuthenticated(true)
+        jointWidgetStore.setAuthenticated(true)
+        budgetWidgetStore.setAuthenticated(true)
+        let month = YearMonth(from: clock.now())
+        await publishFinancialMomentWidget(month: month, force: force)
+        await publishJointWidget(month: month, force: force)
+        await publishBudgetWidget(month: month, force: force)
+        lastWidgetRefreshAt = clock.now()
+        await reloadWidgetTimelines()
+    }
+
+    private func publishFinancialMomentWidget(month: YearMonth, force: Bool) async {
         do {
-            _ = try await buildFinancialMomentDetail.execute(
-                month: YearMonth(from: clock.now()),
-                force: force
-            )
-            lastWidgetRefreshAt = clock.now()
+            _ = try await buildFinancialMomentDetail.execute(month: month, force: force)
         } catch {
             logger.error(
                 "Falha ao atualizar widget do momento financeiro: \(error.localizedDescription)",
                 category: .cache
             )
-            await reloadWidgetTimelines()
+        }
+    }
+
+    private func publishJointWidget(month: YearMonth, force: Bool) async {
+        do {
+            let link = try await jointRepository.fetchLink(force: force)
+            if link?.isActive == true {
+                _ = try await jointRepository.fetchMoment(month: month, force: force)
+            }
+        } catch {
+            logger.error(
+                "Falha ao atualizar widget da conta conjunta: \(error.localizedDescription)",
+                category: .cache
+            )
+        }
+    }
+
+    private func publishBudgetWidget(month: YearMonth, force: Bool) async {
+        do {
+            _ = try await budgetRepository.fetchLimits(month: month, force: force)
+        } catch {
+            logger.error(
+                "Falha ao atualizar widget do orçamento: \(error.localizedDescription)",
+                category: .cache
+            )
         }
     }
 
     func clearWidgetSnapshot() async {
         widgetStore.clear()
+        jointWidgetStore.clear()
+        budgetWidgetStore.clear()
         lastWidgetRefreshAt = nil
         await reloadWidgetTimelines()
+    }
+
+    func makeAssistantViewModel() -> MeuFluxAssistantViewModel {
+        MeuFluxAssistantViewModel(
+            session: MeuFluxAssistantSession(
+                provider: LiveAssistantFinanceProvider(
+                    store: siriSnapshotStore,
+                    cards: creditCardsRepository,
+                    accounts: accountsRepository
+                )
+            )
+        )
     }
 
     func clearSiriSnapshot() async {
@@ -305,7 +385,9 @@ final class AppCompositionRoot {
 
     private func reloadWidgetTimelines() async {
         await MainActor.run {
-            WidgetCenter.shared.reloadTimelines(ofKind: WidgetKind.financialMoment)
+            for kind in WidgetKind.allTimelineKinds {
+                WidgetCenter.shared.reloadTimelines(ofKind: kind)
+            }
         }
     }
 }

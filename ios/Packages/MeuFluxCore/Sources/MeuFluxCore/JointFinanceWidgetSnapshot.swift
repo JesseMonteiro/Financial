@@ -1,8 +1,10 @@
 import Foundation
 
-/// Home-screen snapshot of the logged-in account's financial moment.
+/// Home-screen snapshot of the joint financial moment.
 /// Amounts are pre-formatted (pt-BR) so the widget never touches `Money`.
-public struct FinancialMomentWidgetSnapshot: Codable, Sendable, Equatable, Hashable {
+public struct JointFinanceWidgetSnapshot: Codable, Sendable, Equatable, Hashable {
+    public var hasActiveLink: Bool
+    public var membersLabel: String
     public var monthKey: String
     public var monthLabel: String
     public var incomeLabel: String
@@ -15,9 +17,12 @@ public struct FinancialMomentWidgetSnapshot: Codable, Sendable, Equatable, Hasha
     public var payableIsClear: Bool
     public var unpaidBillsCount: Int
     public var unpaidDebitsCount: Int
+    public var memberCount: Int
     public var updatedAt: Date
 
     public init(
+        hasActiveLink: Bool,
+        membersLabel: String,
         monthKey: String,
         monthLabel: String,
         incomeLabel: String,
@@ -30,8 +35,11 @@ public struct FinancialMomentWidgetSnapshot: Codable, Sendable, Equatable, Hasha
         payableIsClear: Bool,
         unpaidBillsCount: Int,
         unpaidDebitsCount: Int,
+        memberCount: Int,
         updatedAt: Date
     ) {
+        self.hasActiveLink = hasActiveLink
+        self.membersLabel = membersLabel
         self.monthKey = monthKey
         self.monthLabel = monthLabel
         self.incomeLabel = incomeLabel
@@ -44,6 +52,7 @@ public struct FinancialMomentWidgetSnapshot: Codable, Sendable, Equatable, Hasha
         self.payableIsClear = payableIsClear
         self.unpaidBillsCount = unpaidBillsCount
         self.unpaidDebitsCount = unpaidDebitsCount
+        self.memberCount = memberCount
         self.updatedAt = updatedAt
     }
 
@@ -56,7 +65,9 @@ public struct FinancialMomentWidgetSnapshot: Codable, Sendable, Equatable, Hasha
         isNetPositive ? "Superávit" : "Déficit"
     }
 
-    public static let placeholder = FinancialMomentWidgetSnapshot(
+    public static let placeholder = JointFinanceWidgetSnapshot(
+        hasActiveLink: true,
+        membersLabel: "Você · Parceiro",
         monthKey: "2026-09",
         monthLabel: "Setembro 2026",
         incomeLabel: "R$ —",
@@ -69,30 +80,54 @@ public struct FinancialMomentWidgetSnapshot: Codable, Sendable, Equatable, Hasha
         payableIsClear: true,
         unpaidBillsCount: 0,
         unpaidDebitsCount: 0,
+        memberCount: 2,
         updatedAt: Date(timeIntervalSince1970: 0)
     )
 
-    public static let preview = FinancialMomentWidgetSnapshot(
+    public static let preview = JointFinanceWidgetSnapshot(
+        hasActiveLink: true,
+        membersLabel: "Você · Parceiro",
         monthKey: "2026-09",
         monthLabel: "Setembro 2026",
-        incomeLabel: "R$ 10.500,00",
-        expenseLabel: "R$ 8.000,00",
-        payableLabel: "R$ 1.500,00",
-        netLabel: "+R$ 2.500,00",
-        utilizationPercent: 76,
+        incomeLabel: "R$ 18.000,00",
+        expenseLabel: "R$ 12.400,00",
+        payableLabel: "R$ 2.100,00",
+        netLabel: "+R$ 5.600,00",
+        utilizationPercent: 69,
         isNetPositive: true,
         isOverBudget: false,
         payableIsClear: false,
-        unpaidBillsCount: 2,
-        unpaidDebitsCount: 1,
+        unpaidBillsCount: 1,
+        unpaidDebitsCount: 2,
+        memberCount: 2,
         updatedAt: Date()
     )
+
+    public static func inactive(now: Date = Date()) -> JointFinanceWidgetSnapshot {
+        JointFinanceWidgetSnapshot(
+            hasActiveLink: false,
+            membersLabel: "",
+            monthKey: "",
+            monthLabel: "",
+            incomeLabel: "R$ —",
+            expenseLabel: "R$ —",
+            payableLabel: "R$ —",
+            netLabel: "R$ —",
+            utilizationPercent: 0,
+            isNetPositive: true,
+            isOverBudget: false,
+            payableIsClear: true,
+            unpaidBillsCount: 0,
+            unpaidDebitsCount: 0,
+            memberCount: 0,
+            updatedAt: now
+        )
+    }
 }
 
-/// App Group persistence for the financial-moment widget.
-public struct FinancialMomentWidgetStore: @unchecked Sendable {
-    public static let snapshotKey = "financialMoment.widget.snapshot"
-    public static let authenticatedKey = "financialMoment.widget.authenticated"
+public struct JointFinanceWidgetStore: @unchecked Sendable {
+    public static let snapshotKey = "jointFinance.widget.snapshot"
+    public static let authenticatedKey = "jointFinance.widget.authenticated"
 
     private let defaults: UserDefaults?
 
@@ -100,7 +135,7 @@ public struct FinancialMomentWidgetStore: @unchecked Sendable {
         self.defaults = defaults
     }
 
-    public func save(_ snapshot: FinancialMomentWidgetSnapshot) {
+    public func save(_ snapshot: JointFinanceWidgetSnapshot) {
         guard let defaults else { return }
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
@@ -110,11 +145,11 @@ public struct FinancialMomentWidgetStore: @unchecked Sendable {
         defaults.synchronize()
     }
 
-    public func load() -> FinancialMomentWidgetSnapshot? {
+    public func load() -> JointFinanceWidgetSnapshot? {
         guard let defaults, let data = defaults.data(forKey: Self.snapshotKey) else { return nil }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        return try? decoder.decode(FinancialMomentWidgetSnapshot.self, from: data)
+        return try? decoder.decode(JointFinanceWidgetSnapshot.self, from: data)
     }
 
     public func setAuthenticated(_ isAuthenticated: Bool) {
@@ -135,4 +170,3 @@ public struct FinancialMomentWidgetStore: @unchecked Sendable {
         defaults?.synchronize()
     }
 }
-

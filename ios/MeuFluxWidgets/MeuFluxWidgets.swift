@@ -5,6 +5,8 @@ import SwiftUI
 struct MeuFluxWidgets: WidgetBundle {
     var body: some Widget {
         FinancialMomentWidget()
+        JointFinanceWidget()
+        BudgetWidget()
         NetWorthWidget()
         OpenBillsWidget()
     }

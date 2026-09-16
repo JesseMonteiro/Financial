@@ -2,35 +2,35 @@ import WidgetKit
 import SwiftUI
 import MeuFluxCore
 
-struct FinancialMomentEntry: TimelineEntry {
+struct JointFinanceEntry: TimelineEntry {
     let date: Date
-    let snapshot: FinancialMomentWidgetSnapshot?
+    let snapshot: JointFinanceWidgetSnapshot?
     let isAuthenticated: Bool
 }
 
-struct FinancialMomentProvider: TimelineProvider {
-    private let store = FinancialMomentWidgetStore()
+struct JointFinanceProvider: TimelineProvider {
+    private let store = JointFinanceWidgetStore()
 
-    func placeholder(in context: Context) -> FinancialMomentEntry {
-        FinancialMomentEntry(date: Date(), snapshot: .placeholder, isAuthenticated: true)
+    func placeholder(in context: Context) -> JointFinanceEntry {
+        JointFinanceEntry(date: Date(), snapshot: .placeholder, isAuthenticated: true)
     }
 
-    func getSnapshot(in context: Context, completion: @escaping (FinancialMomentEntry) -> Void) {
+    func getSnapshot(in context: Context, completion: @escaping (JointFinanceEntry) -> Void) {
         if context.isPreview {
-            completion(FinancialMomentEntry(date: Date(), snapshot: .preview, isAuthenticated: true))
+            completion(JointFinanceEntry(date: Date(), snapshot: .preview, isAuthenticated: true))
             return
         }
         completion(makeEntry(fallbackToPreview: true))
     }
 
-    func getTimeline(in context: Context, completion: @escaping (Timeline<FinancialMomentEntry>) -> Void) {
+    func getTimeline(in context: Context, completion: @escaping (Timeline<JointFinanceEntry>) -> Void) {
         let next = Date().addingTimeInterval(30 * 60)
         completion(Timeline(entries: [makeEntry(fallbackToPreview: false)], policy: .after(next)))
     }
 
-    private func makeEntry(fallbackToPreview: Bool) -> FinancialMomentEntry {
+    private func makeEntry(fallbackToPreview: Bool) -> JointFinanceEntry {
         let snapshot = store.load() ?? (fallbackToPreview ? .preview : nil)
-        return FinancialMomentEntry(
+        return JointFinanceEntry(
             date: Date(),
             snapshot: snapshot,
             isAuthenticated: store.isAuthenticated() || snapshot != nil
@@ -38,52 +38,61 @@ struct FinancialMomentProvider: TimelineProvider {
     }
 }
 
-struct FinancialMomentWidget: Widget {
-    let kind = WidgetKind.financialMoment
+struct JointFinanceWidget: Widget {
+    let kind = WidgetKind.jointFinance
 
     var body: some WidgetConfiguration {
-        StaticConfiguration(kind: kind, provider: FinancialMomentProvider()) { entry in
-            FinancialMomentWidgetView(entry: entry)
+        StaticConfiguration(kind: kind, provider: JointFinanceProvider()) { entry in
+            JointFinanceWidgetView(entry: entry)
                 .containerBackground(for: .widget) {
                     WidgetPalette.bgPrimary
                 }
         }
-        .configurationDisplayName("Momento Financeiro")
-        .description("Entradas, saídas, contas a pagar e saldo do mês da conta logada.")
+        .configurationDisplayName("Conta conjunta")
+        .description("Momento financeiro consolidado da conta conjunta.")
         .supportedFamilies([.systemSmall, .systemMedium, .accessoryRectangular])
         .contentMarginsDisabled()
     }
 }
 
-struct FinancialMomentWidgetView: View {
+struct JointFinanceWidgetView: View {
     @Environment(\.widgetFamily) private var family
-    let entry: FinancialMomentEntry
+    let entry: JointFinanceEntry
 
     var body: some View {
         Group {
             if let snapshot = entry.snapshot {
-                loaded(snapshot)
+                if snapshot.hasActiveLink {
+                    loaded(snapshot)
+                } else {
+                    WidgetStatusPanel(
+                        systemImage: "person.2",
+                        title: "Conta conjunta",
+                        message: "Vincule uma conta conjunta nas Configurações.",
+                        accessibilityLabel: "Conta conjunta inativa. Vincule no app."
+                    )
+                }
             } else if entry.isAuthenticated {
                 WidgetStatusPanel(
-                    systemImage: "waveform.path.ecg",
-                    title: "Momento Financeiro",
-                    message: "Abra o app para atualizar o resumo desta conta.",
-                    accessibilityLabel: "Momento financeiro. Abra o app para atualizar."
+                    systemImage: "person.2",
+                    title: "Conta conjunta",
+                    message: "Abra o app para atualizar o resumo conjunto.",
+                    accessibilityLabel: "Conta conjunta. Abra o app para atualizar."
                 )
             } else {
                 WidgetStatusPanel(
-                    systemImage: "waveform.path.ecg",
-                    title: "Momento Financeiro",
-                    message: "Abra o app e entre para ver o resumo da conta.",
-                    accessibilityLabel: "Momento financeiro. Entre no app para ver o resumo."
+                    systemImage: "person.2",
+                    title: "Conta conjunta",
+                    message: "Abra o app e entre para ver a conta conjunta.",
+                    accessibilityLabel: "Conta conjunta. Entre no app para ver o resumo."
                 )
             }
         }
-        .widgetURL(WidgetDeepLink.financialMoment)
+        .widgetURL(WidgetDeepLink.jointFinance)
     }
 
     @ViewBuilder
-    private func loaded(_ snapshot: FinancialMomentWidgetSnapshot) -> some View {
+    private func loaded(_ snapshot: JointFinanceWidgetSnapshot) -> some View {
         switch family {
         case .systemSmall:
             small(snapshot)
@@ -94,9 +103,15 @@ struct FinancialMomentWidgetView: View {
         }
     }
 
-    private func small(_ snapshot: FinancialMomentWidgetSnapshot) -> some View {
+    private func small(_ snapshot: JointFinanceWidgetSnapshot) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            WidgetMonthHeader(kicker: "MOMENTO", title: snapshot.monthLabel)
+            WidgetMonthHeader(kicker: "CONJUNTA", title: snapshot.monthLabel)
+            if !snapshot.membersLabel.isEmpty {
+                Text(snapshot.membersLabel)
+                    .font(.system(size: 10))
+                    .foregroundStyle(WidgetPalette.textSecondary)
+                    .lineLimit(1)
+            }
             Spacer(minLength: 0)
             Text("SALDO")
                 .font(.system(size: 10, weight: .bold))
@@ -120,14 +135,22 @@ struct FinancialMomentWidgetView: View {
         .padding(14)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(
-            "Momento financeiro \(snapshot.monthLabel). Saldo \(snapshot.netLabel). A pagar \(snapshot.payableLabel)."
+            "Conta conjunta \(snapshot.monthLabel). Saldo \(snapshot.netLabel). A pagar \(snapshot.payableLabel)."
         )
     }
 
-    private func medium(_ snapshot: FinancialMomentWidgetSnapshot) -> some View {
+    private func medium(_ snapshot: JointFinanceWidgetSnapshot) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                WidgetMonthHeader(kicker: "MOMENTO", title: snapshot.monthLabel)
+                VStack(alignment: .leading, spacing: 1) {
+                    WidgetMonthHeader(kicker: "CONJUNTA", title: snapshot.monthLabel)
+                    if !snapshot.membersLabel.isEmpty {
+                        Text(snapshot.membersLabel)
+                            .font(.system(size: 10))
+                            .foregroundStyle(WidgetPalette.textSecondary)
+                            .lineLimit(1)
+                    }
+                }
                 Spacer()
                 Text("\(snapshot.utilizationPercent)%")
                     .font(.caption.weight(.bold).monospacedDigit())
@@ -158,13 +181,13 @@ struct FinancialMomentWidgetView: View {
         .padding(14)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(
-            "Momento financeiro \(snapshot.monthLabel). Entradas \(snapshot.incomeLabel). Saídas \(snapshot.expenseLabel). A pagar \(snapshot.payableLabel). Saldo \(snapshot.netLabel)."
+            "Conta conjunta \(snapshot.monthLabel). Entradas \(snapshot.incomeLabel). Saídas \(snapshot.expenseLabel). A pagar \(snapshot.payableLabel). Saldo \(snapshot.netLabel)."
         )
     }
 
-    private func accessory(_ snapshot: FinancialMomentWidgetSnapshot) -> some View {
+    private func accessory(_ snapshot: JointFinanceWidgetSnapshot) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text("Momento · \(snapshot.monthLabel)")
+            Text("Conjunta · \(snapshot.monthLabel)")
                 .font(.caption2.weight(.semibold))
             HStack(spacing: 8) {
                 Text(snapshot.netLabel)
@@ -175,7 +198,6 @@ struct FinancialMomentWidgetView: View {
                     .foregroundStyle(WidgetPalette.textSecondary)
             }
         }
-        .accessibilityLabel("Saldo \(snapshot.netLabel), a pagar \(snapshot.payableLabel)")
+        .accessibilityLabel("Saldo conjunto \(snapshot.netLabel), a pagar \(snapshot.payableLabel)")
     }
 }
-

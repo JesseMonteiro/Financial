@@ -22,6 +22,7 @@ struct MeuFluxApp: App {
                 }
                 .onChange(of: scenePhase) { _, phase in
                     if phase == .active {
+                        MeuFluxAppShortcuts.updateAppShortcutParameters()
                         Task { await composition.refreshWidgetSnapshot() }
                     }
                 }

@@ -2,12 +2,14 @@ import SwiftUI
 import Charts
 import MeuFluxDesignSystem
 import MeuFluxDomain
+import MeuFluxIntelligence
 
 public struct DashboardView: View {
     @State private var viewModel: DashboardViewModel
     @State private var showAssistant = false
     @State private var selectedDetail: LineItemDetail?
 
+    private let assistantFactory: () -> MeuFluxAssistantViewModel
     private let onConnect: (() -> Void)?
     private let onTransactions: (() -> Void)?
     private let onCreditCards: (() -> Void)?
@@ -18,6 +20,7 @@ public struct DashboardView: View {
     public init(
         loadDashboard: any LoadDashboardUseCase,
         transactions: (any TransactionsRepository)? = nil,
+        assistantFactory: @escaping () -> MeuFluxAssistantViewModel = { MeuFluxAssistantViewModel() },
         onConnect: (() -> Void)? = nil,
         onTransactions: (() -> Void)? = nil,
         onCreditCards: (() -> Void)? = nil,
@@ -29,6 +32,7 @@ public struct DashboardView: View {
             loadDashboard: loadDashboard,
             transactions: transactions
         ))
+        self.assistantFactory = assistantFactory
         self.onConnect = onConnect
         self.onTransactions = onTransactions
         self.onCreditCards = onCreditCards
@@ -85,7 +89,7 @@ public struct DashboardView: View {
         }
         .sheet(isPresented: $showAssistant) {
             NavigationStack {
-                MeuFluxAssistantView()
+                MeuFluxAssistantView(model: assistantFactory())
                     .toolbar {
                         ToolbarItem(placement: .cancellationAction) {
                             Button("Fechar") { showAssistant = false }
@@ -338,7 +342,7 @@ public struct DashboardView: View {
         let name = Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String
             ?? Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String
             ?? "MeuFlux"
-        return Label("Siri: “Qual meu saldo no \(name)?”", systemImage: "mic.fill")
+        return Label("Siri: “No \(name), qual meu saldo?”", systemImage: "mic.fill")
             .font(.caption)
             .foregroundStyle(MeuFluxColors.textMuted)
     }

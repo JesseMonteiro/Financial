@@ -30,11 +30,24 @@ public enum AppleIntelligenceAvailability: Sendable {
     }
 }
 
+public protocol OnDeviceChatConversing: AnyObject, Sendable {
+    func respond(to prompt: String) async throws -> String
+}
+
 public protocol OnDeviceGenerating: Sendable {
     var isAvailable: Bool { get }
     func generateText(instructions: String, prompt: String) async throws -> String
     func generateCategory(prompt: String) async throws -> ExpenseCategoryKind?
     func generateParsedFields(prompt: String) async throws -> OnDeviceParsedFields?
+    func makeChat(instructions: String, box: AssistantSnapshotBox) -> (any OnDeviceChatConversing)?
+}
+
+public extension OnDeviceGenerating {
+    func makeChat(instructions: String, box: AssistantSnapshotBox) -> (any OnDeviceChatConversing)? {
+        _ = instructions
+        _ = box
+        return nil
+    }
 }
 
 public struct OnDeviceParsedFields: Sendable {
@@ -65,6 +78,12 @@ public struct UnavailableOnDeviceGenerator: OnDeviceGenerating {
         _ = prompt
         return nil
     }
+
+    public func makeChat(instructions: String, box: AssistantSnapshotBox) -> (any OnDeviceChatConversing)? {
+        _ = instructions
+        _ = box
+        return nil
+    }
 }
 
 public enum OnDeviceGenerationError: Error {
@@ -83,6 +102,114 @@ struct GenerableParsedPurchase {
     var amount: String
     var merchant: String
     var isoDate: String
+}
+
+@Generable
+struct AssistantToolFilter {
+    @Guide(description: "Optional name filter for a card, account, category or merchant. Empty to list all.")
+    var filter: String?
+}
+
+struct AssistantOverviewTool: Tool {
+    let box: AssistantSnapshotBox
+    var name: String { "overview" }
+    var description: String {
+        "Resumo financeiro do MeuFlux: saldo, patrimônio, receita, despesa, gastos da semana e total de faturas."
+    }
+
+    func call(arguments: AssistantToolFilter) async throws -> String {
+        _ = arguments
+        guard let snapshot = await box.current() else { return "Sem resumo local." }
+        return AssistantFacts.overview(snapshot)
+    }
+}
+
+struct AssistantCardsTool: Tool {
+    let box: AssistantSnapshotBox
+    var name: String { "cards" }
+    var description: String {
+        "Lista cartões de crédito com fatura aberta e outstanding. Use para saber qual cartão tem mais gastos."
+    }
+
+    func call(arguments: AssistantToolFilter) async throws -> String {
+        guard let snapshot = await box.current() else { return "Sem resumo local." }
+        return AssistantFacts.cards(snapshot, filter: arguments.filter ?? "")
+    }
+}
+
+struct AssistantAccountsTool: Tool {
+    let box: AssistantSnapshotBox
+    var name: String { "accounts" }
+    var description: String {
+        "Lista contas bancárias e saldos no MeuFlux (não a Carteira da Apple)."
+    }
+
+    func call(arguments: AssistantToolFilter) async throws -> String {
+        guard let snapshot = await box.current() else { return "Sem resumo local." }
+        return AssistantFacts.accounts(snapshot, filter: arguments.filter ?? "")
+    }
+}
+
+struct AssistantCategoriesTool: Tool {
+    let box: AssistantSnapshotBox
+    var name: String { "categories" }
+    var description: String {
+        "Gastos do mês por categoria. Use para perguntas como onde gastei mais."
+    }
+
+    func call(arguments: AssistantToolFilter) async throws -> String {
+        guard let snapshot = await box.current() else { return "Sem resumo local." }
+        return AssistantFacts.categories(snapshot, filter: arguments.filter ?? "")
+    }
+}
+
+struct AssistantBudgetsTool: Tool {
+    let box: AssistantSnapshotBox
+    var name: String { "budgets" }
+    var description: String {
+        "Uso das verbas/orçamento do mês."
+    }
+
+    func call(arguments: AssistantToolFilter) async throws -> String {
+        guard let snapshot = await box.current() else { return "Sem resumo local." }
+        return AssistantFacts.budgets(snapshot, filter: arguments.filter ?? "")
+    }
+}
+
+struct AssistantTransactionsTool: Tool {
+    let box: AssistantSnapshotBox
+    var name: String { "recent_transactions" }
+    var description: String {
+        "Transações recentes do resumo local, com descrição, categoria e valor."
+    }
+
+    func call(arguments: AssistantToolFilter) async throws -> String {
+        guard let snapshot = await box.current() else { return "Sem resumo local." }
+        return AssistantFacts.recentTransactions(snapshot, filter: arguments.filter ?? "")
+    }
+}
+
+final class FoundationChatSession: OnDeviceChatConversing, @unchecked Sendable {
+    private let session: LanguageModelSession
+
+    init(instructions: String, box: AssistantSnapshotBox) {
+        self.session = LanguageModelSession(
+            tools: [
+                AssistantOverviewTool(box: box),
+                AssistantCardsTool(box: box),
+                AssistantAccountsTool(box: box),
+                AssistantCategoriesTool(box: box),
+                AssistantBudgetsTool(box: box),
+                AssistantTransactionsTool(box: box),
+            ],
+            instructions: instructions
+        )
+    }
+
+    func respond(to prompt: String) async throws -> String {
+        let response = try await session.respond(to: prompt)
+        return response.content
+    }
 }
 
 public struct FoundationOnDeviceGenerator: OnDeviceGenerating {
@@ -128,6 +255,11 @@ public struct FoundationOnDeviceGenerator: OnDeviceGenerating {
             merchant: merchant.isEmpty ? nil : merchant,
             isoDate: iso.isEmpty ? nil : iso
         )
+    }
+
+    public func makeChat(instructions: String, box: AssistantSnapshotBox) -> (any OnDeviceChatConversing)? {
+        guard isAvailable else { return nil }
+        return FoundationChatSession(instructions: instructions, box: box)
     }
 
     private static func parseAmount(_ raw: String) -> Decimal? {

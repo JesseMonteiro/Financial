@@ -163,7 +163,60 @@ public enum SiriSnapshotMapper {
                     isCredit: $0.isCredit
                 )
             },
+            incomeLabel: snapshot.cashflow.income.formatted(),
+            expenseLabel: snapshot.cashflow.expense.formatted(),
+            netLabel: snapshot.cashflow.net.formatted(),
+            categories: snapshot.categoryExpenses
+                .sorted { $0.value > $1.value }
+                .prefix(12)
+                .map {
+                    .init(
+                        name: $0.name,
+                        amountLabel: Money(amount: Decimal($0.value)).formatted(),
+                        amount: $0.value
+                    )
+                },
             updatedAt: now
         )
+    }
+
+    public static func cards(from screen: CreditCardsScreen) -> [SiriFinanceSnapshot.SiriCard] {
+        screen.cards.map { card in
+            .init(
+                id: card.id,
+                name: card.name,
+                institutionName: card.institutionName,
+                lastFour: card.lastFour,
+                openTotalLabel: card.openTotal.formatted(),
+                openTotalAmount: NSDecimalNumber(decimal: card.openTotal.amount).doubleValue,
+                outstandingLabel: card.outstanding.formatted()
+            )
+        }
+    }
+
+    public static func accounts(from accounts: [Account]) -> [SiriFinanceSnapshot.SiriAccount] {
+        accounts
+            .filter { !$0.isHidden && !$0.isCreditCard }
+            .map { account in
+                .init(
+                    id: account.id,
+                    name: account.name,
+                    kind: Self.kindLabel(account.type),
+                    amountLabel: account.displayAmount.formatted(),
+                    institutionName: account.institutionName
+                )
+            }
+    }
+
+    private static func kindLabel(_ type: AccountType) -> String {
+        switch type {
+        case .checking: return "corrente"
+        case .savings: return "poupança"
+        case .credit: return "cartão"
+        case .investment: return "investimento"
+        case .loan: return "empréstimo"
+        case .manual: return "manual"
+        case .other: return "outra"
+        }
     }
 }

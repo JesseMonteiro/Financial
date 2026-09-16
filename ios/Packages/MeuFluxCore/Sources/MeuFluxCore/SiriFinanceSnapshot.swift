@@ -15,6 +15,12 @@ public struct SiriFinanceSnapshot: Codable, Sendable, Equatable, Hashable {
     public var insights: [SiriInsight]
     public var budgets: [SiriBudget]
     public var recentTransactions: [SiriTransaction]
+    public var incomeLabel: String?
+    public var expenseLabel: String?
+    public var netLabel: String?
+    public var categories: [SiriCategory]
+    public var cards: [SiriCard]
+    public var accounts: [SiriAccount]
     public var updatedAt: Date
 
     public init(
@@ -30,6 +36,12 @@ public struct SiriFinanceSnapshot: Codable, Sendable, Equatable, Hashable {
         insights: [SiriInsight],
         budgets: [SiriBudget],
         recentTransactions: [SiriTransaction],
+        incomeLabel: String? = nil,
+        expenseLabel: String? = nil,
+        netLabel: String? = nil,
+        categories: [SiriCategory] = [],
+        cards: [SiriCard] = [],
+        accounts: [SiriAccount] = [],
         updatedAt: Date
     ) {
         self.displayName = displayName
@@ -44,7 +56,36 @@ public struct SiriFinanceSnapshot: Codable, Sendable, Equatable, Hashable {
         self.insights = insights
         self.budgets = budgets
         self.recentTransactions = recentTransactions
+        self.incomeLabel = incomeLabel
+        self.expenseLabel = expenseLabel
+        self.netLabel = netLabel
+        self.categories = categories
+        self.cards = cards
+        self.accounts = accounts
         self.updatedAt = updatedAt
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        displayName = try c.decode(String.self, forKey: .displayName)
+        monthKey = try c.decode(String.self, forKey: .monthKey)
+        bankBalanceLabel = try c.decode(String.self, forKey: .bankBalanceLabel)
+        netWorthLabel = try c.decode(String.self, forKey: .netWorthLabel)
+        weeklySpendLabel = try c.decode(String.self, forKey: .weeklySpendLabel)
+        weeklyDeltaPct = try c.decode(Double.self, forKey: .weeklyDeltaPct)
+        weeklyTopCategory = try c.decodeIfPresent(String.self, forKey: .weeklyTopCategory)
+        openBillsLabel = try c.decode(String.self, forKey: .openBillsLabel)
+        creditCount = try c.decode(Int.self, forKey: .creditCount)
+        insights = try c.decode([SiriInsight].self, forKey: .insights)
+        budgets = try c.decode([SiriBudget].self, forKey: .budgets)
+        recentTransactions = try c.decode([SiriTransaction].self, forKey: .recentTransactions)
+        incomeLabel = try c.decodeIfPresent(String.self, forKey: .incomeLabel)
+        expenseLabel = try c.decodeIfPresent(String.self, forKey: .expenseLabel)
+        netLabel = try c.decodeIfPresent(String.self, forKey: .netLabel)
+        categories = try c.decodeIfPresent([SiriCategory].self, forKey: .categories) ?? []
+        cards = try c.decodeIfPresent([SiriCard].self, forKey: .cards) ?? []
+        accounts = try c.decodeIfPresent([SiriAccount].self, forKey: .accounts) ?? []
+        updatedAt = try c.decode(Date.self, forKey: .updatedAt)
     }
 
     public struct SiriInsight: Codable, Sendable, Equatable, Hashable, Identifiable {
@@ -100,6 +141,150 @@ public struct SiriFinanceSnapshot: Codable, Sendable, Equatable, Hashable {
             self.isCredit = isCredit
         }
     }
+
+    public struct SiriCategory: Codable, Sendable, Equatable, Hashable, Identifiable {
+        public var id: String { name }
+        public var name: String
+        public var amountLabel: String
+        public var amount: Double
+
+        public init(name: String, amountLabel: String, amount: Double) {
+            self.name = name
+            self.amountLabel = amountLabel
+            self.amount = amount
+        }
+    }
+
+    public struct SiriCard: Codable, Sendable, Equatable, Hashable, Identifiable {
+        public var id: String
+        public var name: String
+        public var institutionName: String
+        public var lastFour: String
+        public var openTotalLabel: String
+        public var openTotalAmount: Double
+        public var outstandingLabel: String
+
+        public init(
+            id: String,
+            name: String,
+            institutionName: String,
+            lastFour: String,
+            openTotalLabel: String,
+            openTotalAmount: Double,
+            outstandingLabel: String
+        ) {
+            self.id = id
+            self.name = name
+            self.institutionName = institutionName
+            self.lastFour = lastFour
+            self.openTotalLabel = openTotalLabel
+            self.openTotalAmount = openTotalAmount
+            self.outstandingLabel = outstandingLabel
+        }
+    }
+
+    public struct SiriAccount: Codable, Sendable, Equatable, Hashable, Identifiable {
+        public var id: String
+        public var name: String
+        public var kind: String
+        public var amountLabel: String
+        public var institutionName: String?
+
+        public init(
+            id: String,
+            name: String,
+            kind: String,
+            amountLabel: String,
+            institutionName: String?
+        ) {
+            self.id = id
+            self.name = name
+            self.kind = kind
+            self.amountLabel = amountLabel
+            self.institutionName = institutionName
+        }
+    }
+
+    public var rankedCards: [SiriCard] {
+        cards.sorted { $0.openTotalAmount > $1.openTotalAmount }
+    }
+
+    public var topCardByOpenSpend: SiriCard? {
+        rankedCards.first
+    }
+
+    public var rankedCategories: [SiriCategory] {
+        categories.sorted { $0.amount > $1.amount }
+    }
+
+    public func preservingLists(from previous: SiriFinanceSnapshot?) -> SiriFinanceSnapshot {
+        guard let previous else { return self }
+        var copy = self
+        if copy.cards.isEmpty { copy.cards = previous.cards }
+        if copy.accounts.isEmpty { copy.accounts = previous.accounts }
+        return copy
+    }
+
+    public var balanceDialog: String {
+        "Seu saldo em contas no MeuFlux é \(bankBalanceLabel). Patrimônio líquido: \(netWorthLabel)."
+    }
+
+    public var weeklySpendDialog: String {
+        var text = "Nos últimos 7 dias você gastou \(weeklySpendLabel)."
+        let sign = weeklyDeltaPct > 0 ? "+" : ""
+        text += " Isso é \(sign)\(Int(weeklyDeltaPct.rounded()))% vs a semana anterior."
+        if let top = weeklyTopCategory {
+            text += " Maior categoria: \(top)."
+        }
+        return text
+    }
+
+    public var openBillsDialog: String {
+        if !cards.isEmpty {
+            let lines = rankedCards.prefix(5).map { "\($0.name): \($0.openTotalLabel)" }
+            return "Faturas abertas no MeuFlux: \(openBillsLabel). \(lines.joined(separator: "; "))."
+        }
+        return "Há \(creditCount) cartão(ões) com fatura aberta de \(openBillsLabel)."
+    }
+
+    public var cardSpendDialog: String {
+        guard !cards.isEmpty, let top = topCardByOpenSpend else {
+            return "Ainda não tenho o detalhe por cartão neste iPhone. Abra Cartões uma vez."
+        }
+        if cards.count == 1 {
+            return "O \(top.name) tem fatura aberta de \(top.openTotalLabel)."
+        }
+        let rest = rankedCards.dropFirst().prefix(4).map { "\($0.name) \($0.openTotalLabel)" }
+        return "O cartão com mais gastos na fatura aberta é \(top.name), com \(top.openTotalLabel). Em seguida: \(rest.joined(separator: ", "))."
+    }
+
+    public var categorySpendDialog: String {
+        guard !categories.isEmpty, let top = rankedCategories.first else {
+            return "Ainda não há gastos por categoria no resumo deste mês."
+        }
+        let rest = rankedCategories.dropFirst().prefix(4).map { "\($0.name) \($0.amountLabel)" }
+        if rest.isEmpty {
+            return "A maior categoria deste mês é \(top.name), com \(top.amountLabel)."
+        }
+        return "A maior categoria deste mês é \(top.name), com \(top.amountLabel). Em seguida: \(rest.joined(separator: ", "))."
+    }
+
+    public var budgetDialog: String {
+        if budgets.isEmpty {
+            return "Não há categorias de orçamento no resumo deste mês."
+        }
+        let lines = budgets.prefix(5).map {
+            "\($0.category): \($0.spentLabel) de \($0.limitLabel) (\($0.percent)%)."
+        }
+        return lines.joined(separator: " ")
+    }
+
+    public var insightsDialog: String {
+        if insights.isEmpty {
+            return "Ainda não há insights no resumo local."
+        }
+        return insights.prefix(3).map(\.text).joined(separator: " ")
+    }
 }
 
 public struct SiriSnapshotStore: @unchecked Sendable {
@@ -132,6 +317,22 @@ public struct SiriSnapshotStore: @unchecked Sendable {
             return decode(data)
         }
         return nil
+    }
+
+    public func mergeCards(_ cards: [SiriFinanceSnapshot.SiriCard], now: Date = Date()) -> SiriFinanceSnapshot? {
+        guard var snapshot = load() else { return nil }
+        snapshot.cards = cards
+        snapshot.updatedAt = now
+        save(snapshot)
+        return snapshot
+    }
+
+    public func mergeAccounts(_ accounts: [SiriFinanceSnapshot.SiriAccount], now: Date = Date()) -> SiriFinanceSnapshot? {
+        guard var snapshot = load() else { return nil }
+        snapshot.accounts = accounts
+        snapshot.updatedAt = now
+        save(snapshot)
+        return snapshot
     }
 
     public func clear() {
