@@ -7,19 +7,23 @@ public struct JointLink: Sendable, Identifiable, Hashable, Codable {
     public var partnerId: String?
     public var partnerDisplayName: String?
     public var inviteToken: String?
+    /// Invite creator / account owner (`user_a` from joint_links).
+    public var ownerUserId: String?
 
     public init(
         id: String,
         status: String,
         partnerId: String? = nil,
         partnerDisplayName: String? = nil,
-        inviteToken: String? = nil
+        inviteToken: String? = nil,
+        ownerUserId: String? = nil
     ) {
         self.id = id
         self.status = status
         self.partnerId = partnerId
         self.partnerDisplayName = partnerDisplayName
         self.inviteToken = inviteToken
+        self.ownerUserId = ownerUserId
     }
 
     public var isActive: Bool { status == "active" }

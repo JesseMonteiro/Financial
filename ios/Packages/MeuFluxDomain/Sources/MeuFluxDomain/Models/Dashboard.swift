@@ -13,6 +13,7 @@ public struct DashboardSnapshot: Sendable, Hashable {
     public var insights: [DashboardInsight]
     public var weeklyRecap: DashboardWeeklyRecap
     public var recentTransactions: [DashboardRecentTransaction]
+    public var dailySpend: [DashboardDailySpendPoint]
     public var budgetCategories: [DashboardBudgetCategory]
     public var calculationVersion: String?
 
@@ -28,6 +29,7 @@ public struct DashboardSnapshot: Sendable, Hashable {
         insights: [DashboardInsight],
         weeklyRecap: DashboardWeeklyRecap,
         recentTransactions: [DashboardRecentTransaction],
+        dailySpend: [DashboardDailySpendPoint] = [],
         budgetCategories: [DashboardBudgetCategory],
         calculationVersion: String? = nil
     ) {
@@ -42,6 +44,7 @@ public struct DashboardSnapshot: Sendable, Hashable {
         self.insights = insights
         self.weeklyRecap = weeklyRecap
         self.recentTransactions = recentTransactions
+        self.dailySpend = dailySpend
         self.budgetCategories = budgetCategories
         self.calculationVersion = calculationVersion
     }
@@ -219,6 +222,19 @@ public struct DashboardRecentTransaction: Sendable, Hashable, Identifiable {
         self.amount = amount
         self.isCredit = isCredit
         self.isPending = isPending
+    }
+}
+
+public struct DashboardDailySpendPoint: Sendable, Hashable, Identifiable {
+    public var id: String { date }
+    public var date: String
+    public var amount: Decimal
+    public var maxPurchase: Decimal
+
+    public init(date: String, amount: Decimal, maxPurchase: Decimal = 0) {
+        self.date = date
+        self.amount = amount
+        self.maxPurchase = maxPurchase
     }
 }
 

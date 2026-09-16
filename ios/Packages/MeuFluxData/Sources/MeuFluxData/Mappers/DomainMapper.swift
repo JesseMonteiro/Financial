@@ -267,7 +267,8 @@ public enum DomainMapper {
             status: dto.status,
             partnerId: dto.partnerId,
             partnerDisplayName: dto.partnerDisplayName,
-            inviteToken: dto.inviteToken
+            inviteToken: dto.inviteToken,
+            ownerUserId: dto.userA
         )
     }
 
@@ -836,6 +837,13 @@ public enum DomainMapper {
                     amount: money(tx.amount),
                     isCredit: tx.isCredit,
                     isPending: tx.isPending
+                )
+            },
+            dailySpend: (dto.dailySpend ?? []).map {
+                DashboardDailySpendPoint(
+                    date: $0.date,
+                    amount: money($0.amount).amount,
+                    maxPurchase: money($0.maxPurchase ?? 0).amount
                 )
             },
             budgetCategories: dto.budgetCategories.map {

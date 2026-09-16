@@ -11,6 +11,7 @@ public struct FinancialMomentView: View {
     private let onCreateManualExpense: (() -> Void)?
     private let onOpenMealVouchers: (() -> Void)?
     private let onOpenReceivables: (() -> Void)?
+    private let currentUserLabel: String?
 
     private var isPhoneIdiom: Bool {
         #if canImport(UIKit)
@@ -29,7 +30,8 @@ public struct FinancialMomentView: View {
         purchaseCategories: (any PurchaseCategoriesRepository)? = nil,
         onCreateManualExpense: (() -> Void)? = nil,
         onOpenMealVouchers: (() -> Void)? = nil,
-        onOpenReceivables: (() -> Void)? = nil
+        onOpenReceivables: (() -> Void)? = nil,
+        currentUserLabel: String? = nil
     ) {
         _viewModel = State(initialValue: FinancialMomentDetailViewModel(
             buildFinancialMomentDetail: buildFinancialMomentDetail,
@@ -42,6 +44,7 @@ public struct FinancialMomentView: View {
         self.onCreateManualExpense = onCreateManualExpense
         self.onOpenMealVouchers = onOpenMealVouchers
         self.onOpenReceivables = onOpenReceivables
+        self.currentUserLabel = currentUserLabel
     }
 
     public init() {
@@ -49,6 +52,7 @@ public struct FinancialMomentView: View {
         self.onCreateManualExpense = nil
         self.onOpenMealVouchers = nil
         self.onOpenReceivables = nil
+        self.currentUserLabel = nil
     }
 
     public var body: some View {
@@ -309,36 +313,23 @@ public struct FinancialMomentView: View {
     private func mealBenefitsCards(_ detail: FinancialMomentDetail) -> some View {
         if !detail.mealBenefits.isEmpty {
             ForEach(detail.mealBenefits.items) { item in
-                GlassCard(title: item.kind.title, subtitle: item.label) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Saldo")
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(MeuFluxColors.textMuted)
-                                Text(item.remaining.formatted())
-                                    .font(.title2.weight(.bold))
-                            }
-                            Spacer()
-                            Image(systemName: "fork.knife")
-                                .foregroundStyle(MeuFluxColors.textMuted)
-                        }
-                        Text("Crédito dia \(item.creditDay) · gasto no mês \(item.monthSpent.formatted())")
-                            .font(.caption)
-                            .foregroundStyle(MeuFluxColors.textMuted)
-                        if let owner = item.ownerLabel, !owner.isEmpty {
-                            Text(owner)
-                                .font(.caption2)
-                                .foregroundStyle(MeuFluxColors.textMuted)
-                        }
-                        if onOpenMealVouchers != nil {
-                            Button("Gerenciar VA/VR") {
-                                onOpenMealVouchers?()
-                            }
-                            .font(.caption.weight(.semibold))
-                        }
-                    }
-                }
+                let kindTitle = item.kind.title
+                let provider: String? = {
+                    let trimmed = item.label.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !trimmed.isEmpty, trimmed != kindTitle else { return nil }
+                    return trimmed
+                }()
+                MealBenefitMomentCard(
+                    kindTitle: kindTitle,
+                    isVR: item.kind == .vr,
+                    provider: provider,
+                    remainingText: item.remaining.formatted(),
+                    remainingNegative: item.remaining.amount < 0,
+                    creditDay: item.creditDay,
+                    monthSpentText: item.monthSpent.formatted(),
+                    ownerLabel: item.ownerLabel ?? currentUserLabel,
+                    onManage: onOpenMealVouchers
+                )
             }
         }
     }
@@ -394,30 +385,67 @@ public struct FinancialMomentView: View {
 
     @ViewBuilder
     private func salaryCard(_ detail: FinancialMomentDetail) -> some View {
-        GlassCard(
-            title: "Salário Mensal",
-            subtitle: isPhoneIdiom ? nil : 
-                "Salário líquido deste mês. Ao salvar, vira o padrão dos próximos meses."
-        ) {
-            HStack {
+        GlassCard {
+            VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 8) {
-                    Image(systemName: "dollarsign.circle")
-                        .foregroundStyle(MeuFluxColors.textMuted)
-                    
-                    TextField("0,00", text: $viewModel.salaryInput)
-                        .textFieldStyle(.roundedBorder)
-                        #if os(iOS)
-                        .keyboardType(.decimalPad)
-                        #endif
-                        .disabled(viewModel.isSavingSalary)
+                    Image(systemName: "banknote")
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(MeuFluxColors.primary)
+                    Text("Salário Mensal")
+                        .font(.headline.weight(.semibold))
+                        .foregroundStyle(MeuFluxColors.textPrimary)
                 }
-                
-                Button("Definir") {
-                    Task { await viewModel.saveSalary() }
+
+                HStack(spacing: 8) {
+                    HStack(spacing: 8) {
+                        Text("$")
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(MeuFluxColors.textMuted)
+                        TextField("0", text: $viewModel.salaryInput)
+                            .font(.title3.weight(.bold))
+                            .foregroundStyle(MeuFluxColors.textPrimary)
+                            #if os(iOS)
+                            .keyboardType(.decimalPad)
+                            #endif
+                            .disabled(viewModel.isSavingSalary)
+                        Text("BRL")
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(MeuFluxColors.textMuted)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .background(
+                        RoundedRectangle(cornerRadius: Radius().md, style: .continuous)
+                            .fill(MeuFluxColors.bgPrimary.opacity(0.7))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: Radius().md, style: .continuous)
+                            .strokeBorder(MeuFluxColors.border, lineWidth: 1)
+                    )
+
+                    Button {
+                        Task { await viewModel.saveSalary() }
+                    } label: {
+                        Group {
+                            if viewModel.isSavingSalary {
+                                ProgressView()
+                            } else {
+                                Text("Definir")
+                                    .font(.subheadline.weight(.bold))
+                            }
+                        }
+                        .frame(minWidth: 72)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 12)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(MeuFluxColors.bgPrimary)
+                    .background(
+                        RoundedRectangle(cornerRadius: Radius().md, style: .continuous)
+                            .fill(MeuFluxColors.primary)
+                    )
+                    .disabled(viewModel.isSavingSalary)
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.small)
-                .disabled(viewModel.isSavingSalary)
             }
         }
     }

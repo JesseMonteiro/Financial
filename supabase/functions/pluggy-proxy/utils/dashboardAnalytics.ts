@@ -121,6 +121,102 @@ export function isIncomeTx(tx: AnyRec): boolean {
   return Number(tx.amount) > 0 || tx.type === "CREDIT" || tx.type === "CREDIT_INCOME";
 }
 
+function installmentNumberOf(tx: AnyRec): number {
+  const n = Number(tx?.creditCardMetadata?.installmentNumber ?? tx?.currentInstallment ?? 0);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function purchaseDay(tx: AnyRec): string {
+  const pd = String(tx?.creditCardMetadata?.purchaseDate || tx?.purchaseDate || "").slice(0, 10);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(pd)) return pd;
+  return String(tx?.date || "").slice(0, 10);
+}
+
+function categoryIsNonPurchase(tx: AnyRec): boolean {
+  const cat = String(tx?.category || "").toLowerCase();
+  return (
+    cat.includes("credit card payment") ||
+    cat === "transfers" ||
+    cat.includes("salary") ||
+    cat.includes("investments") ||
+    cat.includes("loan")
+  );
+}
+
+function isCreditCardTx(tx: AnyRec, creditAccountIds: Set<string> = new Set()): boolean {
+  const accountId = String(tx?.accountId || tx?.account_id || "");
+  if (accountId && creditAccountIds.has(accountId)) return true;
+  if (tx?.creditCardMetadata && typeof tx.creditCardMetadata === "object") return true;
+  const accType = String(tx?.accountType || tx?.account?.type || "").toUpperCase();
+  return accType === "CREDIT";
+}
+
+function isNonPurchaseOperation(tx: AnyRec): boolean {
+  const op = String(tx?.operationType || "").toUpperCase();
+  return (
+    op === "CONVENIO_ARRECADACAO" ||
+    op === "TRANSFER" ||
+    op === "TRANSFER_SAME_ACCOUNT" ||
+    op === "PIX" ||
+    op === "TED" ||
+    op === "TEF" ||
+    op === "DOC" ||
+    op === "BOLETO" ||
+    op === "BOLETO_PAYMENT" ||
+    op === "SLIP" ||
+    op === "TAX"
+  );
+}
+
+function isBankRailDescription(description: unknown): boolean {
+  const d = String(description || "")
+    .toUpperCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!d) return false;
+  return (
+    d.includes("PIX ENVIADO") ||
+    d.includes("TRANSFERENCIA") ||
+    d === "TED" ||
+    d.startsWith("TED ") ||
+    d.startsWith("TED-") ||
+    d.startsWith("DOC ") ||
+    d.includes("PAGAMENTO BOLETO") ||
+    d.includes("PAGTO BOLETO") ||
+    d.includes("PAGAMENTO CONTA") ||
+    d.includes("PAGTO CONTA")
+  );
+}
+
+function purchaseIdentity(tx: AnyRec): string {
+  const iso = purchaseDay(tx);
+  const desc = String(tx?.description || "")
+    .toUpperCase()
+    .replace(/\s+/g, " ")
+    .trim();
+  const total = Math.abs(
+    Number(tx?.creditCardMetadata?.totalAmount ?? tx?.totalAmount ?? tx?.amount) || 0,
+  );
+  return `${iso}|${desc}|${total.toFixed(2)}`;
+}
+
+/** New credit-card purchases only — no bank rails, bills, income, or later installments. */
+export function isNewPurchaseTx(
+  tx: AnyRec,
+  creditAccountIds: Set<string> = new Set(),
+): boolean {
+  if (!tx || tx.isProjected) return false;
+  if (!isCreditCardTx(tx, creditAccountIds)) return false;
+  if (!isExpenseTx(tx)) return false;
+  if (categoryIsNonPurchase(tx)) return false;
+  if (isNonPurchaseOperation(tx)) return false;
+  if (isBankRailDescription(tx?.description)) return false;
+  if (installmentNumberOf(tx) > 1) return false;
+  return true;
+}
+
 function totalReservedBalances(accounts: AnyRec[] = []): number {
   let sum = 0;
   for (const a of accounts) {
@@ -305,6 +401,56 @@ export function monthOverMonth(transactions: AnyRec[] = [], ym = currentYm()) {
     expenseDeltaPct: Number(expenseDelta.toFixed(1)),
     topCategoryDeltas: catDeltas.slice(0, 5),
   };
+}
+
+/** Last `days` of new-purchase totals (YYYY-MM-DD in America/Sao_Paulo). */
+export function buildDailySpend(
+  transactions: AnyRec[] = [],
+  days = 30,
+  now = new Date(),
+  creditAccountIds: Set<string> = new Set(),
+): { date: string; amount: number; maxPurchase: number }[] {
+  const byDay = new Map<string, { amount: number; maxPurchase: number }>();
+  const seenIds = new Set<string>();
+  const seenPurchases = new Set<string>();
+  for (const t of transactions) {
+    const id = String(t?.id || "");
+    if (id) {
+      if (seenIds.has(id)) continue;
+      seenIds.add(id);
+    }
+    if (!isNewPurchaseTx(t, creditAccountIds)) continue;
+    const iso = purchaseDay(t);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) continue;
+    const identity = purchaseIdentity(t);
+    if (identity && seenPurchases.has(identity)) continue;
+    if (identity) seenPurchases.add(identity);
+    const abs = Math.abs(Number(t.amount) || 0);
+    const cur = byDay.get(iso) || { amount: 0, maxPurchase: 0 };
+    cur.amount += abs;
+    cur.maxPurchase = Math.max(cur.maxPurchase, abs);
+    byDay.set(iso, cur);
+  }
+
+  const sp = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  const [ty, tm, td] = sp.format(now).split("-").map(Number);
+  const out: { date: string; amount: number; maxPurchase: number }[] = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const utc = new Date(Date.UTC(ty, tm - 1, td - i));
+    const key = `${utc.getUTCFullYear()}-${String(utc.getUTCMonth() + 1).padStart(2, "0")}-${String(utc.getUTCDate()).padStart(2, "0")}`;
+    const row = byDay.get(key);
+    out.push({
+      date: key,
+      amount: Number((row?.amount || 0).toFixed(2)),
+      maxPurchase: Number((row?.maxPurchase || 0).toFixed(2)),
+    });
+  }
+  return out;
 }
 
 export function expensesByCategory(

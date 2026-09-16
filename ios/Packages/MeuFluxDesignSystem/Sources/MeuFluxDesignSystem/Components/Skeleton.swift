@@ -249,27 +249,35 @@ public struct PageLoadingSkeleton: View {
     }
 
     private var dashboardSkeleton: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 24) {
             VStack(alignment: .leading, spacing: 8) {
-                SkeletonBlock(width: 180, height: 18)
-                SkeletonBlock(width: 240, height: 12)
+                SkeletonBlock(width: 120, height: 22)
+                SkeletonBlock(width: 220, height: 18)
+                SkeletonBlock(width: 260, height: 12)
             }
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
                 ForEach(0..<4, id: \.self) { _ in
-                    SkeletonCard(lines: 3)
+                    SkeletonCard(lines: 4)
                 }
             }
             GlassCard {
                 VStack(alignment: .leading, spacing: 12) {
-                    SkeletonBlock(width: 160, height: 14)
-                    SkeletonChartPlaceholder()
+                    SkeletonBlock(width: 140, height: 16)
+                    SkeletonBlock(width: 180, height: 22)
+                    SkeletonChartPlaceholder(height: 140)
                 }
             }
             GlassCard {
-                VStack(alignment: .leading, spacing: 12) {
-                    SkeletonBlock(width: 140, height: 14)
-                    SkeletonListRows(rows: 5)
+                VStack(alignment: .leading, spacing: 10) {
+                    SkeletonBlock(width: 170, height: 14)
+                    SkeletonBlock(height: 10, cornerRadius: 5)
+                    SkeletonBlock(width: 220, height: 10)
                 }
+            }
+            VStack(spacing: 12) {
+                SkeletonBlock(width: 100, height: 16)
+                SkeletonCard(lines: 3)
+                SkeletonCard(lines: 3)
             }
         }
     }

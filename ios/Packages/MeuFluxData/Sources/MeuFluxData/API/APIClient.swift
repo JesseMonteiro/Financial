@@ -162,14 +162,18 @@ public final class APIClient: APIClientProtocol, @unchecked Sendable {
         return nil
     }
 
-    private func mapURLError(_ error: URLError) -> AppError {
+    private func mapURLError(_ error: URLError) -> Error {
         switch error.code {
+        case .cancelled:
+            // SwiftUI `.task` cancellation often surfaces as URLError.cancelled (-999).
+            // Treat it as cooperative cancellation so screens don't show a false error.
+            return CancellationError()
         case .notConnectedToInternet, .networkConnectionLost, .dataNotAllowed:
-            return .networkUnavailable
+            return AppError.networkUnavailable
         case .timedOut:
-            return .unknown("A requisição demorou demais. Tente de novo.")
+            return AppError.unknown("A requisição demorou demais. Tente de novo.")
         default:
-            return .unknown(error.localizedDescription)
+            return AppError.unknown(error.localizedDescription)
         }
     }
 }

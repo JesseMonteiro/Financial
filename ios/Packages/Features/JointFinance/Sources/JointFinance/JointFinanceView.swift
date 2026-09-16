@@ -5,10 +5,20 @@ import MeuFluxDomain
 public struct JointFinanceView: View {
     @State private var viewModel: JointFinanceViewModel
     @State private var selectedDetail: LineItemDetail?
+    @State private var mealOwnerFilter: String = Self.allOwnersFilter
+    @State private var editingSalaryId: String?
     private let onOpenSettings: (() -> Void)?
     private let onOpenMealVouchers: (() -> Void)?
     private let onOpenManualExpenses: (() -> Void)?
     private let onOpenReceivables: (() -> Void)?
+
+    private static let allOwnersFilter = "__all__"
+    private static let memberAccents: [Color] = [
+        Color(hex: 0x8B5CF6),
+        Color(hex: 0x60A5FA),
+        Color(hex: 0xF472B6),
+        Color(hex: 0x34D399),
+    ]
 
     public init(
         repository: any JointFinanceRepository,
@@ -271,76 +281,238 @@ public struct JointFinanceView: View {
     @ViewBuilder
     private func mealBenefitsCards(_ detail: FinancialMomentDetail) -> some View {
         if !detail.mealBenefits.isEmpty {
-            ForEach(detail.mealBenefits.items) { item in
-                GlassCard(title: item.kind.title, subtitle: item.label) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Saldo")
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(MeuFluxColors.textMuted)
-                                Text(item.remaining.formatted())
-                                    .font(.title2.weight(.bold))
-                            }
-                            Spacer()
-                            Image(systemName: "fork.knife")
-                                .foregroundStyle(MeuFluxColors.textMuted)
+            let owners = mealOwners(from: detail.mealBenefits.items)
+            let showToggle = owners.count > 1
+            let visibleItems: [MealBenefitMomentItem] = {
+                guard showToggle, mealOwnerFilter != Self.allOwnersFilter else {
+                    return detail.mealBenefits.items
+                }
+                return detail.mealBenefits.items.filter { ($0.ownerLabel ?? "") == mealOwnerFilter }
+            }()
+
+            VStack(alignment: .leading, spacing: 12) {
+                if showToggle {
+                    Picker("Titular VA/VR", selection: $mealOwnerFilter) {
+                        ForEach(owners, id: \.self) { owner in
+                            Text(owner.split(whereSeparator: \.isWhitespace).first.map(String.init) ?? owner)
+                                .tag(owner)
                         }
-                        Text("Crédito dia \(item.creditDay) · gasto no mês \(item.monthSpent.formatted())")
-                            .font(.caption)
-                            .foregroundStyle(MeuFluxColors.textMuted)
-                        if let owner = item.ownerLabel, !owner.isEmpty {
-                            Text(owner)
-                                .font(.caption2)
-                                .foregroundStyle(MeuFluxColors.textMuted)
-                        }
-                        if onOpenMealVouchers != nil {
-                            Button("Gerenciar VA/VR") {
-                                onOpenMealVouchers?()
-                            }
-                            .font(.caption.weight(.semibold))
-                        }
+                        Text("Ambos").tag(Self.allOwnersFilter)
                     }
+                    .pickerStyle(.segmented)
+                }
+
+                ForEach(visibleItems) { item in
+                    let kindTitle = item.kind.title
+                    let provider: String? = {
+                        let trimmed = item.label.trimmingCharacters(in: .whitespacesAndNewlines)
+                        guard !trimmed.isEmpty, trimmed != kindTitle else { return nil }
+                        return trimmed
+                    }()
+                    MealBenefitMomentCard(
+                        kindTitle: kindTitle,
+                        isVR: item.kind == .vr,
+                        provider: provider,
+                        remainingText: item.remaining.formatted(),
+                        remainingNegative: item.remaining.amount < 0,
+                        creditDay: item.creditDay,
+                        monthSpentText: item.monthSpent.formatted(),
+                        ownerLabel: item.ownerLabel,
+                        onManage: onOpenMealVouchers
+                    )
+                }
+            }
+            .onChange(of: detail.mealBenefits.items.map(\.id)) { _, _ in
+                let valid = Set(owners + [Self.allOwnersFilter])
+                if !valid.contains(mealOwnerFilter) {
+                    mealOwnerFilter = Self.allOwnersFilter
                 }
             }
         }
     }
 
+    private func mealOwners(from items: [MealBenefitMomentItem]) -> [String] {
+        var seen = Set<String>()
+        var ordered: [String] = []
+        for item in items {
+            guard let label = item.ownerLabel?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !label.isEmpty,
+                  !seen.contains(label) else { continue }
+            seen.insert(label)
+            ordered.append(label)
+        }
+        return ordered
+    }
+
     private func salariesCard(_ snapshot: JointMomentSnapshot) -> some View {
-        GlassCard {
-            VStack(alignment: .leading, spacing: 12) {
-                SectionHeader("Salários", subtitle: "Por membro · \(viewModel.selectedMonth.displayName())")
-                ForEach(snapshot.members) { member in
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text(member.displayName)
-                            .font(.subheadline.weight(.semibold))
+        let total = snapshot.members.reduce(Decimal.zero) { partial, member in
+            let raw = viewModel.salaryInputs[member.id] ?? ""
+            let normalized = raw.replacingOccurrences(of: ",", with: ".")
+            return partial + (Decimal(string: normalized) ?? member.salary.amount)
+        }
+
+        return GlassCard {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Salários")
+                            .font(.headline.weight(.bold))
                             .foregroundStyle(MeuFluxColors.textPrimary)
-                        HStack {
-                            TextField("0,00", text: Binding(
-                                get: { viewModel.salaryInputs[member.id] ?? "" },
-                                set: { viewModel.salaryInputs[member.id] = $0 }
-                            ))
-                            #if os(iOS)
-                            .keyboardType(.decimalPad)
-                            #endif
-                            .textFieldStyle(.roundedBorder)
-                            Button {
-                                Task { await viewModel.saveSalary(for: member.id) }
-                            } label: {
-                                if viewModel.savingMemberIds.contains(member.id) {
-                                    ProgressView()
-                                } else {
-                                    Text("Definir")
+                        Text("Por membro · \(viewModel.selectedMonth.displayName())")
+                            .font(.caption)
+                            .foregroundStyle(MeuFluxColors.textMuted)
+                    }
+                    Spacer(minLength: 8)
+                    Image(systemName: "person.2.fill")
+                        .font(.subheadline)
+                        .foregroundStyle(MeuFluxColors.textMuted)
+                }
+
+                ForEach(Array(snapshot.members.enumerated()), id: \.element.id) { index, member in
+                    let accent = Self.memberAccents[index % Self.memberAccents.count]
+                    let amount = memberSalaryAmount(member)
+                    let percent = total > 0 ? NSDecimalNumber(decimal: amount / total).doubleValue * 100 : 0
+                    let isEditing = editingSalaryId == member.id
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                editingSalaryId = isEditing ? nil : member.id
+                            }
+                        } label: {
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack(spacing: 12) {
+                                    Text(memberInitials(member.displayName))
+                                        .font(.caption.weight(.bold))
+                                        .foregroundStyle(.white)
+                                        .frame(width: 36, height: 36)
+                                        .background(Circle().fill(accent))
+
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(member.displayName)
+                                            .font(.subheadline.weight(.semibold))
+                                            .foregroundStyle(MeuFluxColors.textPrimary)
+                                        Text("Receita individual")
+                                            .font(.caption)
+                                            .foregroundStyle(MeuFluxColors.textMuted)
+                                    }
+
+                                    Spacer(minLength: 8)
+
+                                    Text(Money(amount: amount).formatted())
+                                        .font(.subheadline.weight(.bold))
+                                        .foregroundStyle(MeuFluxColors.success)
+                                }
+
+                                GeometryReader { geo in
+                                    ZStack(alignment: .leading) {
+                                        Capsule()
+                                            .fill(MeuFluxColors.textMuted.opacity(0.22))
+                                        Capsule()
+                                            .fill(accent)
+                                            .frame(width: geo.size.width * CGFloat(min(max(percent / 100, 0), 1)))
+                                    }
+                                }
+                                .frame(height: 6)
+
+                                HStack {
+                                    Text(String(format: "%.1f%% da renda", percent).replacingOccurrences(of: ".", with: ","))
+                                        .font(.caption)
+                                        .foregroundStyle(MeuFluxColors.textMuted)
+                                    Spacer()
+                                    Text(memberRoleLabel(member, link: snapshot.link))
+                                        .font(.caption)
+                                        .foregroundStyle(MeuFluxColors.textMuted)
                                 }
                             }
-                            .buttonStyle(.borderedProminent)
-                            .tint(MeuFluxColors.primary)
-                            .disabled(viewModel.savingMemberIds.contains(member.id))
+                        }
+                        .buttonStyle(.plain)
+
+                        if isEditing {
+                            HStack(spacing: 8) {
+                                HStack(spacing: 8) {
+                                    Text("$")
+                                        .font(.subheadline.weight(.medium))
+                                        .foregroundStyle(MeuFluxColors.textMuted)
+                                    TextField("0", text: Binding(
+                                        get: { viewModel.salaryInputs[member.id] ?? "" },
+                                        set: { viewModel.salaryInputs[member.id] = $0 }
+                                    ))
+                                    .font(.body.weight(.bold))
+                                    #if os(iOS)
+                                    .keyboardType(.decimalPad)
+                                    #endif
+                                    Text("BRL")
+                                        .font(.caption.weight(.medium))
+                                        .foregroundStyle(MeuFluxColors.textMuted)
+                                }
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 10)
+                                .background(
+                                    RoundedRectangle(cornerRadius: Radius().md, style: .continuous)
+                                        .fill(MeuFluxColors.bgPrimary.opacity(0.7))
+                                )
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: Radius().md, style: .continuous)
+                                        .strokeBorder(MeuFluxColors.border, lineWidth: 1)
+                                )
+
+                                Button {
+                                    Task {
+                                        await viewModel.saveSalary(for: member.id)
+                                        editingSalaryId = nil
+                                    }
+                                } label: {
+                                    Group {
+                                        if viewModel.savingMemberIds.contains(member.id) {
+                                            ProgressView()
+                                        } else {
+                                            Text("Definir")
+                                                .font(.subheadline.weight(.bold))
+                                        }
+                                    }
+                                    .frame(minWidth: 64)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 12)
+                                }
+                                .buttonStyle(.plain)
+                                .foregroundStyle(MeuFluxColors.bgPrimary)
+                                .background(
+                                    RoundedRectangle(cornerRadius: Radius().md, style: .continuous)
+                                        .fill(MeuFluxColors.primary)
+                                )
+                                .disabled(viewModel.savingMemberIds.contains(member.id))
+                            }
                         }
                     }
+                    .padding(12)
+                    .background(
+                        RoundedRectangle(cornerRadius: Radius().md, style: .continuous)
+                            .fill(MeuFluxColors.bgTertiary.opacity(0.55))
+                    )
                 }
             }
         }
+    }
+
+    private func memberSalaryAmount(_ member: JointMember) -> Decimal {
+        let raw = viewModel.salaryInputs[member.id] ?? ""
+        let normalized = raw.replacingOccurrences(of: ",", with: ".")
+        return Decimal(string: normalized) ?? member.salary.amount
+    }
+
+    private func memberInitials(_ name: String) -> String {
+        let parts = name.split(separator: " ").filter { !$0.isEmpty }
+        if parts.isEmpty { return "?" }
+        if parts.count == 1 { return String(parts[0].prefix(2)).uppercased() }
+        return "\(parts[0].prefix(1))\(parts[parts.count - 1].prefix(1))".uppercased()
+    }
+
+    private func memberRoleLabel(_ member: JointMember, link: JointLink) -> String {
+        if let ownerId = link.ownerUserId {
+            return member.id == ownerId ? "Titular" : "Cotitular"
+        }
+        return member.isCurrentUser ? "Titular" : "Cotitular"
     }
 
     private func billsCard(_ detail: FinancialMomentDetail) -> some View {

@@ -25,13 +25,11 @@ public final class MeuFluxAssistantViewModel {
         } else {
             self.availabilityCaption = "Apple Intelligence indisponível. Uso o resumo financeiro salvo neste iPhone."
         }
-        self.messages = [
-            .assistant("Oi! Pergunte sobre saldo, cartões, categorias, faturas ou orçamento.")
-        ]
+        self.messages = []
     }
 
     public var showsSuggestions: Bool {
-        messages.count == 1 && !isResponding
+        messages.isEmpty && !isResponding
     }
 
     public func sendSuggested(_ text: String) async {

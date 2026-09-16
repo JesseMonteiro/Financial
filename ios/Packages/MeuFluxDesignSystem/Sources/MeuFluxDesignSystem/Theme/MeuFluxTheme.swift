@@ -7,29 +7,39 @@ import UIKit
 import AppKit
 #endif
 
-/// Colors mapped from web CSS tokens in `src/styles/variables.css`.
-/// Semantic surfaces and text resolve against the current color scheme so dark
-/// mode never keeps light-theme slate on a dark system chrome (or the reverse).
+/// Liquid Frost tokens (Stitch DESIGN.md + dark mock). Semantic surfaces and
+/// text resolve against the current color scheme so dark mode never keeps
+/// light-theme slate on a dark system chrome (or the reverse).
 public enum MeuFluxColors {
-    public static let bgPrimary = Color(light: 0xF8FAFC, dark: 0x090D16)
-    public static let bgSecondary = Color(light: 0xFFFFFF, dark: 0x111827)
-    public static let bgTertiary = Color(light: 0xF1F5F9, dark: 0x1F2937)
-    public static let textPrimary = Color(light: 0x0F172A, dark: 0xF8FAFC)
-    public static let textSecondary = Color(light: 0x475569, dark: 0x94A3B8)
-    public static let textMuted = Color(light: 0x94A3B8, dark: 0x64748B)
+    public static let bgPrimary = Color(light: 0xF6F8FC, dark: 0x131319)
+    public static let bgSecondary = Color(light: 0xFFFFFF, dark: 0x1B1B22)
+    public static let bgTertiary = Color(light: 0xEAEDFF, dark: 0x2A2930)
+    public static let textPrimary = Color(light: 0x0F172A, dark: 0xE4E1EA)
+    public static let textSecondary = Color(light: 0x475569, dark: 0xC7C4D7)
+    public static let textMuted = Color(light: 0x64748B, dark: 0x908FA0)
     public static let textInverse = Color.white
-    public static let primary = Color(hex: 0x6366F1)
-    public static let primaryHover = Color(hex: 0x4F46E5)
-    public static let success = Color(hex: 0x10B981)
-    public static let danger = Color(hex: 0xF43F5E)
+    public static let primary = Color(light: 0x3B82F6, dark: 0xC0C1FF)
+    public static let primaryHover = Color(light: 0x1D4ED8, dark: 0x8083FF)
+    public static let indigo = Color(light: 0x4F46E5, dark: 0x8083FF)
+    public static let success = Color(light: 0x059669, dark: 0x4EDEA3)
+    public static let danger = Color(light: 0xF43F5E, dark: 0xFFB4AB)
     public static let warning = Color(hex: 0xF59E0B)
-    public static let info = Color(hex: 0x0EA5E9)
-    public static let border = Color(light: 0x000000, dark: 0xFFFFFF, lightOpacity: 0.08, darkOpacity: 0.10)
-    public static let glassTint = Color(light: 0xFFFFFF, dark: 0x111827, lightOpacity: 0.55, darkOpacity: 0.65)
+    public static let info = Color(light: 0x06B6D4, dark: 0x7BD0FF)
+    public static let border = Color(light: 0xFFFFFF, dark: 0xFFFFFF, lightOpacity: 0.90, darkOpacity: 0.12)
+    public static let glassTint = Color(light: 0xFFFFFF, dark: 0x1B1B22, lightOpacity: 0.70, darkOpacity: 0.75)
     /// Elevated cards / glass panels (`--bg-card`).
-    public static let card = Color(light: 0xFFFFFF, dark: 0x111827, lightOpacity: 0.92, darkOpacity: 0.92)
-    public static let cardShadow = Color(light: 0x000000, dark: 0x000000, lightOpacity: 0.04, darkOpacity: 0.45)
-    public static let shimmerHighlight = Color(light: 0xFFFFFF, dark: 0x374151, lightOpacity: 0.78, darkOpacity: 0.55)
+    public static let card = Color(light: 0xFFFFFF, dark: 0x1B1B22, lightOpacity: 0.78, darkOpacity: 0.70)
+    public static let cardShadow = Color(light: 0x2563EB, dark: 0x000000, lightOpacity: 0.06, darkOpacity: 0.45)
+    public static let cardShadowSecondary = Color(light: 0x0F172A, dark: 0x000000, lightOpacity: 0.03, darkOpacity: 0.28)
+    public static let shimmerHighlight = Color(light: 0xFFFFFF, dark: 0x35343B, lightOpacity: 0.78, darkOpacity: 0.55)
+
+    public static let bloomBlue = Color(light: 0xBFDBFE, dark: 0x8083FF, lightOpacity: 0.45, darkOpacity: 0.20)
+    public static let bloomIndigo = Color(light: 0xC7D2FE, dark: 0x00A6E0, lightOpacity: 0.40, darkOpacity: 0.15)
+    public static let bloomEmerald = Color(light: 0xA7F3D0, dark: 0x00885D, lightOpacity: 0.35, darkOpacity: 0.15)
+    public static let bloomCyan = Color(light: 0xCFFAFE, dark: 0x7BD0FF, lightOpacity: 0.40, darkOpacity: 0.12)
+
+    public static let brandGradient: [Color] = [primary, indigo]
+    public static let cycleGradient: [Color] = [primary, indigo, success]
 
     public static let successBackground = success.opacity(0.12)
     public static let warningBackground = warning.opacity(0.12)
@@ -37,9 +47,9 @@ public enum MeuFluxColors {
     public static let infoBackground = info.opacity(0.12)
     public static let tertiaryBackground = bgTertiary
 
-    public static let darkBgPrimary = Color(hex: 0x090D16)
-    public static let darkBgSecondary = Color(hex: 0x111827)
-    public static let darkTextPrimary = Color(hex: 0xF8FAFC)
+    public static let darkBgPrimary = Color(hex: 0x131319)
+    public static let darkBgSecondary = Color(hex: 0x1B1B22)
+    public static let darkTextPrimary = Color(hex: 0xE4E1EA)
 }
 
 /// User-facing appearance: `system`, `light`, or `dark`. Cached locally so the
@@ -116,14 +126,14 @@ public struct ColorTokens: Sendable {
             background = MeuFluxColors.darkBgPrimary
             surface = MeuFluxColors.darkBgSecondary
             text = MeuFluxColors.darkTextPrimary
-            secondaryText = Color(hex: 0x94A3B8)
-            muted = Color(hex: 0x64748B)
+            secondaryText = Color(hex: 0xC7C4D7)
+            muted = Color(hex: 0x908FA0)
         default:
-            background = Color(hex: 0xF8FAFC)
+            background = Color(hex: 0xF6F8FC)
             surface = Color(hex: 0xFFFFFF)
             text = Color(hex: 0x0F172A)
             secondaryText = Color(hex: 0x475569)
-            muted = Color(hex: 0x94A3B8)
+            muted = Color(hex: 0x64748B)
         }
         accent = MeuFluxColors.primary
         success = MeuFluxColors.success
@@ -149,6 +159,7 @@ public struct Radius: Sendable {
     public let md: CGFloat = 12
     public let lg: CGFloat = 16
     public let xl: CGFloat = 24
+    public let xxl: CGFloat = 28
     public let chrome: CGFloat = 22
     public let full: CGFloat = 999
     public init() {}

@@ -40,13 +40,14 @@ struct RootView: View {
                         }
                     } else {
                         AuthenticationView(viewModel: composition.authViewModel) {
-                            composition.isAuthenticated = true
                             Task {
+                                await composition.refreshAccountIdentity()
                                 await composition.refreshJointNav()
+                                composition.isAuthenticated = true
+                                if composition.env.featureFlags.biometricLockEnabled {
+                                    isBiometricallyLocked = true
+                                }
                                 await composition.refreshWidgetSnapshot(force: true)
-                            }
-                            if composition.env.featureFlags.biometricLockEnabled {
-                                isBiometricallyLocked = true
                             }
                         }
                     }

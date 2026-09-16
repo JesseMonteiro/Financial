@@ -5,6 +5,7 @@ import { useReceivableStore } from '../stores/receivableStore';
 import { useMealBenefitStore } from '../stores/mealBenefitStore';
 import { useCreditDataStore } from '../stores/creditDataStore';
 import { useCategoryStore } from '../stores/categoryStore';
+import { useAuthStore } from '../stores/authStore';
 import { MealBenefitMomentCards } from '../components/MealBenefitMomentCards';
 import { momentItemsFor } from '../utils/mealBenefits';
 import { getLocalSetting, setLocalSetting, getMonthlySalaries, saveMonthlySalaries } from '../services/storage';
@@ -32,8 +33,7 @@ import {
   ChevronRight,
   TrendingUp,
   TrendingDown,
-  DollarSign,
-  Save,
+  Banknote,
   Repeat
 } from 'lucide-react';
 import { AccountIcon, accountById } from '../components/AccountIcon';
@@ -66,7 +66,14 @@ export function FinancialMoment() {
     billsByAccount,
   } = useCreditDataStore();
   const { categories, loadCategories } = useCategoryStore();
+  const user = useAuthStore((s) => s.user);
   const isMobile = useIsMobile();
+
+  const mealOwnerLabel =
+    user?.user_metadata?.full_name ||
+    user?.user_metadata?.name ||
+    user?.email?.split('@')[0] ||
+    null;
 
   const [selectedMonth, setSelectedMonth] = useState('');
   const [selectedItem, setSelectedItem] = useState(null);
@@ -338,26 +345,35 @@ export function FinancialMoment() {
   });
 
   const salaryCard = (
-    <Card
-      title="Salário Mensal"
-      subtitle={isMobile ? undefined : 'Salário líquido deste mês. Ao salvar, vira o padrão dos próximos meses.'}
-    >
-      <div className="moment-salary-row">
-        <div className="moment-salary-field">
-          <DollarSign size={16} style={{ color: 'var(--text-muted)' }} />
+    <div className="surface moment-salary-card">
+      <div className="moment-salary-card__header">
+        <Banknote size={18} className="moment-salary-card__icon" aria-hidden />
+        <h3 className="moment-salary-card__title">Salário Mensal</h3>
+      </div>
+      <div className="moment-salary-card__row">
+        <label className="moment-salary-card__field">
+          <span className="moment-salary-card__currency" aria-hidden>$</span>
           <input
             type="number"
-            placeholder="0,00"
+            inputMode="decimal"
+            placeholder="0"
+            aria-label="Salário mensal"
             value={salaryInput}
             disabled={savingSalary}
-            onChange={e => setSalaryInput(e.target.value)}
+            onChange={(e) => setSalaryInput(e.target.value)}
           />
-        </div>
-        <Button size="sm" onClick={handleSaveSalary} icon={Save} loading={savingSalary}>
-          Definir
-        </Button>
+          <span className="moment-salary-card__code">BRL</span>
+        </label>
+        <button
+          type="button"
+          className="moment-salary-card__define"
+          onClick={handleSaveSalary}
+          disabled={savingSalary}
+        >
+          {savingSalary ? '…' : 'Definir'}
+        </button>
       </div>
-    </Card>
+    </div>
   );
 
   const receivablesCard = activeMonthData && (
@@ -635,7 +651,7 @@ export function FinancialMoment() {
                 </div>
                 <ProgressBar percent={pctSpent} color={spent > entries ? 'var(--danger)' : 'var(--primary)'} height={10} />
               </div>
-              <MealBenefitMomentCards items={mealMomentItems} isMobile />
+              <MealBenefitMomentCards items={mealMomentItems} isMobile currentUserLabel={mealOwnerLabel} />
               <div className="moment-mobile-stack">
                 {salaryCard}
                 {billsCard}
@@ -728,7 +744,7 @@ export function FinancialMoment() {
                 </div>
               </Card>
 
-              <MealBenefitMomentCards items={mealMomentItems} />
+              <MealBenefitMomentCards items={mealMomentItems} currentUserLabel={mealOwnerLabel} />
 
               <div className="dashboard-grid">
                 <div className="col-6" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>

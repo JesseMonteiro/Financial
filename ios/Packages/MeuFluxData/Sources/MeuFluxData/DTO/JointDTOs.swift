@@ -11,6 +11,8 @@ public struct JointLinkDTO: Codable, Sendable {
     public let partnerDisplayName: String?
     public let inviteToken: String?
     public let inviteExpiresAt: String?
+    public let userA: String?
+    public let userB: String?
 }
 
 public struct JointMemberDTO: Codable, Sendable {

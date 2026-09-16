@@ -9,6 +9,7 @@ import {
   buildNetWorthSeries,
   calculateNetWorth,
   currentYm,
+  buildDailySpend,
   expensesByCategory,
   isIncomeTx,
   monthCashflow,
@@ -146,6 +147,10 @@ export async function handleDashboard(
   const netWorthSeries = buildNetWorthSeries(transactions, enriched, investments, loans, 6, ym);
   const incomeExpenseSeries = buildIncomeExpenseSeries(transactions, 6, ym);
   const categoryExpenses = expensesByCategory(transactions, { limit: 7, ym });
+  const creditAccountIds = new Set(
+    creditCards.map((c) => String(c.id || "")).filter(Boolean),
+  );
+  const dailySpend = buildDailySpend(transactions, 30, new Date(), creditAccountIds);
 
   const budgets = ((budgetsRes.data || []) as Record<string, unknown>[]).map((b) => ({
     id: String(b.id || ""),
@@ -185,7 +190,7 @@ export async function handleDashboard(
 
   const recentTransactions = transactions.slice(0, 5).map((tx) => {
     const amount = Number(tx.amount) || 0;
-    const isCredit = isIncomeTx(tx) || amount > 0;
+    const isCredit = isIncomeTx(tx);
     return {
       id: String(tx.id || `${tx.accountId}-${tx.date}-${amount}`),
       description: String(tx.description || "Lançamento"),
@@ -235,6 +240,7 @@ export async function handleDashboard(
       topCategory: recap.current.topCategory,
     },
     recentTransactions,
+    dailySpend,
     budgetCategories,
   });
 }

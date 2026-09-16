@@ -31,7 +31,7 @@ public struct GlassCard<Content: View>: View {
                         .font(.headline)
                         .fontWeight(.semibold)
                         .foregroundStyle(MeuFluxColors.textPrimary)
-                    
+
                     if let subtitle {
                         Text(subtitle)
                             .font(.caption)
@@ -39,20 +39,48 @@ public struct GlassCard<Content: View>: View {
                     }
                 }
             }
-            
+
             content
         }
         .padding(padding)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: Radius().lg, style: .continuous)
-                .fill(MeuFluxColors.card)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: Radius().lg, style: .continuous)
+        .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+        .background {
+            FrostedFill(cornerRadius: Radius().xxl)
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: Radius().xxl, style: .continuous)
                 .strokeBorder(MeuFluxColors.border, lineWidth: 1)
-        )
-        .shadow(color: MeuFluxColors.cardShadow, radius: 8, y: 2)
+        }
+        .overlay(alignment: .top) {
+            RoundedRectangle(cornerRadius: Radius().xxl, style: .continuous)
+                .strokeBorder(
+                    LinearGradient(
+                        colors: [Color.white.opacity(0.22), Color.white.opacity(0)],
+                        startPoint: .top,
+                        endPoint: .center
+                    ),
+                    lineWidth: 1
+                )
+                .allowsHitTesting(false)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: Radius().xxl, style: .continuous))
+        .shadow(color: MeuFluxColors.cardShadow, radius: 16, y: 8)
+        .shadow(color: MeuFluxColors.cardShadowSecondary, radius: 8, y: 3)
+    }
+}
+
+/// Translucent fill used by frosted cards (material + tinted overlay).
+public struct FrostedFill: View {
+    public var cornerRadius: CGFloat
+
+    public init(cornerRadius: CGFloat = Radius().xxl) {
+        self.cornerRadius = cornerRadius
+    }
+
+    public var body: some View {
+        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        shape.fill(.ultraThinMaterial)
+            .overlay(shape.fill(MeuFluxColors.card))
     }
 }
 
@@ -143,8 +171,8 @@ public struct MetricCard: View {
         .overlay(alignment: .leading) {
             if leadingAccent {
                 UnevenRoundedRectangle(
-                    topLeadingRadius: Radius().lg,
-                    bottomLeadingRadius: Radius().lg,
+                    topLeadingRadius: Radius().xxl,
+                    bottomLeadingRadius: Radius().xxl,
                     bottomTrailingRadius: 0,
                     topTrailingRadius: 0,
                     style: .continuous
@@ -188,11 +216,334 @@ public struct PageChrome<Content: View>: View {
     }
 
     public var body: some View {
-        ZStack {
-            MeuFluxColors.bgPrimary.ignoresSafeArea()
-            content
-                .foregroundStyle(MeuFluxColors.textPrimary)
+        content
+            .foregroundStyle(MeuFluxColors.textPrimary)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .background {
+                ZStack {
+                    MeuFluxColors.bgPrimary
+                    AmbientBloom()
+                }
+                .ignoresSafeArea()
+                .allowsHitTesting(false)
+            }
+    }
+}
+
+/// Fixed, non-interactive radial blooms behind page content (Liquid Frost layer 0).
+public struct AmbientBloom: View {
+    public init() {}
+
+    public var body: some View {
+        GeometryReader { geo in
+            ZStack(alignment: .topLeading) {
+                Circle()
+                    .fill(MeuFluxColors.bloomBlue)
+                    .frame(width: min(420, geo.size.width * 1.1), height: min(420, geo.size.width * 1.1))
+                    .blur(radius: 90)
+                    .offset(x: -geo.size.width * 0.28, y: -160)
+                Circle()
+                    .fill(MeuFluxColors.bloomIndigo)
+                    .frame(width: 380, height: 380)
+                    .blur(radius: 100)
+                    .offset(x: geo.size.width * 0.55, y: geo.size.height * 0.18)
+                Circle()
+                    .fill(MeuFluxColors.bloomEmerald)
+                    .frame(width: 340, height: 340)
+                    .blur(radius: 90)
+                    .offset(x: -80, y: geo.size.height * 0.58)
+                Circle()
+                    .fill(MeuFluxColors.bloomCyan)
+                    .frame(width: 360, height: 360)
+                    .blur(radius: 100)
+                    .offset(x: geo.size.width * 0.42, y: geo.size.height * 0.72)
+            }
+            .frame(width: geo.size.width, height: geo.size.height)
+            .compositingGroup()
+            .clipped()
+            .allowsHitTesting(false)
         }
+        .clipped()
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+}
+
+public struct BrandWordmark: View {
+    public var size: CGFloat
+
+    public init(size: CGFloat = 22) {
+        self.size = size
+    }
+
+    public var body: some View {
+        Text("MeuFlux")
+            .font(.system(size: size, weight: .bold))
+            .tracking(-0.4)
+            .foregroundStyle(
+                LinearGradient(
+                    colors: MeuFluxColors.brandGradient,
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+            )
+            .accessibilityLabel("MeuFlux")
+    }
+}
+
+public struct ProBadge: View {
+    public init() {}
+
+    public var body: some View {
+        Text("PRO")
+            .font(.system(size: 10, weight: .bold))
+            .tracking(0.6)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .foregroundStyle(MeuFluxColors.primary)
+            .background(MeuFluxColors.primary.opacity(0.12), in: Capsule())
+            .overlay(Capsule().strokeBorder(MeuFluxColors.primary.opacity(0.28), lineWidth: 1))
+            .accessibilityLabel("Pro")
+    }
+}
+
+public struct LiveBadge: View {
+    public init() {}
+
+    public var body: some View {
+        HStack(spacing: 5) {
+            Circle()
+                .fill(MeuFluxColors.primary)
+                .frame(width: 6, height: 6)
+            Text("Ao Vivo")
+                .font(.system(size: 11, weight: .semibold))
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 4)
+        .foregroundStyle(MeuFluxColors.primary)
+        .background(MeuFluxColors.primary.opacity(0.10), in: Capsule())
+        .overlay(Capsule().strokeBorder(MeuFluxColors.primary.opacity(0.28), lineWidth: 1))
+        .accessibilityLabel("Ao vivo")
+    }
+}
+
+public struct GradientCapsuleButton: View {
+    public var title: String
+    public var systemImage: String
+    public var action: () -> Void
+
+    public init(_ title: String, systemImage: String = "plus", action: @escaping () -> Void) {
+        self.title = title
+        self.systemImage = systemImage
+        self.action = action
+    }
+
+    public var body: some View {
+        Button(action: action) {
+            Label(title, systemImage: systemImage)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Color.white)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(
+                    Capsule().fill(
+                        LinearGradient(
+                            colors: MeuFluxColors.brandGradient,
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                )
+                .shadow(color: MeuFluxColors.primary.opacity(0.28), radius: 10, y: 4)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
+    }
+}
+
+public struct ProfileAvatarMark: View {
+    public var initials: String?
+    public var size: CGFloat
+
+    public init(initials: String? = nil, size: CGFloat = 36) {
+        self.initials = initials
+        self.size = size
+    }
+
+    public var body: some View {
+        ZStack {
+            Circle().fill(
+                LinearGradient(
+                    colors: MeuFluxColors.brandGradient,
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+            if let initials, !initials.isEmpty {
+                Text(initials)
+                    .font(.system(size: size * 0.38, weight: .bold))
+                    .foregroundStyle(Color.white)
+            } else {
+                Image(systemName: "person.fill")
+                    .font(.system(size: size * 0.39, weight: .semibold))
+                    .foregroundStyle(Color.white)
+            }
+        }
+        .frame(width: size, height: size)
+        .shadow(color: MeuFluxColors.primary.opacity(0.22), radius: size < 32 ? 4 : 6, y: 2)
+        .accessibilityHidden(true)
+    }
+}
+
+public struct ProfileAvatarButton: View {
+    public var initials: String?
+    public var action: () -> Void
+
+    public init(initials: String? = nil, action: @escaping () -> Void) {
+        self.initials = initials
+        self.action = action
+    }
+
+    public var body: some View {
+        Button(action: action) {
+            ProfileAvatarMark(initials: initials, size: 36)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Conta")
+        .accessibilityHint("Mostra nome, e-mail e sair")
+    }
+}
+
+/// Compact account summary anchored to the profile avatar, like a tooltip.
+public struct ProfileAccountMenu: View {
+    public var displayName: String
+    public var email: String
+    public var onSignOut: (() -> Void)?
+
+    @State private var isPresented = false
+
+    public init(
+        displayName: String,
+        email: String,
+        onSignOut: (() -> Void)? = nil
+    ) {
+        self.displayName = displayName
+        self.email = email
+        self.onSignOut = onSignOut
+    }
+
+    public var body: some View {
+        ProfileAvatarButton(initials: initials) {
+            withAnimation(MotionTokens.spring) {
+                isPresented.toggle()
+            }
+        }
+        .overlay(alignment: .topTrailing) {
+            if isPresented {
+                ProfileAccountCard(
+                    displayName: resolvedName,
+                    email: resolvedEmail,
+                    initials: initials,
+                    onSignOut: {
+                        withAnimation(MotionTokens.easeOutFast) { isPresented = false }
+                        onSignOut?()
+                    }
+                )
+                .offset(y: 44)
+                .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .topTrailing)))
+            }
+        }
+        .zIndex(isPresented ? 10 : 0)
+        .accessibilityElement(children: .contain)
+    }
+
+    private var resolvedName: String {
+        let trimmed = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "Usuário" : trimmed
+    }
+
+    private var resolvedEmail: String {
+        email.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var initials: String? {
+        ProfileAccountMenu.initials(from: resolvedName)
+    }
+
+    static func initials(from name: String) -> String? {
+        let ignored: Set<String> = ["você", "voce", "usuário", "usuario", "user"]
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !ignored.contains(trimmed.lowercased()) else { return nil }
+        let parts = trimmed.split { $0.isWhitespace || $0 == "-" }
+        let letters = parts.prefix(2).compactMap(\.first)
+        let value = String(letters).uppercased()
+        return value.isEmpty ? nil : value
+    }
+}
+
+struct ProfileAccountCard: View {
+    var displayName: String
+    var email: String
+    var initials: String?
+    var onSignOut: (() -> Void)?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("CONTA")
+                .font(.system(size: 10, weight: .bold))
+                .tracking(0.6)
+                .foregroundStyle(MeuFluxColors.textMuted)
+
+            HStack(alignment: .center, spacing: 12) {
+                ProfileAvatarMark(initials: initials, size: 40)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(displayName)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(MeuFluxColors.textPrimary)
+                        .lineLimit(2)
+                    if !email.isEmpty {
+                        Text(email)
+                            .font(.caption)
+                            .foregroundStyle(MeuFluxColors.textMuted)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.85)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            if onSignOut != nil {
+                Divider().opacity(0.45)
+                Button(role: .destructive) {
+                    onSignOut?()
+                } label: {
+                    Label("Sair", systemImage: "rectangle.portrait.and.arrow.right")
+                        .font(.subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(MeuFluxColors.danger)
+                .background(
+                    MeuFluxColors.danger.opacity(0.12),
+                    in: RoundedRectangle(cornerRadius: Radius().md, style: .continuous)
+                )
+                .accessibilityLabel("Sair da conta")
+            }
+        }
+        .padding(16)
+        .frame(width: 268, alignment: .leading)
+        .background {
+            FrostedFill(cornerRadius: Radius().lg)
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: Radius().lg, style: .continuous)
+                .strokeBorder(MeuFluxColors.border, lineWidth: 1)
+        }
+        .shadow(color: MeuFluxColors.cardShadow, radius: 16, y: 8)
+        .shadow(color: MeuFluxColors.cardShadowSecondary, radius: 8, y: 3)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Resumo da conta")
     }
 }
 
@@ -761,5 +1112,133 @@ public struct MonthChip: View {
                 .foregroundStyle(isSelected ? .white : MeuFluxColors.primary)
         }
         .buttonStyle(.plain)
+    }
+}
+
+/// VA/VR card used on personal and joint financial moment screens.
+public struct MealBenefitMomentCard: View {
+    public var kindTitle: String
+    public var isVR: Bool
+    public var provider: String?
+    public var remainingText: String
+    public var remainingNegative: Bool
+    public var creditDay: Int
+    public var monthSpentText: String
+    public var ownerLabel: String?
+    public var onManage: (() -> Void)?
+
+    public init(
+        kindTitle: String,
+        isVR: Bool = false,
+        provider: String? = nil,
+        remainingText: String,
+        remainingNegative: Bool = false,
+        creditDay: Int,
+        monthSpentText: String,
+        ownerLabel: String? = nil,
+        onManage: (() -> Void)? = nil
+    ) {
+        self.kindTitle = kindTitle
+        self.isVR = isVR
+        self.provider = provider
+        self.remainingText = remainingText
+        self.remainingNegative = remainingNegative
+        self.creditDay = creditDay
+        self.monthSpentText = monthSpentText
+        self.ownerLabel = ownerLabel
+        self.onManage = onManage
+    }
+
+    public var body: some View {
+        GlassCard {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(alignment: .top, spacing: 12) {
+                    HStack(alignment: .center, spacing: 10) {
+                        kindIcon
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(kindTitle)
+                                .font(.subheadline.weight(.bold))
+                                .foregroundStyle(MeuFluxColors.textPrimary)
+                            if let provider, !provider.isEmpty {
+                                Text(provider)
+                                    .font(.caption)
+                                    .foregroundStyle(MeuFluxColors.textMuted)
+                            }
+                        }
+                    }
+                    Spacer(minLength: 8)
+                    if let ownerLabel, !ownerLabel.isEmpty {
+                        ownerBadge(ownerLabel)
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("SALDO DISPONÍVEL")
+                        .font(.caption2.weight(.semibold))
+                        .tracking(0.4)
+                        .foregroundStyle(MeuFluxColors.textMuted)
+                    Text(remainingText)
+                        .font(.title.weight(.bold))
+                        .foregroundStyle(remainingNegative ? MeuFluxColors.danger : MeuFluxColors.textPrimary)
+                    Text("Crédito dia \(creditDay) · gasto no mês \(monthSpentText)")
+                        .font(.caption)
+                        .foregroundStyle(MeuFluxColors.textMuted)
+                }
+
+                if onManage != nil {
+                    Button {
+                        onManage?()
+                    } label: {
+                        HStack(spacing: 6) {
+                            Text("Gerenciar VA/VR")
+                            Image(systemName: "arrow.right")
+                                .font(.caption.weight(.bold))
+                        }
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(MeuFluxColors.textPrimary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 11)
+                        .background(MeuFluxColors.bgTertiary)
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .strokeBorder(MeuFluxColors.border, lineWidth: 1)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    private var kindIcon: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(isVR ? Color(hex: 0x9A3412, opacity: 0.85) : Color(hex: 0x166534, opacity: 0.85))
+            Image(systemName: "fork.knife")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(isVR ? Color(hex: 0xFDBA74) : Color(hex: 0x86EFAC))
+        }
+        .frame(width: 36, height: 36)
+        .accessibilityHidden(true)
+    }
+
+    private func ownerBadge(_ label: String) -> some View {
+        let first = label.split(whereSeparator: \.isWhitespace).first.map(String.init) ?? label
+        return HStack(spacing: 6) {
+            ProfileAvatarMark(initials: ProfileAccountMenu.initials(from: label), size: 22)
+            Text(first)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(MeuFluxColors.textPrimary)
+                .lineLimit(1)
+        }
+        .padding(.leading, 3)
+        .padding(.trailing, 8)
+        .padding(.vertical, 3)
+        .background(MeuFluxColors.bgTertiary)
+        .clipShape(Capsule())
+        .overlay {
+            Capsule().strokeBorder(MeuFluxColors.border, lineWidth: 1)
+        }
     }
 }

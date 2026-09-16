@@ -107,6 +107,8 @@ final class AppCompositionRoot {
     var configurationWarning: String?
     var hasJointLink: Bool = false
     var pendingImportReviewId: String?
+    var accountDisplayName: String = "Usuário"
+    var accountEmail: String = ""
     private var lastWidgetRefreshAt: Date?
 
     init(env: EnvConfig = .fromBundle()) {
@@ -221,17 +223,23 @@ final class AppCompositionRoot {
             do {
                 _ = try await authService.validAccessToken()
                 isAuthenticated = true
+                await refreshAccountIdentity()
+                // Resolve tab layout before first paint so AdaptiveShell does not
+                // remount TabView (via hasJointLink) mid-dashboard request.
+                await refreshJointNav()
             } catch {
                 logger.error("Sessão inválida no bootstrap: \(error.localizedDescription)", category: .auth)
                 try? await authSession.clear()
                 isAuthenticated = false
+                clearAccountIdentity()
             }
         } else {
             isAuthenticated = false
+            clearAccountIdentity()
         }
         isOffline = await !reachability.isOnline
-        // Unlock the splash/login as soon as the session is known. Spotlight and
-        // widget I/O can stall on a cold launch and must not block first paint.
+        // Unlock the splash/login as soon as the session (and tab layout) is known.
+        // Spotlight and widget I/O can stall on a cold launch and must not block first paint.
         hasBootstrapped = true
         IntentRuntime.shared.bind(self)
         Task { await completeBootstrapSideEffects() }
@@ -240,7 +248,6 @@ final class AppCompositionRoot {
     private func completeBootstrapSideEffects() async {
         if isAuthenticated {
             await refreshAppearance()
-            await refreshJointNav()
             await refreshWidgetSnapshot()
             await NotificationImportRuntime.shared.register(notificationImportService)
             _ = await notificationImportService.processQueued(now: Date())
@@ -261,6 +268,29 @@ final class AppCompositionRoot {
         isAuthenticated = false
         hasJointLink = false
         selectedRoute = .dashboard
+        clearAccountIdentity()
+    }
+
+    func refreshAccountIdentity() async {
+        applyIdentity(await authService.currentAccountIdentity())
+    }
+
+    private func applyIdentity(_ identity: (email: String, displayName: String)?) {
+        guard let identity else {
+            clearAccountIdentity()
+            return
+        }
+        accountEmail = identity.email
+        if identity.displayName.isEmpty {
+            accountDisplayName = identity.email.split(separator: "@").first.map(String.init) ?? "Usuário"
+        } else {
+            accountDisplayName = identity.displayName
+        }
+    }
+
+    private func clearAccountIdentity() {
+        accountDisplayName = "Usuário"
+        accountEmail = ""
     }
 
     func handleDeepLink(_ url: URL) {

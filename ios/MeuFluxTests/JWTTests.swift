@@ -30,10 +30,26 @@ final class JWTTests: XCTestCase {
         XCTAssertTrue(JWT.needsRefresh("not-a-jwt"))
     }
 
-    private static func makeJWT(exp: Int) -> String {
+    func testIdentityReadsEmailAndFullName() {
+        let jwt = Self.makeJWT(exp: 2_000, claims: [
+            "email": "jesse@meuflux.app",
+            "user_metadata": ["full_name": "Jesse Monteiro"],
+        ])
+        let identity = JWT.accountIdentity(of: jwt)
+        XCTAssertEqual(identity?.email, "jesse@meuflux.app")
+        XCTAssertEqual(identity?.displayName, "Jesse Monteiro")
+    }
+
+    func testIdentityIgnoresEmptyClaims() {
+        let jwt = Self.makeJWT(exp: 2_000, claims: ["email": "  "])
+        XCTAssertNil(JWT.accountIdentity(of: jwt))
+    }
+
+    private static func makeJWT(exp: Int, claims: [String: Any] = [:]) -> String {
         let header = encode(["alg": "none", "typ": "JWT"])
-        let payload = encode(["exp": exp])
-        return "\(header).\(payload).sig"
+        var payload: [String: Any] = ["exp": exp]
+        for (key, value) in claims { payload[key] = value }
+        return "\(header).\(encode(payload)).sig"
     }
 
     private static func encode(_ object: [String: Any]) -> String {

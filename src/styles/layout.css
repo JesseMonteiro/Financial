@@ -610,6 +610,267 @@ body {
   max-width: 100%;
 }
 
+/* ── Individual monthly salary card ── */
+.moment-salary-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.moment-salary-card__header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.moment-salary-card__icon {
+  color: var(--primary);
+  flex-shrink: 0;
+}
+
+.moment-salary-card__title {
+  margin: 0;
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.moment-salary-card__row {
+  display: flex;
+  gap: var(--space-2);
+  align-items: stretch;
+}
+
+.moment-salary-card__field {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: var(--bg-primary);
+  padding: 0.65rem 0.85rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+}
+
+.moment-salary-card__currency,
+.moment-salary-card__code {
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.moment-salary-card__field input {
+  border: none;
+  background: transparent;
+  outline: none;
+  color: var(--text-primary);
+  width: 100%;
+  min-width: 0;
+  font-size: var(--font-size-lg);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.moment-salary-card__field input::-webkit-outer-spin-button,
+.moment-salary-card__field input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.moment-salary-card__field input[type='number'] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.moment-salary-card__define {
+  flex-shrink: 0;
+  min-width: 5.5rem;
+  padding: 0.65rem 1.1rem;
+  border: none;
+  border-radius: var(--radius-md);
+  background: var(--primary);
+  color: var(--bg-primary);
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 200ms var(--ease-spring), opacity var(--transition-fast),
+    background var(--transition-fast);
+}
+
+[data-theme='dark'] .moment-salary-card__define {
+  color: #1a1a2e;
+}
+
+.moment-salary-card__define:hover:not(:disabled) {
+  background: var(--primary-hover);
+}
+
+.moment-salary-card__define:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+.moment-salary-card__define:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+/* ── Joint salaries by member ── */
+.moment-salaries-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.moment-salaries-card__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.moment-salaries-card__heading {
+  min-width: 0;
+}
+
+.moment-salaries-card__title {
+  margin: 0;
+  font-size: var(--font-size-lg);
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.moment-salaries-card__subtitle {
+  margin: 0.15rem 0 0;
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+.moment-salaries-card__icon {
+  color: var(--text-muted);
+  flex-shrink: 0;
+  margin-top: 0.15rem;
+}
+
+.moment-salaries-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.moment-salary-member {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--bg-tertiary);
+  border: 1px solid transparent;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  transition: border-color var(--transition-fast), background var(--transition-fast);
+}
+
+.moment-salary-member:hover,
+.moment-salary-member.is-editing {
+  border-color: color-mix(in srgb, var(--member-accent, var(--primary)) 45%, transparent);
+}
+
+.moment-salary-member__top {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.moment-salary-member__avatar {
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: var(--radius-full);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: var(--member-accent, var(--primary));
+  color: #fff;
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.moment-salary-member__meta {
+  flex: 1;
+  min-width: 0;
+}
+
+.moment-salary-member__name {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.moment-salary-member__label {
+  margin: 0.1rem 0 0;
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+.moment-salary-member__amount {
+  flex-shrink: 0;
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+  color: var(--success);
+  font-variant-numeric: tabular-nums;
+}
+
+.moment-salary-member__bar {
+  width: 100%;
+}
+
+.moment-salary-member__bar .progress-track {
+  background: color-mix(in srgb, var(--text-muted) 22%, transparent);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+}
+
+.moment-salary-member__bar .progress-fill {
+  border-radius: var(--radius-full);
+}
+
+.moment-salary-member__footer {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+.moment-salary-member__edit {
+  display: flex;
+  gap: var(--space-2);
+  align-items: stretch;
+  margin-top: var(--space-1);
+}
+
+.moment-salary-member__edit .moment-salary-card__field {
+  padding: 0.5rem 0.75rem;
+}
+
+.moment-salary-member__edit .moment-salary-card__field input {
+  font-size: var(--font-size-base);
+}
+
+.moment-salary-member__edit .moment-salary-card__define {
+  min-width: 4.75rem;
+  padding: 0.5rem 0.9rem;
+}
+
+/* Legacy aliases kept for any leftover markup */
 .moment-salary-row {
   display: flex;
   gap: 0.5rem;

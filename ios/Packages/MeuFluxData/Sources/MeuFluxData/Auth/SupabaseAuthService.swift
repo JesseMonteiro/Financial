@@ -90,6 +90,17 @@ public actor SupabaseAuthService: TokenRefreshing {
         try await session.clear()
     }
 
+    public func currentAccountIdentity() async -> (email: String, displayName: String)? {
+        let token: String?
+        if let valid = try? await validAccessToken() {
+            token = valid
+        } else {
+            token = await session.accessToken()
+        }
+        guard let token, let identity = JWT.accountIdentity(of: token) else { return nil }
+        return (identity.email, identity.displayName)
+    }
+
     public func validAccessToken() async throws -> String? {
         let access = await session.accessToken()
         let refresh = await session.refreshToken()

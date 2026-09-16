@@ -25,8 +25,6 @@ import {
   ChevronRight,
   TrendingUp,
   TrendingDown,
-  DollarSign,
-  Save,
   Users,
   Settings,
 } from 'lucide-react';
@@ -53,6 +51,21 @@ function toCamelManualFromApi(row) {
 
 function currentMonthYm(now = new Date()) {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+}
+
+const MEMBER_ACCENTS = ['#8b5cf6', '#60a5fa', '#f472b6', '#34d399'];
+
+function memberInitials(name = '') {
+  const parts = String(name).trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return '?';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+}
+
+function memberRoleLabel(memberId, link) {
+  const ownerId = link?.user_a || link?.userA || link?.invited_by || link?.invitedBy;
+  if (ownerId && memberId === ownerId) return 'Titular';
+  return 'Cotitular';
 }
 
 export function JointFinancialMoment() {
@@ -86,6 +99,7 @@ export function JointFinancialMoment() {
   const [sheetBusy, setSheetBusy] = useState(false);
   const [salaryInputs, setSalaryInputs] = useState({});
   const [savingSalaryIds, setSavingSalaryIds] = useState({});
+  const [editingSalaryId, setEditingSalaryId] = useState(null);
   const timelineRef = useRef(null);
   const ignoreMonthScrollRef = useRef(false);
   const selectedMonthRef = useRef(selectedMonth);
@@ -270,6 +284,7 @@ export function JointFinancialMoment() {
     setSavingSalaryIds((prev) => ({ ...prev, [memberId]: true }));
     try {
       await saveMonthlySalaries(updated, { userId: memberId });
+      setEditingSalaryId(null);
     } catch (err) {
       patchMemberSalaries(memberId, previous);
       console.error(err);
@@ -394,59 +409,104 @@ export function JointFinancialMoment() {
     );
   });
 
-  const salaryCard = isMobile ? (
-    <Card title="Salários">
-      {members.map((member) => (
-        <div key={member.id} className="moment-salary-row" style={{ flexDirection: 'column', alignItems: 'stretch' }}>
-          <div className="moment-salary-name">{member.displayName}</div>
-          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-            <div className="moment-salary-field">
-              <DollarSign size={16} style={{ color: 'var(--text-muted)' }} />
-              <input
-                type="number"
-                placeholder="0,00"
-                value={salaryInputs[member.id] ?? ''}
-                disabled={Boolean(savingSalaryIds[member.id])}
-                onChange={(e) =>
-                  setSalaryInputs((prev) => ({ ...prev, [member.id]: e.target.value }))
-                }
-              />
-            </div>
-            <Button size="sm" onClick={() => handleSaveSalary(member.id)} icon={Save} loading={Boolean(savingSalaryIds[member.id])}>
-              Definir
-            </Button>
-          </div>
+  const salaryTotals = useMemo(() => {
+    const amounts = members.map((m) => parseFloat(salaryInputs[m.id]) || 0);
+    const total = amounts.reduce((sum, n) => sum + n, 0);
+    return { amounts, total };
+  }, [members, salaryInputs]);
+
+  const salaryCard = (
+    <div className="surface moment-salaries-card">
+      <div className="moment-salaries-card__header">
+        <div className="moment-salaries-card__heading">
+          <h3 className="moment-salaries-card__title">Salários</h3>
+          <p className="moment-salaries-card__subtitle">
+            Por membro{currentLabel ? ` · ${currentLabel}` : ''}
+          </p>
         </div>
-      ))}
-    </Card>
-  ) : (
-    <>
-      {members.map((member) => (
-        <Card
-          key={member.id}
-          title={`Salário — ${member.displayName}`}
-          subtitle="Salário líquido deste mês. Ao salvar, vira o padrão dos próximos meses."
-        >
-          <div className="moment-salary-row">
-            <div className="moment-salary-field">
-              <DollarSign size={16} style={{ color: 'var(--text-muted)' }} />
-              <input
-                type="number"
-                placeholder="0,00"
-                value={salaryInputs[member.id] ?? ''}
-                disabled={Boolean(savingSalaryIds[member.id])}
-                onChange={(e) =>
-                  setSalaryInputs((prev) => ({ ...prev, [member.id]: e.target.value }))
+        <Users size={18} className="moment-salaries-card__icon" aria-hidden />
+      </div>
+
+      <div className="moment-salaries-list">
+        {members.map((member, index) => {
+          const amount = salaryTotals.amounts[index] || 0;
+          const percent = salaryTotals.total > 0 ? (amount / salaryTotals.total) * 100 : 0;
+          const accent = MEMBER_ACCENTS[index % MEMBER_ACCENTS.length];
+          const isEditing = editingSalaryId === member.id;
+          const saving = Boolean(savingSalaryIds[member.id]);
+
+          return (
+            <div
+              key={member.id}
+              className={`moment-salary-member${isEditing ? ' is-editing' : ''}`}
+              style={{ '--member-accent': accent }}
+              role="button"
+              tabIndex={0}
+              onClick={() => setEditingSalaryId(isEditing ? null : member.id)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  setEditingSalaryId(isEditing ? null : member.id);
                 }
-              />
+              }}
+            >
+              <div className="moment-salary-member__top">
+                <span className="moment-salary-member__avatar" aria-hidden>
+                  {memberInitials(member.displayName)}
+                </span>
+                <div className="moment-salary-member__meta">
+                  <p className="moment-salary-member__name">{member.displayName}</p>
+                  <p className="moment-salary-member__label">Receita individual</p>
+                </div>
+                <span className="moment-salary-member__amount">{formatCurrency(amount)}</span>
+              </div>
+
+              <div className="moment-salary-member__bar">
+                <ProgressBar percent={percent} color={accent} height={6} />
+              </div>
+
+              <div className="moment-salary-member__footer">
+                <span>{percent.toFixed(1).replace('.', ',')}% da renda</span>
+                <span>{memberRoleLabel(member.id, link)}</span>
+              </div>
+
+              {isEditing && (
+                <div
+                  className="moment-salary-member__edit"
+                  onClick={(e) => e.stopPropagation()}
+                  onKeyDown={(e) => e.stopPropagation()}
+                >
+                  <label className="moment-salary-card__field">
+                    <span className="moment-salary-card__currency" aria-hidden>$</span>
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      placeholder="0"
+                      aria-label={`Salário de ${member.displayName}`}
+                      value={salaryInputs[member.id] ?? ''}
+                      disabled={saving}
+                      autoFocus
+                      onChange={(e) =>
+                        setSalaryInputs((prev) => ({ ...prev, [member.id]: e.target.value }))
+                      }
+                    />
+                    <span className="moment-salary-card__code">BRL</span>
+                  </label>
+                  <button
+                    type="button"
+                    className="moment-salary-card__define"
+                    disabled={saving}
+                    onClick={() => handleSaveSalary(member.id)}
+                  >
+                    {saving ? '…' : 'Definir'}
+                  </button>
+                </div>
+              )}
             </div>
-            <Button size="sm" onClick={() => handleSaveSalary(member.id)} icon={Save} loading={Boolean(savingSalaryIds[member.id])}>
-              Definir
-            </Button>
-          </div>
-        </Card>
-      ))}
-    </>
+          );
+        })}
+      </div>
+    </div>
   );
 
   const receivablesCard = activeMonthData && (
@@ -724,7 +784,7 @@ export function JointFinancialMoment() {
                     </div>
                     <ProgressBar percent={pctSpent} color={spent > entries ? 'var(--danger)' : 'var(--primary)'} height={10} />
                   </div>
-                  <MealBenefitMomentCards items={mealMomentItems} isMobile />
+                  <MealBenefitMomentCards items={mealMomentItems} isMobile joint />
                   <div className="moment-mobile-stack">
                     {salaryCard}
                     {billsCard}
@@ -814,7 +874,7 @@ export function JointFinancialMoment() {
                     </div>
                   </Card>
 
-                  <MealBenefitMomentCards items={mealMomentItems} />
+                  <MealBenefitMomentCards items={mealMomentItems} joint />
 
                   <div className="dashboard-grid">
                     <div className="col-6" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
