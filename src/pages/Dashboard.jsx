@@ -1,15 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  Wallet,
   TrendingUp,
-  ArrowDownRight,
-  ArrowUpRight,
   CreditCard,
   Plus,
-  Sparkles,
   Info,
-  PiggyBank,
-  Percent,
 } from 'lucide-react';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
@@ -19,7 +13,8 @@ import { Stagger, StaggerItem } from '../components/motion/Stagger';
 import { BalanceChart } from '../components/charts/BalanceChart';
 import { ExpenseByCategoryChart } from '../components/charts/ExpenseByCategoryChart';
 import { IncomeVsExpenseChart } from '../components/charts/IncomeVsExpenseChart';
-import { Sparkline } from '../components/charts/Sparkline';
+import { InsightsCarousel, KpiCarousel } from '../components/DashboardCarousels';
+import { CategoryIcon } from '../components/CategoryIcon';
 import { useAccountStore } from '../stores/accountStore';
 import { useTransactionStore } from '../stores/transactionStore';
 import { useInvestmentStore } from '../stores/investmentStore';
@@ -49,6 +44,12 @@ import { accountById } from '../components/AccountIcon';
 import { asOfForBudgetMonth, mergeBudgetRows } from '../utils/budgetPeriod';
 import { mealSpendByCategory } from '../utils/mealBenefits';
 
+function insightAccent(type) {
+  if (type === 'positive') return 'var(--success)';
+  if (type === 'warning') return 'var(--danger)';
+  return 'var(--info)';
+}
+
 export function Dashboard() {
   const { loadAccounts, accounts, loans, loading: accLoading, lastUpdated: accAt } = useAccountStore();
   const { loadTransactions, transactions, loading: txLoading, lastUpdated: txAt, updateOpenFinanceCategory } = useTransactionStore();
@@ -58,6 +59,7 @@ export function Dashboard() {
   const user = useAuthStore((s) => s.user);
   const [selectedItem, setSelectedItem] = useState(null);
   const [pluggyCategories, setPluggyCategories] = useState([]);
+  const [showAllInsights, setShowAllInsights] = useState(false);
 
   useEffect(() => {
     loadAccounts();
@@ -135,7 +137,7 @@ export function Dashboard() {
     return (
       <PageLoadingSkeleton
         showKpis
-        kpiCount={4}
+        kpiCount={2}
         showTimeline={false}
         showChart
         showList
@@ -163,168 +165,58 @@ export function Dashboard() {
       </div>
 
       <Stagger className="dashboard-grid">
-        <StaggerItem className="col-3">
-          <Card style={{ position: 'relative', overflow: 'hidden' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-              <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>
-                Patrimônio Líquido
-              </span>
-              <div style={{ padding: '0.4rem', borderRadius: 'var(--radius-md)', background: 'var(--primary-light)', color: 'var(--primary)' }}>
-                <Sparkles size={18} />
-              </div>
-            </div>
-            <h2 style={{ fontSize: 'var(--font-size-2xl)', fontWeight: 700, margin: '0.5rem 0', color: summary.netWorth >= 0 ? 'var(--text-primary)' : 'var(--danger)' }}>
-              {formatCurrency(summary.netWorth)}
-            </h2>
-            <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>
-              Ativos: {formatCurrency(summary.bankBalance + totalInvestments)} • Dívidas: -{formatCurrency(summary.creditDebt)}
-            </span>
-            <Sparkline data={netWorthSeries} dataKey="patrimônio" color="var(--primary)" />
-          </Card>
+        <StaggerItem className="col-6">
+          <InsightsCarousel
+            insights={insights}
+            onShowAll={insights.length > 0 ? () => setShowAllInsights(true) : undefined}
+          />
         </StaggerItem>
-
-        <StaggerItem className="col-3">
-          <Card>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-              <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>
-                Saldo em Contas
-              </span>
-              <div style={{ padding: '0.4rem', borderRadius: 'var(--radius-md)', background: 'rgba(16, 185, 129, 0.12)', color: 'var(--success)' }}>
-                <Wallet size={18} />
-              </div>
-            </div>
-            <h2 style={{ fontSize: 'var(--font-size-2xl)', fontWeight: 700, margin: '0.5rem 0', color: 'var(--text-primary)' }}>
-              {formatCurrency(summary.bankBalance)}
-            </h2>
-            <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>
-              {bankCount} {bankCount === 1 ? 'conta bancária' : 'contas bancárias'}
-              {summary.reservedBalance > 0
-                ? ` · caixinhas ${formatCurrency(summary.reservedBalance)} em investimentos`
-                : ''}
-            </span>
-            <Sparkline data={incomeExpenseSeries} dataKey="net" color="var(--success)" />
-          </Card>
-        </StaggerItem>
-
-        <StaggerItem className="col-3">
-          <Card>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-              <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>
-                Taxa de Poupança
-              </span>
-              <div style={{ padding: '0.4rem', borderRadius: 'var(--radius-md)', background: 'rgba(59, 130, 246, 0.12)', color: 'var(--info)' }}>
-                <Percent size={18} />
-              </div>
-            </div>
-            <h2
-              style={{
-                fontSize: 'var(--font-size-2xl)',
-                fontWeight: 700,
-                margin: '0.5rem 0',
-                color: (cashflow.savingsRate ?? 0) >= 0 ? 'var(--success)' : 'var(--danger)',
-              }}
-            >
-              {cashflow.savingsRate == null ? '—' : `${cashflow.savingsRate.toFixed(0)}%`}
-            </h2>
-            <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>
-              Líquido do mês: {formatCurrency(cashflow.net)}
-            </span>
-            <Sparkline data={incomeExpenseSeries} dataKey="net" color="var(--info)" />
-          </Card>
-        </StaggerItem>
-
-        <StaggerItem className="col-3">
-          <Card>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-              <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>
-                Gastos vs Mês Ant.
-              </span>
-              <div style={{ padding: '0.4rem', borderRadius: 'var(--radius-md)', background: 'rgba(244, 63, 94, 0.12)', color: 'var(--danger)' }}>
-                <PiggyBank size={18} />
-              </div>
-            </div>
-            <h2
-              style={{
-                fontSize: 'var(--font-size-2xl)',
-                fontWeight: 700,
-                margin: '0.5rem 0',
-                color: mom.expenseDeltaPct > 0 ? 'var(--danger)' : 'var(--success)',
-              }}
-            >
-              {mom.expenseDeltaPct > 0 ? '+' : ''}
-              {mom.expenseDeltaPct.toFixed(0)}%
-            </h2>
-            <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>
-              Este mês {formatCurrency(cashflow.expense)} · ant. {formatCurrency(mom.previous.expense)}
-            </span>
-            <Sparkline data={incomeExpenseSeries} dataKey="despesa" color="var(--danger)" />
-          </Card>
+        <StaggerItem className="col-6">
+          <KpiCarousel
+            summary={summary}
+            totalInvestments={totalInvestments}
+            bankCount={bankCount}
+            cashflow={cashflow}
+            mom={mom}
+            netWorthSeries={netWorthSeries}
+            incomeExpenseSeries={incomeExpenseSeries}
+          />
         </StaggerItem>
       </Stagger>
 
-      {(insights.length > 0 || recap.current.total > 0) && (
-        <div className="dashboard-grid">
-          <Card className="col-8" title="Insights" subtitle="O que mudou nas suas finanças">
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem', marginTop: '0.35rem' }}>
-              {insights.map((ins) => (
-                <div
-                  key={ins.id}
-                  style={{
-                    padding: '0.75rem 0.9rem',
-                    borderRadius: 'var(--radius-md)',
-                    background: 'var(--bg-tertiary)',
-                    border: '1px solid var(--border-color)',
-                    borderLeft: `3px solid ${
-                      ins.type === 'positive' ? 'var(--success)' : ins.type === 'warning' ? 'var(--danger)' : 'var(--info)'
-                    }`,
-                    fontSize: 'var(--font-size-sm)',
-                    color: 'var(--text-primary)',
-                  }}
-                >
-                  {ins.text}
-                </div>
-              ))}
-              {insights.length === 0 && (
-                <p style={{ color: 'var(--text-muted)', fontSize: 'var(--font-size-sm)' }}>
-                  Conecte contas e sincronize transações para ver insights.
-                </p>
-              )}
+      {recap.current.total > 0 && (
+        <Card title="Recap da Semana" subtitle="Últimos 7 dias">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '0.35rem' }}>
+            <div>
+              <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)', fontWeight: 600 }}>GASTOS</span>
+              <h3 style={{ fontSize: 'var(--font-size-xl)', fontWeight: 700, margin: '0.25rem 0' }}>
+                {formatCurrency(recap.current.total)}
+              </h3>
+              <span
+                style={{
+                  fontSize: 'var(--font-size-xs)',
+                  color: recap.deltaPct > 0 ? 'var(--danger)' : 'var(--success)',
+                }}
+              >
+                {recap.deltaPct > 0 ? '+' : ''}
+                {recap.deltaPct}% vs semana anterior
+              </span>
             </div>
-          </Card>
-
-          <Card className="col-4" title="Recap da Semana" subtitle="Últimos 7 dias">
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '0.35rem' }}>
-              <div>
-                <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)', fontWeight: 600 }}>GASTOS</span>
-                <h3 style={{ fontSize: 'var(--font-size-xl)', fontWeight: 700, margin: '0.25rem 0' }}>
-                  {formatCurrency(recap.current.total)}
-                </h3>
-                <span
-                  style={{
-                    fontSize: 'var(--font-size-xs)',
-                    color: recap.deltaPct > 0 ? 'var(--danger)' : 'var(--success)',
-                  }}
-                >
-                  {recap.deltaPct > 0 ? '+' : ''}
-                  {recap.deltaPct}% vs semana anterior
-                </span>
+            {recap.current.topCategory && (
+              <div style={{ fontSize: 'var(--font-size-sm)', color: 'var(--text-secondary)' }}>
+                Maior categoria: <strong>{recap.current.topCategory.name}</strong>
+                {' · '}
+                {formatCurrency(recap.current.topCategory.value)}
               </div>
-              {recap.current.topCategory && (
-                <div style={{ fontSize: 'var(--font-size-sm)', color: 'var(--text-secondary)' }}>
-                  Maior categoria: <strong>{recap.current.topCategory.name}</strong>
-                  {' · '}
-                  {formatCurrency(recap.current.topCategory.value)}
-                </div>
-              )}
-              <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>
-                {creditCount} cartão(ões) · fatura aberta {formatCurrency(openBillsTotal)}
-              </div>
-              <Link to="/agenda" style={{ fontSize: 'var(--font-size-xs)', color: 'var(--primary)', fontWeight: 600, textDecoration: 'none' }}>
-                Ver agenda de contas →
-              </Link>
+            )}
+            <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>
+              {creditCount} cartão(ões) · fatura aberta {formatCurrency(openBillsTotal)}
             </div>
-          </Card>
-        </div>
+            <Link to="/agenda" style={{ fontSize: 'var(--font-size-xs)', color: 'var(--primary)', fontWeight: 600, textDecoration: 'none' }}>
+              Ver agenda de contas →
+            </Link>
+          </div>
+        </Card>
       )}
 
       <div className="dashboard-grid">
@@ -365,21 +257,11 @@ export function Dashboard() {
                   style={{ padding: '0.6rem 0.85rem' }}
                 >
                   <div className="list-row-main" style={{ gap: '0.75rem' }}>
-                    <div
-                      style={{
-                        width: 32,
-                        height: 32,
-                        borderRadius: '50%',
-                        backgroundColor: tx.amount < 0 ? 'var(--danger-bg)' : 'var(--success-bg)',
-                        color: tx.amount < 0 ? 'var(--danger)' : 'var(--success)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        flexShrink: 0,
-                      }}
-                    >
-                      {tx.amount < 0 ? <ArrowDownRight size={16} /> : <ArrowUpRight size={16} />}
-                    </div>
+                    <CategoryIcon
+                      category={tx.category}
+                      isCredit={tx.amount >= 0}
+                      size={32}
+                    />
                     <div style={{ minWidth: 0 }}>
                       <p
                         style={{
@@ -489,6 +371,55 @@ export function Dashboard() {
           </div>
         </Card>
       </div>
+      {showAllInsights && (
+        <div className="modal-overlay" onClick={() => setShowAllInsights(false)} role="presentation">
+          <div
+            className="modal-content"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Insights"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h3 style={{ margin: 0, fontSize: 'var(--font-size-lg)', fontWeight: 700 }}>Insights</h3>
+              <button
+                type="button"
+                onClick={() => setShowAllInsights(false)}
+                style={{
+                  appearance: 'none',
+                  border: 0,
+                  background: 'transparent',
+                  color: 'var(--primary)',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                }}
+              >
+                Fechar
+              </button>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem', maxHeight: '60vh', overflow: 'auto' }}>
+              {insights.map((ins) => (
+                <div
+                  key={ins.id}
+                  style={{
+                    padding: '0.85rem 1rem',
+                    borderRadius: 'var(--radius-md)',
+                    background: `linear-gradient(145deg, color-mix(in srgb, ${insightAccent(ins.type)} 28%, transparent), color-mix(in srgb, ${insightAccent(ins.type)} 12%, transparent)), var(--bg-tertiary)`,
+                    border: `1px solid color-mix(in srgb, ${insightAccent(ins.type)} 40%, var(--border-color))`,
+                    fontSize: 'var(--font-size-sm)',
+                    fontWeight: 600,
+                    color: 'var(--text-primary)',
+                  }}
+                >
+                  {ins.text}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {selectedItem && (
         <ItemDetailSheet
           item={selectedItem}

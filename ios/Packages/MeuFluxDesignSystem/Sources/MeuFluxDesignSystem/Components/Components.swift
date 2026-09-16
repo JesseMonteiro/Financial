@@ -1,4 +1,5 @@
 import SwiftUI
+import MeuFluxDomain
 #if canImport(UIKit)
 import UIKit
 #endif
@@ -606,6 +607,8 @@ public struct TransactionRow: View {
     public let isCredit: Bool
     public var badge: String?
     public var isPending: Bool
+    /// Purchase / Pluggy category key — drives the leading circle icon when set.
+    public var categoryKey: String?
     public var action: (() -> Void)?
 
     public init(
@@ -615,6 +618,7 @@ public struct TransactionRow: View {
         isCredit: Bool,
         badge: String? = nil,
         isPending: Bool = false,
+        categoryKey: String? = nil,
         action: (() -> Void)? = nil
     ) {
         self.title = title
@@ -623,19 +627,34 @@ public struct TransactionRow: View {
         self.isCredit = isCredit
         self.badge = badge
         self.isPending = isPending
+        self.categoryKey = categoryKey
         self.action = action
     }
 
+    private var leadingIcon: String {
+        if let categoryKey, !categoryKey.isEmpty {
+            return PurchaseCategoryCatalog.systemImage(for: categoryKey)
+        }
+        return isCredit ? "arrow.down.left" : "arrow.up.right"
+    }
+
+    private var leadingTint: Color {
+        if let categoryKey, !categoryKey.isEmpty,
+           let hex = PurchaseCategoryCatalog.color(for: categoryKey),
+           let color = Color(hexString: hex) {
+            return color
+        }
+        return isCredit ? MeuFluxColors.success : MeuFluxColors.danger
+    }
+
     public var body: some View {
+        let tint = leadingTint
         let row = HStack(spacing: 12) {
-            Image(systemName: isCredit ? "arrow.down.left" : "arrow.up.right")
+            Image(systemName: leadingIcon)
                 .font(.subheadline.weight(.semibold))
-                .foregroundStyle(isCredit ? MeuFluxColors.success : MeuFluxColors.danger)
+                .foregroundStyle(tint)
                 .frame(width: 36, height: 36)
-                .background(
-                    (isCredit ? MeuFluxColors.success : MeuFluxColors.danger).opacity(0.12),
-                    in: Circle()
-                )
+                .background(tint.opacity(0.12), in: Circle())
             VStack(alignment: .leading, spacing: 3) {
                 Text(title)
                     .font(.subheadline.weight(.semibold))

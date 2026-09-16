@@ -256,8 +256,8 @@ public struct PageLoadingSkeleton: View {
                 SkeletonBlock(width: 260, height: 12)
             }
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                ForEach(0..<4, id: \.self) { _ in
-                    SkeletonCard(lines: 4)
+                ForEach(0..<2, id: \.self) { _ in
+                    SkeletonCard(lines: 5)
                 }
             }
             GlassCard {
@@ -265,13 +265,6 @@ public struct PageLoadingSkeleton: View {
                     SkeletonBlock(width: 140, height: 16)
                     SkeletonBlock(width: 180, height: 22)
                     SkeletonChartPlaceholder(height: 140)
-                }
-            }
-            GlassCard {
-                VStack(alignment: .leading, spacing: 10) {
-                    SkeletonBlock(width: 170, height: 14)
-                    SkeletonBlock(height: 10, cornerRadius: 5)
-                    SkeletonBlock(width: 220, height: 10)
                 }
             }
             VStack(spacing: 12) {

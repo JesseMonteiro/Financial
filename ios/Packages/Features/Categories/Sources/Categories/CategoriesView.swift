@@ -93,9 +93,12 @@ public struct CategoriesView: View {
         List {
             ForEach(viewModel.categories) { category in
                 HStack(spacing: 12) {
-                    Circle()
-                        .fill(Color(hexString: category.color ?? "#6366f1") ?? MeuFluxColors.primary)
-                        .frame(width: 14, height: 14)
+                    let tint = Color(hexString: category.color ?? "#64748b") ?? MeuFluxColors.primary
+                    Image(systemName: PurchaseCategoryCatalog.systemImage(for: category.key))
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(tint)
+                        .frame(width: 32, height: 32)
+                        .background(tint.opacity(0.14), in: Circle())
                     VStack(alignment: .leading, spacing: 2) {
                         Text(category.label).font(.headline)
                         Text(category.key)
@@ -124,15 +127,6 @@ public struct CategoriesView: View {
                 }
             }
         }
-    }
-}
-
-private extension Color {
-    init?(hexString: String) {
-        var value = hexString.trimmingCharacters(in: .whitespacesAndNewlines)
-        if value.hasPrefix("#") { value.removeFirst() }
-        guard value.count == 6, let int = UInt64(value, radix: 16) else { return nil }
-        self.init(hex: UInt32(int))
     }
 }
 

@@ -60,8 +60,53 @@ public enum PurchaseCategoryCatalog {
     }
 
     public static func color(for raw: String?, in categories: [PurchaseCategory] = defaults) -> String? {
-        guard let raw else { return nil }
-        return categories.first(where: { $0.key == raw })?.color
+        guard let raw, !raw.isEmpty else { return nil }
+        if let match = categories.first(where: { $0.key == raw })?.color {
+            return match
+        }
+        if let match = defaults.first(where: { $0.key == raw })?.color {
+            return match
+        }
+        if let kind = kind(forPluggyOrKey: raw) {
+            return defaults.first(where: { $0.key == kind.rawValue })?.color
+        }
+        return nil
+    }
+
+    public static func systemImage(for raw: String?) -> String {
+        guard let raw, !raw.isEmpty else { return ExpenseCategoryKind.other.systemImage }
+        if let kind = ExpenseCategoryKind(rawValue: raw) { return kind.systemImage }
+        if let kind = kind(forPluggyOrKey: raw) { return kind.systemImage }
+        return ExpenseCategoryKind.other.systemImage
+    }
+
+    /// Maps Pluggy / legacy category labels onto the closed purchase set.
+    public static func kind(forPluggyOrKey raw: String) -> ExpenseCategoryKind? {
+        if let kind = ExpenseCategoryKind(rawValue: raw) { return kind }
+        switch raw {
+        case "Eating out", "Food delivery":
+            return .food
+        case "Groceries", "Houseware":
+            return .groceries
+        case "Rent":
+            return .rent
+        case "Telecommunications", "Services", "Digital services":
+            return .utilities
+        case "Parking", "Car rental", "Automotive", "Gas stations",
+             "Vehicle maintenance", "Taxi and ride-hailing":
+            return .transport
+        case "Cinema, theater and concerts", "Tickets", "Shopping",
+             "Clothing", "Gaming":
+            return .entertainment
+        case "Healthcare", "Dentist", "Pharmacy", "Optometry",
+             "Gyms and fitness centers", "Wellness and fitness":
+            return .health
+        case "Other", "Transfers", "Credit card payment", "Bank fees",
+             "Salary", "Investments":
+            return .other
+        default:
+            return nil
+        }
     }
 
     public static func slugify(_ label: String, existingKeys: [String]) -> String {

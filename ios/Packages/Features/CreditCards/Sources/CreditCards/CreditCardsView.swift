@@ -644,14 +644,14 @@ public struct CreditCardsView: View {
 
     private func statementRow(_ line: CreditBillLine) -> some View {
         let cardName = viewModel.cardDisplayName(for: line)
+        let tint = statementIconTint(for: line)
+        let icon = statementIcon(for: line)
         return HStack(alignment: .top, spacing: 12) {
-            Image(systemName: line.isPayment ? "checkmark.circle.fill" : "receipt")
-                .foregroundStyle(line.isPayment ? MeuFluxColors.success : MeuFluxColors.danger)
+            Image(systemName: icon)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(tint)
                 .frame(width: 36, height: 36)
-                .background(
-                    (line.isPayment ? MeuFluxColors.success : MeuFluxColors.danger).opacity(0.12),
-                    in: Circle()
-                )
+                .background(tint.opacity(0.12), in: Circle())
             VStack(alignment: .leading, spacing: 4) {
                 Text(line.description)
                     .font(.subheadline.weight(.semibold))
@@ -690,6 +690,24 @@ public struct CreditCardsView: View {
             }
         }
         .padding(.vertical, 4)
+    }
+
+    private func statementIcon(for line: CreditBillLine) -> String {
+        if line.isPayment { return "checkmark.circle.fill" }
+        if let category = line.category, !category.isEmpty {
+            return PurchaseCategoryCatalog.systemImage(for: category)
+        }
+        return "receipt"
+    }
+
+    private func statementIconTint(for line: CreditBillLine) -> Color {
+        if line.isPayment { return MeuFluxColors.success }
+        if let category = line.category, !category.isEmpty,
+           let hex = PurchaseCategoryCatalog.color(for: category),
+           let color = Color(hexString: hex) {
+            return color
+        }
+        return MeuFluxColors.danger
     }
 }
 

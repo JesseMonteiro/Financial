@@ -146,6 +146,7 @@ public struct TransactionsView: View {
                                     isCredit: tx.kind == .credit,
                                     badge: tx.category.map(LineItemDetail.translatedCategory),
                                     isPending: tx.isPending,
+                                    categoryKey: tx.category,
                                     action: {
                                         selectedDetail = viewModel.detail(for: tx)
                                     }

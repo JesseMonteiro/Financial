@@ -54,6 +54,55 @@ export const DEFAULT_PURCHASE_CATEGORIES = [
   { key: 'Other', label: 'Outros', color: '#64748b', sortOrder: 8 },
 ];
 
+const PURCHASE_CATEGORY_KEYS = new Set(DEFAULT_PURCHASE_CATEGORIES.map((c) => c.key));
+
+/** Lucide icon name per purchase category key (mirrors iOS SF Symbols). */
+export const CATEGORY_ICON_NAMES = {
+  Food: 'utensils',
+  Groceries: 'shopping-cart',
+  Rent: 'home',
+  Utilities: 'zap',
+  Transport: 'car',
+  Entertainment: 'ticket',
+  Health: 'heart-pulse',
+  Education: 'graduation-cap',
+  Other: 'circle-ellipsis',
+};
+
+const PLUGGY_TO_KIND = {
+  'Eating out': 'Food',
+  'Food delivery': 'Food',
+  Groceries: 'Groceries',
+  Houseware: 'Groceries',
+  Rent: 'Rent',
+  Telecommunications: 'Utilities',
+  Services: 'Utilities',
+  'Digital services': 'Utilities',
+  Parking: 'Transport',
+  'Car rental': 'Transport',
+  Automotive: 'Transport',
+  'Gas stations': 'Transport',
+  'Vehicle maintenance': 'Transport',
+  'Taxi and ride-hailing': 'Transport',
+  'Cinema, theater and concerts': 'Entertainment',
+  Tickets: 'Entertainment',
+  Shopping: 'Entertainment',
+  Clothing: 'Entertainment',
+  Gaming: 'Entertainment',
+  Healthcare: 'Health',
+  Dentist: 'Health',
+  Pharmacy: 'Health',
+  Optometry: 'Health',
+  'Gyms and fitness centers': 'Health',
+  'Wellness and fitness': 'Health',
+  Other: 'Other',
+  Transfers: 'Other',
+  'Credit card payment': 'Other',
+  'Bank fees': 'Other',
+  Salary: 'Other',
+  Investments: 'Other',
+};
+
 export const MANUAL_CATEGORY_OPTIONS = DEFAULT_PURCHASE_CATEGORIES.map((c) => ({
   value: c.key,
   label: c.label,
@@ -86,9 +135,40 @@ export function resolveCategoryLabel(key, categories = []) {
 }
 
 export function resolveCategoryColor(key, categories = []) {
-  const match = (Array.isArray(categories) ? categories : []).find((c) => c.key === key);
+  if (!key) return null;
+  const list = Array.isArray(categories) ? categories : [];
+  const match = list.find((c) => c.key === key);
   if (match?.color) return match.color;
+  const def = DEFAULT_PURCHASE_CATEGORIES.find((c) => c.key === key);
+  if (def?.color) return def.color;
+  const kind = resolveCategoryKind(key);
+  if (kind) {
+    const byKind = DEFAULT_PURCHASE_CATEGORIES.find((c) => c.key === kind);
+    if (byKind?.color) return byKind.color;
+  }
   return null;
+}
+
+/** Maps purchase / Pluggy category keys onto the closed default set. */
+export function resolveCategoryKind(raw) {
+  if (!raw) return null;
+  const key = String(raw).trim();
+  if (!key) return null;
+  if (PURCHASE_CATEGORY_KEYS.has(key)) return key;
+  return PLUGGY_TO_KIND[key] || null;
+}
+
+/** Lucide icon name aligned with iOS SF Symbols per category. */
+export function getCategoryIconName(raw) {
+  const kind = resolveCategoryKind(raw) || 'Other';
+  return CATEGORY_ICON_NAMES[kind] || CATEGORY_ICON_NAMES.Other;
+}
+
+/** Hex tint for a category key (defaults when custom color missing). */
+export function getCategoryTint(raw, categories = []) {
+  return resolveCategoryColor(raw, categories)
+    || DEFAULT_PURCHASE_CATEGORIES.find((c) => c.key === (resolveCategoryKind(raw) || 'Other'))?.color
+    || '#64748b';
 }
 
 export function slugifyCategoryKey(label, existingKeys = []) {

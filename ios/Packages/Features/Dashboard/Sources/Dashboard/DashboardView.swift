@@ -5,8 +5,13 @@ import MeuFluxDomain
 
 public struct DashboardView: View {
     @Bindable var viewModel: DashboardViewModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var showAllInsights = false
     @State private var selectedDetail: LineItemDetail?
+    @State private var kpiSlideIndex = 0
+    @State private var insightSlideIndex = 0
+    @State private var kpiAutoToken = 0
+    @State private var insightAutoToken = 0
 
     private let accountName: String
     private let accountEmail: String
@@ -181,12 +186,8 @@ public struct DashboardView: View {
                 .foregroundStyle(MeuFluxColors.danger)
         }
 
-        kpiGrid(snap)
+        summaryCarousels(snap)
         dailyFlowCard
-
-        if !snap.insights.isEmpty {
-            insightsStream(snap.insights)
-        }
 
         netWorthChart(snap)
         categoryChart(snap)
@@ -218,69 +219,342 @@ public struct DashboardView: View {
         }
     }
 
-    private func kpiGrid(_ snap: DashboardSnapshot) -> some View {
-        LazyVGrid(
-            columns: [
-                GridItem(.flexible(minimum: 0), spacing: 12),
-                GridItem(.flexible(minimum: 0), spacing: 12)
-            ],
-            spacing: 12
-        ) {
-            kpiCard(
+    private func summaryCarousels(_ snap: DashboardSnapshot) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            insightsCarouselCard(snap.insights)
+                .frame(maxWidth: .infinity)
+            kpiCarouselCard(snap)
+                .frame(maxWidth: .infinity)
+        }
+    }
+
+    private func kpiCarouselCard(_ snap: DashboardSnapshot) -> some View {
+        let slides = kpiSlides(snap)
+        let count = slides.count
+
+        return GlassCard(padding: 14) {
+            TabView(selection: $kpiSlideIndex) {
+                ForEach(Array(slides.enumerated()), id: \.offset) { offset, slide in
+                    kpiSlideContent(slide)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                        .tag(offset)
+                }
+            }
+            .tabViewStyle(.page(indexDisplayMode: .never))
+        }
+        .aspectRatio(1, contentMode: .fit)
+        .clipped()
+        .task(id: "\(kpiAutoToken)-\(count)-\(reduceMotion)") {
+            await runAutoAdvance(enabled: !reduceMotion && count > 1) {
+                withAnimation(reduceMotion ? nil : MotionTokens.easeOutFast) {
+                    kpiSlideIndex = (clampedIndex(kpiSlideIndex, count: count) + 1) % count
+                }
+            }
+        }
+        .onChange(of: kpiSlideIndex) { _, _ in
+            kpiAutoToken &+= 1
+        }
+        .onChange(of: count) { _, newCount in
+            kpiSlideIndex = clampedIndex(kpiSlideIndex, count: newCount)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Indicadores financeiros")
+        .accessibilityValue(slides[clampedIndex(kpiSlideIndex, count: count)].title)
+        .accessibilityAdjustableAction { direction in
+            guard count > 0 else { return }
+            switch direction {
+            case .increment:
+                kpiSlideIndex = (clampedIndex(kpiSlideIndex, count: count) + 1) % count
+            case .decrement:
+                kpiSlideIndex = (clampedIndex(kpiSlideIndex, count: count) - 1 + count) % count
+            @unknown default: break
+            }
+        }
+    }
+
+    private func insightsCarouselCard(_ insights: [DashboardInsight]) -> some View {
+        let hasInsights = !insights.isEmpty
+
+        return Group {
+            if hasInsights {
+                TabView(selection: $insightSlideIndex) {
+                    ForEach(Array(insights.enumerated()), id: \.element.id) { offset, insight in
+                        insightCarouselSlide(insight)
+                            .tag(offset)
+                    }
+                }
+                .tabViewStyle(.page(indexDisplayMode: .never))
+            } else {
+                GlassCard(padding: 14) {
+                    emptyInsightSlide
+                }
+            }
+        }
+        .aspectRatio(1, contentMode: .fit)
+        .clipped()
+        .task(id: "\(insightAutoToken)-\(insights.count)-\(reduceMotion)") {
+            await runAutoAdvance(enabled: !reduceMotion && insights.count > 1) {
+                withAnimation(reduceMotion ? nil : MotionTokens.easeOutFast) {
+                    insightSlideIndex = (clampedIndex(insightSlideIndex, count: insights.count) + 1) % insights.count
+                }
+            }
+        }
+        .onChange(of: insightSlideIndex) { _, _ in
+            insightAutoToken &+= 1
+        }
+        .onChange(of: insights.count) { _, newCount in
+            insightSlideIndex = clampedIndex(insightSlideIndex, count: max(newCount, 1))
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Insights")
+        .accessibilityValue(
+            hasInsights
+                ? insights[clampedIndex(insightSlideIndex, count: insights.count)].text
+                : "Sem insights"
+        )
+        .accessibilityAdjustableAction { direction in
+            guard hasInsights else { return }
+            let count = insights.count
+            switch direction {
+            case .increment:
+                insightSlideIndex = (clampedIndex(insightSlideIndex, count: count) + 1) % count
+            case .decrement:
+                insightSlideIndex = (clampedIndex(insightSlideIndex, count: count) - 1 + count) % count
+            @unknown default: break
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func kpiSlideContent(_ slide: KPISlide) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 4) {
+                Text(slide.title.uppercased())
+                    .font(.system(size: 11, weight: .bold))
+                    .tracking(0.6)
+                    .foregroundStyle(MeuFluxColors.textMuted)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                Spacer(minLength: 4)
+                Image(systemName: slide.icon)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(slide.iconTint)
+                    .frame(width: 28, height: 28)
+                    .background(slide.iconTint.opacity(0.12), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .strokeBorder(slide.iconTint.opacity(0.18), lineWidth: 1)
+                    )
+            }
+            Text(slide.value)
+                .font(.system(size: 20, weight: .bold).monospacedDigit())
+                .tracking(-0.3)
+                .foregroundStyle(slide.valueColor)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+                .truncationMode(.tail)
+            Text(slide.subtitle)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(MeuFluxColors.textMuted)
+                .lineLimit(2)
+                .truncationMode(.tail)
+            Spacer(minLength: 0)
+            SparklineChart(values: slide.sparkline, color: slide.iconTint)
+                .frame(maxWidth: .infinity)
+                .frame(height: 40)
+                .clipped()
+        }
+    }
+
+    private func insightCarouselSlide(_ insight: DashboardInsight) -> some View {
+        let accent = insightBorder(insight.type)
+        let footer = insightFooter(insight)
+        let shape = RoundedRectangle(cornerRadius: Radius().xxl, style: .continuous)
+
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .center, spacing: 8) {
+                Text("INSIGHTS")
+                    .font(.system(size: 11, weight: .bold))
+                    .tracking(0.6)
+                    .foregroundStyle(accent)
+                    .lineLimit(1)
+                Spacer(minLength: 4)
+                Button {
+                    showAllInsights = true
+                } label: {
+                    Text("Todos")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(accent)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(MeuFluxColors.bgSecondary.opacity(0.72), in: Capsule())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Ver todos os insights")
+            }
+
+            tintedInsightLabel(insight.text, accent: accent)
+                .lineLimit(6)
+                .truncationMode(.tail)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+
+            HStack(spacing: 6) {
+                Image(systemName: footer.icon)
+                    .font(.system(size: 12, weight: .medium))
+                Text(footer.label)
+                    .font(.caption.weight(.medium))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(MeuFluxColors.textPrimary.opacity(0.72))
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background {
+            ZStack {
+                FrostedFill(cornerRadius: Radius().xxl)
+                shape.fill(
+                    LinearGradient(
+                        colors: [accent.opacity(0.34), accent.opacity(0.16)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+            }
+        }
+        .overlay {
+            shape.strokeBorder(accent.opacity(0.42), lineWidth: 1)
+        }
+        .overlay(alignment: .top) {
+            shape
+                .strokeBorder(
+                    LinearGradient(
+                        colors: [Color.white.opacity(0.28), Color.white.opacity(0)],
+                        startPoint: .top,
+                        endPoint: .center
+                    ),
+                    lineWidth: 1
+                )
+                .allowsHitTesting(false)
+        }
+        .clipShape(shape)
+        .shadow(color: accent.opacity(0.18), radius: 14, y: 6)
+        .shadow(color: MeuFluxColors.cardShadowSecondary, radius: 8, y: 3)
+    }
+
+    private func tintedInsightLabel(_ text: String, accent: Color) -> some View {
+        Text(tintedHighlightedInsight(text, accent: accent))
+    }
+
+    private func tintedHighlightedInsight(_ text: String, accent: Color) -> AttributedString {
+        var attributed = AttributedString(text)
+        attributed.font = .subheadline.weight(.semibold)
+        attributed.foregroundColor = MeuFluxColors.textPrimary
+        let ns = text as NSString
+        guard let regex = try? NSRegularExpression(pattern: #"[+\-]?\d+%"#) else { return attributed }
+        for match in regex.matches(in: text, range: NSRange(location: 0, length: ns.length)) {
+            guard let stringRange = Range(match.range, in: text),
+                  let start = AttributedString.Index(stringRange.lowerBound, within: attributed),
+                  let end = AttributedString.Index(stringRange.upperBound, within: attributed) else { continue }
+            attributed[start..<end].font = .subheadline.weight(.bold)
+            attributed[start..<end].foregroundColor = accent
+        }
+        return attributed
+    }
+
+    private var emptyInsightSlide: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("INSIGHTS")
+                .font(.system(size: 11, weight: .bold))
+                .tracking(0.6)
+                .foregroundStyle(MeuFluxColors.textMuted)
+                .lineLimit(1)
+            Text("Ainda sem insights")
+                .font(.system(size: 17, weight: .bold))
+                .foregroundStyle(MeuFluxColors.textPrimary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+            Text("Conecte contas e sincronize para ver o que mudou nas suas finanças.")
+                .font(.caption.weight(.medium))
+                .foregroundStyle(MeuFluxColors.textMuted)
+                .lineLimit(4)
+                .truncationMode(.tail)
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private struct KPISlide: Identifiable {
+        let id: String
+        let title: String
+        let value: String
+        let subtitle: String
+        let valueColor: Color
+        let icon: String
+        let iconTint: Color
+        let sparkline: [Double]
+    }
+
+    private func kpiSlides(_ snap: DashboardSnapshot) -> [KPISlide] {
+        [
+            KPISlide(
+                id: "net-worth",
                 title: "Patrimônio Líquido",
                 value: snap.summary.netWorth.formatted(),
                 subtitle: "Ativos \(snap.summary.totalAssets.formatted()) · Dívidas -\(snap.summary.creditDebt.formatted())",
                 valueColor: snap.summary.netWorth.amount >= 0 ? MeuFluxColors.textPrimary : MeuFluxColors.danger,
-                icon: "chevron.backward",
-                iconTint: MeuFluxColors.primary
-            ) {
-                SparklineChart(
-                    values: snap.netWorthSeries.map(\.value),
-                    color: MeuFluxColors.primary
-                )
-            }
-
-            kpiCard(
+                icon: "chart.line.uptrend.xyaxis",
+                iconTint: MeuFluxColors.primary,
+                sparkline: snap.netWorthSeries.map(\.value)
+            ),
+            KPISlide(
+                id: "bank-balance",
                 title: "Saldo em Contas",
                 value: snap.summary.bankBalance.formatted(),
                 subtitle: bankSubtitle(snap),
                 valueColor: MeuFluxColors.textPrimary,
                 icon: "wallet.pass.fill",
-                iconTint: MeuFluxColors.success
-            ) {
-                SparklineChart(
-                    values: snap.incomeExpenseSeries.map(\.net),
-                    color: MeuFluxColors.success
-                )
-            }
-
-            kpiCard(
+                iconTint: MeuFluxColors.success,
+                sparkline: snap.incomeExpenseSeries.map(\.net)
+            ),
+            KPISlide(
+                id: "savings-rate",
                 title: "Taxa Poupança",
                 value: savingsRateText(snap.cashflow.savingsRate),
                 subtitle: "Líquido do mês: \(snap.cashflow.net.formatted())",
                 valueColor: (snap.cashflow.savingsRate ?? 0) >= 0 ? MeuFluxColors.success : MeuFluxColors.danger,
                 icon: "percent",
-                iconTint: MeuFluxColors.info
-            ) {
-                SparklineChart(
-                    values: snap.incomeExpenseSeries.map(\.net),
-                    color: MeuFluxColors.info
-                )
-            }
-
-            kpiCard(
-                title: "Gastos vs Mês A...",
+                iconTint: MeuFluxColors.info,
+                sparkline: snap.incomeExpenseSeries.map(\.net)
+            ),
+            KPISlide(
+                id: "mom-expense",
+                title: "Gastos vs Mês Ant.",
                 value: momText(snap.monthOverMonth.expenseDeltaPct),
                 subtitle: "Este mês \(snap.cashflow.expense.formatted()) · ant. \(snap.monthOverMonth.previousExpense.formatted())",
                 valueColor: snap.monthOverMonth.expenseDeltaPct > 0 ? MeuFluxColors.danger : MeuFluxColors.success,
                 icon: "chart.bar.fill",
-                iconTint: snap.monthOverMonth.expenseDeltaPct > 0 ? MeuFluxColors.danger : MeuFluxColors.success
-            ) {
-                SparklineChart(
-                    values: snap.incomeExpenseSeries.map(\.despesa),
-                    color: MeuFluxColors.danger
-                )
-            }
+                iconTint: snap.monthOverMonth.expenseDeltaPct > 0 ? MeuFluxColors.danger : MeuFluxColors.success,
+                sparkline: snap.incomeExpenseSeries.map(\.despesa)
+            )
+        ]
+    }
+
+    private func clampedIndex(_ index: Int, count: Int) -> Int {
+        guard count > 0 else { return 0 }
+        return min(max(index, 0), count - 1)
+    }
+
+    private func runAutoAdvance(
+        enabled: Bool,
+        advance: @MainActor () -> Void
+    ) async {
+        guard enabled else { return }
+        while !Task.isCancelled {
+            try? await Task.sleep(for: .seconds(3))
+            guard !Task.isCancelled else { return }
+            advance()
         }
     }
 
@@ -539,6 +813,7 @@ public struct DashboardView: View {
                             isCredit: tx.isCredit,
                             badge: nil,
                             isPending: tx.isPending,
+                            categoryKey: tx.category,
                             action: { selectedDetail = LineItemDetail.from(dashboard: tx) }
                         )
                         if tx.id != snap.recentTransactions.last?.id {
@@ -682,41 +957,6 @@ public struct DashboardView: View {
         return Color(hex: value)
     }
 
-    private func insightsStream(_ insights: [DashboardInsight]) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Insights")
-                        .font(.system(size: 20, weight: .bold))
-                        .foregroundStyle(MeuFluxColors.textPrimary)
-                    Text("O que mudou nas suas finanças")
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(MeuFluxColors.textMuted)
-                }
-                Spacer()
-                if !insights.isEmpty {
-                    Button {
-                        showAllInsights = true
-                    } label: {
-                        HStack(spacing: 2) {
-                            Text("Ver Todos")
-                                .font(.caption.weight(.semibold))
-                            Image(systemName: "chevron.right")
-                                .font(.system(size: 11, weight: .semibold))
-                        }
-                        .foregroundStyle(MeuFluxColors.primary)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-
-            let preview = Array(insights.prefix(3))
-            ForEach(Array(preview.enumerated()), id: \.element.id) { index, insight in
-                insightCard(insight, truncated: index == 2 && insights.count > 2)
-            }
-        }
-    }
-
     private func insightsList(_ insights: [DashboardInsight]) -> some View {
         ScrollView {
             LazyVStack(spacing: 12) {
@@ -763,52 +1003,6 @@ public struct DashboardView: View {
             .frame(width: 4)
         }
         .opacity(truncated ? 0.9 : 1)
-    }
-
-    private func kpiCard<Chart: View>(
-        title: String,
-        value: String,
-        subtitle: String,
-        valueColor: Color,
-        icon: String,
-        iconTint: Color,
-        @ViewBuilder chart: () -> Chart
-    ) -> some View {
-        GlassCard(padding: 14) {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(alignment: .top) {
-                    Text(title.uppercased())
-                        .font(.system(size: 11, weight: .bold))
-                        .tracking(0.6)
-                        .foregroundStyle(MeuFluxColors.textMuted)
-                        .lineLimit(2)
-                    Spacer(minLength: 4)
-                    Image(systemName: icon)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(iconTint)
-                        .frame(width: 28, height: 28)
-                        .background(iconTint.opacity(0.12), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .strokeBorder(iconTint.opacity(0.18), lineWidth: 1)
-                        )
-                }
-                Text(value)
-                    .font(.system(size: 20, weight: .bold).monospacedDigit())
-                    .tracking(-0.3)
-                    .foregroundStyle(valueColor)
-                    .minimumScaleFactor(0.7)
-                    .lineLimit(1)
-                Text(subtitle)
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(MeuFluxColors.textMuted)
-                    .lineLimit(2)
-                chart()
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 40)
-                    .clipped()
-            }
-        }
     }
 
     private func bankSubtitle(_ snap: DashboardSnapshot) -> String {

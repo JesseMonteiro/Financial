@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Search, ArrowDownRight, ArrowUpRight, Download, RefreshCw } from 'lucide-react';
+import { Search, Download, RefreshCw } from 'lucide-react';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { SkeletonList } from '../components/ui/Skeleton';
+import { CategoryIcon } from '../components/CategoryIcon';
 import { useTransactionStore } from '../stores/transactionStore';
 import { useAccountStore } from '../stores/accountStore';
 import { formatCurrency, formatDateRelative, formatDate } from '../utils/formatters';
@@ -12,6 +13,7 @@ import { isInitialEmpty } from '../utils/loading';
 import { ItemDetailSheet } from '../components/ItemDetailSheet';
 import { fromTransaction, categoryOptionsForItem, applyingCategory } from '../utils/lineItemDetail';
 import { fetchCategories } from '../services/api';
+import { AccountIcon, accountById } from '../components/AccountIcon';
 
 export function Transactions() {
   const { loadTransactions, getFilteredTransactions, transactions: rawTransactions, filters, setFilters, loading, lastUpdated, updateOpenFinanceCategory } = useTransactionStore();
@@ -166,19 +168,11 @@ export function Transactions() {
                   }}
                 >
                   <div className="list-row-main">
-                    <div style={{
-                      width: 38,
-                      height: 38,
-                      borderRadius: '50%',
-                      backgroundColor: isIncome ? 'var(--success-bg)' : 'var(--danger-bg)',
-                      color: isIncome ? 'var(--success)' : 'var(--danger)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      flexShrink: 0
-                    }}>
-                      {isIncome ? <ArrowUpRight size={20} /> : <ArrowDownRight size={20} />}
-                    </div>
+                    <CategoryIcon
+                      category={tx.category}
+                      isCredit={isIncome}
+                      size={38}
+                    />
                     <div style={{ minWidth: 0 }}>
                       <h4 style={{
                         fontWeight: 600,

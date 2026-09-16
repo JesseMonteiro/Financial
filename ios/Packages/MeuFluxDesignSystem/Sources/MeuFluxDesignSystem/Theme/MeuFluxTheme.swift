@@ -173,6 +173,13 @@ public extension Color {
         self.init(.sRGB, red: r, green: g, blue: b, opacity: opacity)
     }
 
+    init?(hexString: String, opacity: Double = 1) {
+        var value = hexString.trimmingCharacters(in: .whitespacesAndNewlines)
+        if value.hasPrefix("#") { value.removeFirst() }
+        guard value.count == 6, let int = UInt64(value, radix: 16) else { return nil }
+        self.init(hex: UInt32(int), opacity: opacity)
+    }
+
     init(light: UInt32, dark: UInt32, lightOpacity: Double = 1, darkOpacity: Double = 1) {
         #if canImport(UIKit)
         self.init(uiColor: UIColor { traits in

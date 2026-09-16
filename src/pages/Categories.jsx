@@ -4,6 +4,7 @@ import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { IconBusyButton, SavingScope } from '../components/ui/Spinner';
 import { PageLoadingSkeleton } from '../components/ui/Skeleton';
+import { CategoryMark } from '../components/CategoryIcon';
 import { useCategoryStore } from '../stores/categoryStore';
 import { isInitialEmpty } from '../utils/loading';
 
@@ -132,15 +133,10 @@ export function Categories() {
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: 0 }}>
-                  <span
-                    aria-hidden
-                    style={{
-                      width: 16,
-                      height: 16,
-                      borderRadius: 999,
-                      backgroundColor: category.color || 'var(--primary)',
-                      flexShrink: 0,
-                    }}
+                  <CategoryMark
+                    categoryKey={category.key}
+                    color={category.color}
+                    size={32}
                   />
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontWeight: 600, fontSize: 'var(--font-size-sm)' }}>{category.label}</div>

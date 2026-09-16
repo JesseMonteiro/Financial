@@ -5,8 +5,6 @@ import {
   Search, 
   ChevronRight,
   ChevronLeft,
-  Receipt,
-  CheckCircle2,
   TrendingUp,
   AlertCircle,
   Plus
@@ -30,6 +28,7 @@ import { translateCategory } from '../utils/categories';
 import { getCategoryColor } from '../utils/colors';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell } from 'recharts';
 import { AccountIcon } from '../components/AccountIcon';
+import { CategoryIcon } from '../components/CategoryIcon';
 import { CreditCardFace } from '../components/CreditCardFace';
 import { useIsMobile } from '../hooks/useMediaQuery';
 import {
@@ -799,14 +798,13 @@ export function CreditCards() {
                     style={{ padding: '0.75rem 0.85rem' }}
                   >
                     <div className="list-row-main" style={{ gap: '0.75rem' }}>
-                      <div style={{
-                        width: 36, height: 36, borderRadius: '50%',
-                        backgroundColor: isPayment ? 'var(--success-bg)' : 'var(--danger-bg)',
-                        color: isPayment ? 'var(--success)' : 'var(--danger)',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
-                      }}>
-                        {isPayment ? <CheckCircle2 size={18} /> : <Receipt size={18} />}
-                      </div>
+                      <CategoryIcon
+                        category={isPayment ? null : tx.category}
+                        isPayment={isPayment}
+                        isCredit={isCredit && !isPayment}
+                        emptyFallback="receipt"
+                        size={36}
+                      />
                       <div style={{ minWidth: 0 }}>
                         <h4 style={{
                           fontWeight: 600, fontSize: 'var(--font-size-sm)', color: 'var(--text-primary)',
