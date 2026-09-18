@@ -29,8 +29,8 @@ public enum MeuFluxColors {
     public static let glassTint = Color(light: 0xFFFFFF, dark: 0x1B1B22, lightOpacity: 0.70, darkOpacity: 0.75)
     /// Elevated cards / glass panels (`--bg-card`).
     public static let card = Color(light: 0xFFFFFF, dark: 0x1B1B22, lightOpacity: 0.78, darkOpacity: 0.70)
-    public static let cardShadow = Color(light: 0x2563EB, dark: 0x000000, lightOpacity: 0.06, darkOpacity: 0.45)
-    public static let cardShadowSecondary = Color(light: 0x0F172A, dark: 0x000000, lightOpacity: 0.03, darkOpacity: 0.28)
+    public static let cardShadow = Color(light: 0x2563EB, dark: 0x000000, lightOpacity: 0.08, darkOpacity: 0.38)
+    public static let cardShadowSecondary = Color(light: 0x0F172A, dark: 0x000000, lightOpacity: 0.04, darkOpacity: 0.20)
     public static let shimmerHighlight = Color(light: 0xFFFFFF, dark: 0x35343B, lightOpacity: 0.78, darkOpacity: 0.55)
 
     public static let bloomBlue = Color(light: 0xBFDBFE, dark: 0x8083FF, lightOpacity: 0.45, darkOpacity: 0.20)

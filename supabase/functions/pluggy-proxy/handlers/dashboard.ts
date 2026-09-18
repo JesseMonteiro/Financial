@@ -11,8 +11,8 @@ import {
   currentYm,
   buildDailySpend,
   buildRecentCreditPurchases,
+  buildRecentExecutedTransactions,
   expensesByCategory,
-  isIncomeTx,
   monthCashflow,
   monthOverMonth,
   translateCategory,
@@ -189,20 +189,10 @@ export async function handleDashboard(
     profileRes.data?.display_name || "usuário",
   ).trim() || "usuário";
 
-  const recentTransactions = transactions.slice(0, 5).map((tx) => {
-    const amount = Number(tx.amount) || 0;
-    const isCredit = isIncomeTx(tx);
-    return {
-      id: String(tx.id || `${tx.accountId}-${tx.date}-${amount}`),
-      description: String(tx.description || "Lançamento"),
-      category: translateCategory(tx.category),
-      categoryId: tx.categoryId ? String(tx.categoryId) : null,
-      date: String(tx.date || "").slice(0, 10),
-      dateRelative: formatRelativeDate(String(tx.date || "")),
-      amount: Math.abs(amount),
-      isCredit,
-      isPending: String(tx.status || "").toUpperCase() === "PENDING",
-    };
+  const recentTransactions = buildRecentExecutedTransactions(transactions, {
+    limit: 5,
+    formatRelativeDate,
+    translateCategory,
   });
 
   const accountNameById = new Map(

@@ -123,7 +123,15 @@ export function isIncomeTx(tx: AnyRec): boolean {
 
 function installmentNumberOf(tx: AnyRec): number {
   const n = Number(tx?.creditCardMetadata?.installmentNumber ?? tx?.currentInstallment ?? 0);
-  return Number.isFinite(n) ? n : 0;
+  if (Number.isFinite(n) && n > 0) return n;
+  // Fallback when Pluggy only embeds N/M in the merchant description.
+  const desc = String(tx?.description || "");
+  const match = desc.match(/\b(\d{1,2})\s*\/\s*(\d{1,2})\b/);
+  if (!match) return 0;
+  const num = Number(match[1]);
+  const total = Number(match[2]);
+  if (total >= 2 && num >= 1 && num <= total) return num;
+  return 0;
 }
 
 function purchaseDay(tx: AnyRec): string {
@@ -243,6 +251,75 @@ export function recentPurchaseWindowStart(
 
 export function purchaseDayOf(tx: AnyRec): string {
   return purchaseDay(tx);
+}
+
+/**
+ * Home “Últimas Transações”: only what already happened.
+ * Drops app-projected installments, future-dated rows (SP), and later parcels
+ * of the same purchase (N/M with N > 1) so a parcelado compra appears once.
+ * Sorted newest → oldest.
+ */
+export function buildRecentExecutedTransactions(
+  transactions: AnyRec[] = [],
+  opts: {
+    limit?: number;
+    now?: Date;
+    formatRelativeDate?: (iso: string) => string;
+    translateCategory?: (raw: unknown) => string;
+    isIncome?: (tx: AnyRec) => boolean;
+  } = {},
+): AnyRec[] {
+  const limit = opts.limit ?? 5;
+  const now = opts.now ?? new Date();
+  const today = saoPauloDateKey(now);
+  const rel = opts.formatRelativeDate ?? ((iso: string) => iso);
+  const cat = opts.translateCategory ?? ((raw: unknown) => String(raw || ""));
+  const income = opts.isIncome ?? isIncomeTx;
+
+  const seenIds = new Set<string>();
+  const seenPurchases = new Set<string>();
+  const rows: AnyRec[] = [];
+
+  for (const tx of transactions) {
+    if (!tx || tx.isProjected) continue;
+    // Later installments of the same purchase are not separate “transactions”
+    // on the home card — only the original charge (or non-installment row).
+    if (installmentNumberOf(tx) > 1) continue;
+    const day = String(tx.date || "").slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) continue;
+    if (day > today) continue;
+
+    const id = String(tx.id || "");
+    if (id) {
+      if (seenIds.has(id)) continue;
+      seenIds.add(id);
+    }
+    const identity = purchaseIdentity(tx);
+    if (identity) {
+      if (seenPurchases.has(identity)) continue;
+      seenPurchases.add(identity);
+    }
+    rows.push(tx);
+  }
+
+  rows.sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
+
+  return rows.slice(0, limit).map((tx) => {
+    const amount = Number(tx.amount) || 0;
+    const day = String(tx.date || "").slice(0, 10);
+    const isCredit = income(tx);
+    return {
+      id: String(tx.id || `${tx.accountId}-${day}-${amount}`),
+      description: String(tx.description || "Lançamento"),
+      category: cat(tx.category),
+      categoryId: tx.categoryId ? String(tx.categoryId) : null,
+      date: day,
+      dateRelative: rel(day),
+      amount: Math.abs(amount),
+      isCredit,
+      isPending: String(tx.status || "").toUpperCase() === "PENDING",
+    };
+  });
 }
 
 /**

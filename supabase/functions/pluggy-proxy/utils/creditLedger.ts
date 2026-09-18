@@ -12,22 +12,29 @@ import { hydrateManualAccount, syntheticManualBill } from "./manualAccounts.ts";
 // deno-lint-ignore no-explicit-any
 type AnyRec = Record<string, any>;
 
-export async function fetchAccountsWithConnectors(client: PluggyClient): Promise<AnyRec[]> {
+export async function fetchAccountsWithConnectors(
+  client: PluggyClient,
+  opts: { includeConnectors?: boolean } = {},
+): Promise<AnyRec[]> {
+  const includeConnectors = opts.includeConnectors !== false;
   const chunks = await Promise.all(client.itemIds.map(async (iid) => {
     try {
-      const [d, item] = await Promise.all([
-        pluggyJson(client, "/accounts", { params: { itemId: iid } }) as Promise<{
-          results?: AnyRec[];
-        }>,
-        pluggyJson(client, `/items/${iid}`).catch(() => null) as Promise<{
-          connector?: { name?: string };
-        } | null>,
-      ]);
+      const accountsPromise = pluggyJson(client, "/accounts", { params: { itemId: iid } }) as Promise<{
+        results?: AnyRec[];
+      }>;
+      const itemPromise = includeConnectors
+        ? pluggyJson(client, `/items/${iid}`).catch(() => null) as Promise<{
+          connector?: { name?: string; id?: number | string };
+        } | null>
+        : Promise.resolve(null);
+      const [d, item] = await Promise.all([accountsPromise, itemPromise]);
       const connectorName = item?.connector?.name ? String(item.connector.name) : "";
+      const connectorId = item?.connector?.id;
       return (d.results || []).map((acc) => ({
         ...acc,
         itemId: acc.itemId || iid,
         _connector: connectorName,
+        _connectorId: connectorId,
       }));
     } catch (e) {
       console.error("[credit-ledger] accounts", iid, e);
@@ -55,7 +62,9 @@ export async function fetchBillsForAccount(
 export async function fetchAllTransactionsForAccount(
   client: PluggyClient,
   accountId: string,
+  opts: { maxPages?: number } = {},
 ): Promise<AnyRec[]> {
+  const maxPages = Math.max(1, Math.min(30, opts.maxPages ?? 30));
   const results: AnyRec[] = [];
   let next: string | null = null;
   let guard = 0;
@@ -77,13 +86,14 @@ export async function fetchAllTransactionsForAccount(
       break;
     }
     guard++;
-  } while (next && guard < 30);
+  } while (next && guard < maxPages);
   return results;
 }
 
 export async function loadCreditLedger(
   client: PluggyClient,
   creditCards: AnyRec[],
+  opts: { maxPages?: number } = {},
 ): Promise<{
   transactionsByAccount: Record<string, AnyRec[]>;
   billsByAccount: Record<string, AnyRec[]>;
@@ -100,7 +110,7 @@ export async function loadCreditLedger(
       return;
     }
     const [txs, bills] = await Promise.all([
-      fetchAllTransactionsForAccount(client, id),
+      fetchAllTransactionsForAccount(client, id, opts),
       fetchBillsForAccount(client, id),
     ]);
     transactionsByAccount[id] = txs;

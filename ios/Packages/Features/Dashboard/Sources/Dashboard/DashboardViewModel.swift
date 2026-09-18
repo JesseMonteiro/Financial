@@ -424,7 +424,9 @@ public final class DashboardViewModel {
         let generation = loadGeneration
         state.beginLoad(silentIfPossible: true)
         do {
-            let snapshot = try await loadDashboard.execute(month: selectedMonth, force: force)
+            var snapshot = try await loadDashboard.execute(month: selectedMonth, force: force)
+            // Home “Últimas Transações”: only effected activity — never future/projected parcels.
+            snapshot.recentTransactions = Self.executedRecentTransactions(snapshot.recentTransactions)
             guard generation == loadGeneration else { return }
             await loadDailyFlow(
                 force: force,
@@ -472,6 +474,18 @@ public final class DashboardViewModel {
         if let urlError = error as? URLError, urlError.code == .cancelled { return true }
         let nsError = error as NSError
         return nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorCancelled
+    }
+
+    /// Drop rows dated after today (SP). Projected installments often arrive with future `date`.
+    static func executedRecentTransactions(
+        _ rows: [DashboardRecentTransaction],
+        now: Date = Date()
+    ) -> [DashboardRecentTransaction] {
+        let today = InstantDate(from: now, calendar: DailyFlowBuilder.saoPauloCalendar())
+        return rows.filter { row in
+            guard let day = InstantDate(isoString: row.date) else { return false }
+            return day <= today
+        }
     }
 
     public func changeCategory(id: String, option: LineItemCategoryOption) async {

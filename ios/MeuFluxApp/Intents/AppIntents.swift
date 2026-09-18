@@ -160,7 +160,7 @@ public struct GetWeeklySpendIntent: AppIntent {
 public struct GetBalanceIntent: AppIntent {
     public static let title: LocalizedStringResource = "Saldo no MeuFlux"
     public static let description = IntentDescription(
-        "Responde o saldo das contas Open Finance no app MeuFlux. Não consulta a Carteira da Apple nem o Apple Cash.",
+        "Responde o saldo das contas Open Finance no app MeuFlux.",
         categoryName: "MeuFlux",
         searchKeywords: ["MeuFlux", "Open Finance", "saldo das contas", "patrimônio"]
     )
@@ -200,7 +200,7 @@ public struct GetOpenBillsIntent: AppIntent {
 public struct GetTopCardSpendIntent: AppIntent {
     public static let title: LocalizedStringResource = "Maior fatura no MeuFlux"
     public static let description = IntentDescription(
-        "Diz qual cartão Open Finance do MeuFlux tem a maior fatura aberta. Não usa Apple Cash nem a Carteira da Apple.",
+        "Diz qual cartão Open Finance do MeuFlux tem a maior fatura aberta.",
         categoryName: "MeuFlux",
         searchKeywords: ["MeuFlux", "fatura", "Open Finance", "gastos do cartão"]
     )

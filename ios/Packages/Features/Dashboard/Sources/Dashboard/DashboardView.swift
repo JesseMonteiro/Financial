@@ -245,7 +245,6 @@ public struct DashboardView: View {
             .tabViewStyle(.page(indexDisplayMode: .never))
         }
         .aspectRatio(1, contentMode: .fit)
-        .clipped()
         .task(id: "\(kpiAutoToken)-\(count)-\(reduceMotion)") {
             await runAutoAdvance(enabled: !reduceMotion && count > 1) {
                 withAnimation(reduceMotion ? nil : MotionTokens.easeOutFast) {
@@ -276,24 +275,63 @@ public struct DashboardView: View {
 
     private func insightsCarouselCard(_ insights: [DashboardInsight]) -> some View {
         let hasInsights = !insights.isEmpty
+        let activeInsight = hasInsights ? insights[clampedIndex(insightSlideIndex, count: insights.count)] : nil
+        let accent = activeInsight.map { insightBorder($0.type) } ?? MeuFluxColors.info
+        let shape = RoundedRectangle(cornerRadius: Radius().xxl, style: .continuous)
 
-        return Group {
+        return VStack(alignment: .leading, spacing: 0) {
             if hasInsights {
                 TabView(selection: $insightSlideIndex) {
                     ForEach(Array(insights.enumerated()), id: \.element.id) { offset, insight in
-                        insightCarouselSlide(insight)
+                        insightSlideContent(insight)
                             .tag(offset)
                     }
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))
             } else {
-                GlassCard(padding: 14) {
-                    emptyInsightSlide
+                emptyInsightSlide
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background {
+            ZStack {
+                FrostedFill(cornerRadius: Radius().xxl)
+                if hasInsights {
+                    shape.fill(
+                        LinearGradient(
+                            colors: [accent.opacity(0.24), accent.opacity(0.08)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
                 }
             }
         }
+        .overlay {
+            shape.strokeBorder(hasInsights ? accent.opacity(0.38) : MeuFluxColors.border, lineWidth: 1)
+        }
+        .overlay(alignment: .top) {
+            shape
+                .strokeBorder(
+                    LinearGradient(
+                        colors: [Color.white.opacity(0.28), Color.white.opacity(0)],
+                        startPoint: .top,
+                        endPoint: .center
+                    ),
+                    lineWidth: 1
+                )
+                .allowsHitTesting(false)
+        }
+        .clipShape(shape)
+        .shadow(
+            color: hasInsights ? accent.opacity(0.20) : MeuFluxColors.cardShadow,
+            radius: 16,
+            y: 8
+        )
+        .shadow(color: MeuFluxColors.cardShadowSecondary, radius: 8, y: 3)
         .aspectRatio(1, contentMode: .fit)
-        .clipped()
+        .animation(.smooth(duration: 0.35), value: insightSlideIndex)
         .task(id: "\(insightAutoToken)-\(insights.count)-\(reduceMotion)") {
             await runAutoAdvance(enabled: !reduceMotion && insights.count > 1) {
                 withAnimation(reduceMotion ? nil : MotionTokens.easeOutFast) {
@@ -345,7 +383,6 @@ public struct DashboardView: View {
                 .tabViewStyle(.page(indexDisplayMode: .never))
                 .frame(height: 76)
             }
-            .clipped()
             .onChange(of: purchases.count) { _, newCount in
                 purchaseSlideIndex = clampedIndex(purchaseSlideIndex, count: max(newCount, 1))
             }
@@ -458,10 +495,9 @@ public struct DashboardView: View {
         }
     }
 
-    private func insightCarouselSlide(_ insight: DashboardInsight) -> some View {
+    private func insightSlideContent(_ insight: DashboardInsight) -> some View {
         let accent = insightBorder(insight.type)
         let footer = insightFooter(insight)
-        let shape = RoundedRectangle(cornerRadius: Radius().xxl, style: .continuous)
 
         return VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .center, spacing: 8) {
@@ -501,38 +537,7 @@ public struct DashboardView: View {
             }
             .foregroundStyle(MeuFluxColors.textPrimary.opacity(0.72))
         }
-        .padding(14)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background {
-            ZStack {
-                FrostedFill(cornerRadius: Radius().xxl)
-                shape.fill(
-                    LinearGradient(
-                        colors: [accent.opacity(0.34), accent.opacity(0.16)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-            }
-        }
-        .overlay {
-            shape.strokeBorder(accent.opacity(0.42), lineWidth: 1)
-        }
-        .overlay(alignment: .top) {
-            shape
-                .strokeBorder(
-                    LinearGradient(
-                        colors: [Color.white.opacity(0.28), Color.white.opacity(0)],
-                        startPoint: .top,
-                        endPoint: .center
-                    ),
-                    lineWidth: 1
-                )
-                .allowsHitTesting(false)
-        }
-        .clipShape(shape)
-        .shadow(color: accent.opacity(0.18), radius: 14, y: 6)
-        .shadow(color: MeuFluxColors.cardShadowSecondary, radius: 8, y: 3)
     }
 
     private func tintedInsightLabel(_ text: String, accent: Color) -> some View {

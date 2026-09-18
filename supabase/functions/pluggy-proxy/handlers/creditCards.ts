@@ -1,6 +1,8 @@
 /**
  * Screen payload for Cartões: same bill engine as the web app.
  * Never uses account.balance as open-bill total (that is total outstanding).
+ * Tuned for Edge CPU/memory limits (HTTP 546 = WORKER_RESOURCE_LIMIT):
+ * capped Pluggy tx pages + one bill build per card (shared by summary + periods).
  */
 import { jsonResponse } from "../middleware/http.ts";
 import {
@@ -12,7 +14,6 @@ import {
   isBillPayment,
   resolvePurchaseDate,
   signedTxAmount,
-  summarizeCardOpenBill,
   txBillingAmount,
 } from "../creditBillPeriod.ts";
 import {
@@ -174,6 +175,31 @@ function serializePeriod(
   };
 }
 
+/** Enough pages for open + near history; official bills cover older closed cycles. */
+const CREDIT_CARDS_TX_MAX_PAGES = 4;
+
+type BuiltBills = ReturnType<typeof buildCreditCardBills>;
+
+function summaryFromBuilt(built: BuiltBills) {
+  const open = built.bills[built.openDueKey];
+  const lastPaidKey = [...built.sortedDueKeys]
+    .reverse()
+    .find((k) => {
+      const b = built.bills[k];
+      return b?.isPaid && b?.type === "PAST" && (b.hasOfficial || (Number(b.total) || 0) > 0.05);
+    });
+  const lastPaid = lastPaidKey ? built.bills[lastPaidKey] : null;
+  return {
+    openDueKey: built.openDueKey,
+    openTitle: formatDueMonthTitle(built.openDueKey),
+    openTotal: open?.total != null ? Number(open.total) : 0,
+    openDueDate: open?.dueDate || null,
+    lastPaidKey: lastPaidKey || null,
+    lastPaidTitle: lastPaidKey ? formatDueMonthTitle(lastPaidKey) : null,
+    lastPaidTotal: lastPaid ? lastPaid.total : null,
+  };
+}
+
 export async function handleCreditCards(client: PluggyClient): Promise<Response> {
   const [creditCards, overlays] = await Promise.all([
     fetchCreditAccounts(client),
@@ -190,12 +216,30 @@ export async function handleCreditCards(client: PluggyClient): Promise<Response>
   }
 
   const cardsById = new Map(creditCards.map((c) => [String(c.id), c]));
-  const { transactionsByAccount, billsByAccount } = await loadCreditLedger(client, creditCards);
+  // Cap pages to stay under Edge WORKER_RESOURCE_LIMIT (HTTP 546) on heavy accounts.
+  const { transactionsByAccount, billsByAccount } = await loadCreditLedger(client, creditCards, {
+    maxPages: CREDIT_CARDS_TX_MAX_PAGES,
+  });
   const manuals = await loadManualTransactions(client);
   for (const tx of manuals) {
     const id = String(tx.accountId || "");
     if (!id || !cardsById.has(id)) continue;
     transactionsByAccount[id] = [...(transactionsByAccount[id] || []), tx];
+  }
+
+  // One build per card → reuse for card KPIs and periods[cardId] (was 2× before).
+  const builtByCard = new Map<string, BuiltBills>();
+  for (const card of creditCards) {
+    const id = String(card.id);
+    builtByCard.set(
+      id,
+      buildCreditCardBills({
+        transactions: transactionsByAccount[id] || [],
+        officialBills: billsByAccount[id] || [],
+        creditCards: [card],
+        selectedCardId: id,
+      }),
+    );
   }
 
   const cards = creditCards.map((card) => {
@@ -204,11 +248,7 @@ export async function handleCreditCards(client: PluggyClient): Promise<Response>
       creditLimit?: number;
       availableCreditLimit?: number;
     };
-    const summary = summarizeCardOpenBill(
-      card,
-      transactionsByAccount[id] || [],
-      billsByAccount[id] || [],
-    );
+    const summary = summaryFromBuilt(builtByCard.get(id)!);
     const outstanding = Math.abs(Number(card.balance) || 0);
     const overlay = overlayFor(overlays.icons, id);
     const facePath = overlay.facePath || overlay.face_path || null;
@@ -287,12 +327,7 @@ export async function handleCreditCards(client: PluggyClient): Promise<Response>
   for (const card of creditCards) {
     const id = String(card.id);
     periods[id] = serializePeriod(
-      buildCreditCardBills({
-        transactions: transactionsByAccount[id] || [],
-        officialBills: billsByAccount[id] || [],
-        creditCards: [card],
-        selectedCardId: id,
-      }),
+      builtByCard.get(id)!,
       cardsById,
       id,
       displayNameById,

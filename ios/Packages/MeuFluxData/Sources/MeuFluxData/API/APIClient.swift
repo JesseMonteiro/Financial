@@ -124,7 +124,7 @@ public final class APIClient: APIClientProtocol, @unchecked Sendable {
             throw AppError.notFound
         case 546:
             throw AppError.unknown(
-                "O servidor precisou de mais recursos para consolidar a conta conjunta. Tente novamente em instantes."
+                "O servidor precisou de mais recursos para processar esta solicitação. Tente novamente em instantes."
             )
         default:
             throw AppError.unknown(Self.errorMessage(from: data) ?? "HTTP \(http.statusCode)")
