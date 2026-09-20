@@ -23,11 +23,21 @@ public struct DailySpendPoint: Identifiable, Hashable, Sendable {
     public var day: InstantDate
     public var amount: Decimal
     public var largestPurchase: Decimal
+    public var purchases: [DashboardRecentTransaction]
+    public var topPurchase: DashboardRecentTransaction?
 
-    public init(day: InstantDate, amount: Decimal, largestPurchase: Decimal = 0) {
+    public init(
+        day: InstantDate,
+        amount: Decimal,
+        largestPurchase: Decimal = 0,
+        purchases: [DashboardRecentTransaction] = [],
+        topPurchase: DashboardRecentTransaction? = nil
+    ) {
         self.day = day
         self.amount = amount
         self.largestPurchase = largestPurchase
+        self.purchases = purchases
+        self.topPurchase = topPurchase ?? purchases.first
     }
 
     public var isToday: Bool { day == InstantDate(from: Date()) }
@@ -42,6 +52,16 @@ enum DailyFlowBuilder {
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = TimeZone(identifier: "America/Sao_Paulo") ?? .current
         return cal
+    }
+
+    static func formatRelativeDate(_ day: InstantDate, now: Date, cal: Calendar) -> String {
+        let today = InstantDate(from: now, calendar: cal)
+        if day == today { return "Hoje" }
+        if let yest = cal.date(byAdding: .day, value: -1, to: now),
+           day == InstantDate(from: yest, calendar: cal) {
+            return "Ontem"
+        }
+        return String(format: "%02d/%02d/%04d", day.day, day.month, day.year)
     }
 
     static func isExpense(_ tx: Transaction) -> Bool {
@@ -99,8 +119,9 @@ enum DailyFlowBuilder {
     }
 
     static func points(
-        from transactions: [Transaction],
+        from transactions: [Transaction] = [],
         recent: [DashboardRecentTransaction] = [],
+        purchases: [DashboardRecentTransaction] = [],
         snapshot: [DashboardDailySpendPoint] = [],
         days: Int,
         now: Date = Date()
@@ -108,6 +129,16 @@ enum DailyFlowBuilder {
         let cal = saoPauloCalendar()
         var byDay: [InstantDate: Decimal] = [:]
         var maxByDay: [InstantDate: Decimal] = [:]
+        var purchasesByDay: [InstantDate: [DashboardRecentTransaction]] = [:]
+
+        func rememberPurchase(day: InstantDate, tx: DashboardRecentTransaction) {
+            guard day.year >= 2020 else { return }
+            var list = purchasesByDay[day] ?? []
+            if !list.contains(where: { $0.id == tx.id }) {
+                list.append(tx)
+                purchasesByDay[day] = list
+            }
+        }
 
         func rememberMax(day: InstantDate, purchase: Decimal) {
             guard day.year >= 2020 else { return }
@@ -122,29 +153,75 @@ enum DailyFlowBuilder {
             rememberMax(day: day, purchase: purchase ?? amount)
         }
 
+        for p in purchases {
+            guard let day = InstantDate(isoString: p.date) else { continue }
+            rememberPurchase(day: day, tx: p)
+            add(day: day, amount: p.amount.amount, purchase: p.amount.amount)
+        }
+
+        for tx in recent where isNewPurchase(tx) {
+            guard let day = InstantDate(isoString: tx.date) else { continue }
+            rememberPurchase(day: day, tx: tx)
+            add(day: day, amount: tx.amount.amount, purchase: tx.amount.amount)
+        }
+
+        for tx in transactions where isExpense(tx) {
+            let day = tx.date
+            let recentTx = DashboardRecentTransaction(
+                id: tx.id,
+                description: tx.description,
+                category: tx.category ?? "",
+                categoryId: tx.categoryId,
+                date: tx.date.isoString,
+                dateRelative: formatRelativeDate(tx.date, now: now, cal: cal),
+                amount: Money(amount: abs(tx.amount.amount)),
+                isCredit: false,
+                isPending: tx.isPending,
+                accountId: tx.accountId
+            )
+            rememberPurchase(day: day, tx: recentTx)
+            add(day: day, amount: tx.amount.amount, purchase: tx.amount.amount)
+        }
+
         if !snapshot.isEmpty {
             for row in snapshot {
                 guard let day = InstantDate(isoString: row.date) else { continue }
                 byDay[day] = abs(row.amount)
                 rememberMax(day: day, purchase: row.maxPurchase)
-            }
-        } else {
-            for tx in transactions where isExpense(tx) {
-                add(day: tx.date, amount: tx.amount.amount, purchase: tx.amount.amount)
-            }
-            for tx in recent where isNewPurchase(tx) {
-                guard let day = InstantDate(isoString: tx.date) else { continue }
-                add(day: day, amount: tx.amount.amount, purchase: tx.amount.amount)
+
+                if (purchasesByDay[day] ?? []).isEmpty, let desc = row.topPurchaseDescription, !desc.isEmpty {
+                    let amountVal = row.topPurchaseAmount ?? row.maxPurchase
+                    let synth = DashboardRecentTransaction(
+                        id: row.topPurchaseId ?? "snap-\(row.date)",
+                        description: desc,
+                        category: row.topPurchaseCategory ?? "",
+                        date: row.date,
+                        dateRelative: formatRelativeDate(day, now: now, cal: cal),
+                        amount: Money(amount: amountVal),
+                        isCredit: false,
+                        isPending: false,
+                        accountName: row.topPurchaseAccountName
+                    )
+                    rememberPurchase(day: day, tx: synth)
+                }
             }
         }
 
         return (0..<days).reversed().compactMap { offset in
             guard let date = cal.date(byAdding: .day, value: -offset, to: now) else { return nil }
             let day = InstantDate(from: date, calendar: cal)
+            var dayPurchases = purchasesByDay[day] ?? []
+            dayPurchases.sort { abs($0.amount.amount) > abs($1.amount.amount) }
+            let top = dayPurchases.first
+            let topAmt = top?.amount.amount ?? 0
+            let largest = max(maxByDay[day] ?? 0, topAmt)
+            let totalAmt = byDay[day] ?? (dayPurchases.reduce(Decimal.zero) { $0 + abs($1.amount.amount) })
             return DailySpendPoint(
                 day: day,
-                amount: byDay[day] ?? 0,
-                largestPurchase: maxByDay[day] ?? 0
+                amount: totalAmt,
+                largestPurchase: largest,
+                purchases: dayPurchases,
+                topPurchase: top
             )
         }
     }
@@ -380,6 +457,46 @@ public final class DashboardViewModel {
         return total / Decimal(points.count)
     }
 
+    public var loadedSnapshot: DashboardSnapshot? {
+        if case .loaded(let snap) = state { return snap }
+        return nil
+    }
+
+    /// Point corresponding to the currently selected day on the chart (if any).
+    public var selectedPoint: DailySpendPoint? {
+        guard let selectedDay else { return nil }
+        return visibleDailySpend.first(where: { $0.day == selectedDay })
+    }
+
+    /// True if the user has explicitly selected a day on the chart.
+    public var isDaySelected: Bool {
+        selectedDay != nil
+    }
+
+    /// The purchase to display on the left side of the Daily Flow card.
+    /// When a day is selected: returns that day's top purchase (if any).
+    /// When no day is selected: returns the period's largest purchase.
+    public var displayedDailyPurchase: DashboardRecentTransaction? {
+        if let point = selectedPoint {
+            return point.topPurchase
+        }
+        return largestPurchase?.topPurchase
+    }
+
+    /// The amount to display on the left side:
+    /// - If there is a displayed purchase, its amount.
+    /// - If a day is selected without an individual item record, that day's total amount.
+    /// - Otherwise, the largest purchase amount in the period.
+    public var displayedDailyAmount: Decimal {
+        if let purchase = displayedDailyPurchase {
+            return purchase.amount.amount
+        }
+        if let point = selectedPoint {
+            return point.amount
+        }
+        return largestPurchaseAmount
+    }
+
     public var dayOverDayDeltaPct: Double? {
         let points = visibleDailySpend
         guard points.count >= 2 else { return nil }
@@ -392,7 +509,15 @@ public final class DashboardViewModel {
     public var cycleProgress: Double { DailyFlowBuilder.cycleProgress() }
 
     public func select(day: InstantDate) {
-        selectedDay = day
+        if selectedDay == day {
+            selectedDay = nil
+        } else {
+            selectedDay = day
+        }
+    }
+
+    public func clearSelection() {
+        selectedDay = nil
     }
 
     public func load(force: Bool = false) async {
@@ -411,11 +536,12 @@ public final class DashboardViewModel {
             // Dashboard snapshot may be fresh while the purchases strip was never filled
             // (stale BFF payload / first paint before credit-ledger load).
             if recentCreditPurchases.isEmpty {
-                if case .loaded(let snap) = state {
-                    await loadRecentCreditPurchases(from: snap, force: false)
-                } else {
-                    await loadRecentCreditPurchases(from: nil, force: false)
-                }
+                let snap = loadedSnapshot
+                let p30 = await load30DayCreditPurchases(from: snap, force: false)
+                recentCreditPurchases = DailyFlowBuilder.creditPurchases(
+                    from: p30,
+                    days: Self.recentCreditPurchaseDays
+                )
             }
             return
         }
@@ -428,12 +554,17 @@ public final class DashboardViewModel {
             // Home “Últimas Transações”: only effected activity — never future/projected parcels.
             snapshot.recentTransactions = Self.executedRecentTransactions(snapshot.recentTransactions)
             guard generation == loadGeneration else { return }
+            let purchases30d = await load30DayCreditPurchases(from: snapshot, force: force)
+            recentCreditPurchases = DailyFlowBuilder.creditPurchases(
+                from: purchases30d,
+                days: Self.recentCreditPurchaseDays
+            )
             await loadDailyFlow(
                 force: force,
                 recent: snapshot.recentTransactions,
-                snapshot: snapshot.dailySpend
+                snapshot: snapshot.dailySpend,
+                purchases: purchases30d
             )
-            await loadRecentCreditPurchases(from: snapshot, force: force)
             guard generation == loadGeneration else { return }
             let hasAccounts = snapshot.summary.bankCount + snapshot.summary.creditCount > 0
             let hasActivity = !snapshot.recentTransactions.isEmpty
@@ -514,10 +645,10 @@ public final class DashboardViewModel {
     private func loadDailyFlow(
         force: Bool,
         recent: [DashboardRecentTransaction] = [],
-        snapshot: [DashboardDailySpendPoint] = []
+        snapshot: [DashboardDailySpendPoint] = [],
+        purchases: [DashboardRecentTransaction] = []
     ) async {
         let now = Date()
-        let cal = DailyFlowBuilder.saoPauloCalendar()
         var collected: [Transaction] = []
         let snapshotProvided = !snapshot.isEmpty
         if !snapshotProvided, let transactions {
@@ -535,48 +666,50 @@ public final class DashboardViewModel {
         dailySpend = DailyFlowBuilder.points(
             from: collected,
             recent: snapshotProvided ? [] : recent,
+            purchases: purchases,
             snapshot: snapshot,
             days: 30,
             now: now
         )
         todayTransactionCount = DailyFlowBuilder.todayTransactionCount(from: collected, now: now)
-        if selectedDay == nil {
-            selectedDay = dailySpend.last(where: { $0.amount > 0 })?.day
-                ?? InstantDate(from: now, calendar: cal)
+        if let current = selectedDay, !dailySpend.contains(where: { $0.day == current }) {
+            selectedDay = nil
         }
     }
 
-    private func loadRecentCreditPurchases(from snapshot: DashboardSnapshot?, force: Bool) async {
-        if let snapshot {
-            let windowed = DailyFlowBuilder.creditPurchases(
-                from: snapshot.recentCreditPurchases,
-                days: Self.recentCreditPurchaseDays
-            )
-            if !windowed.isEmpty {
-                recentCreditPurchases = windowed
-                return
-            }
-        }
+    private func load30DayCreditPurchases(from snapshot: DashboardSnapshot?, force: Bool) async -> [DashboardRecentTransaction] {
+        let now = Date()
+        let days = 30
 
         // Same ledger as Cartões — purchaseDate already matches Fluxo Diário.
         if let creditCards,
            let screen = try? await creditCards.fetchScreen(force: force) {
             let fromCards = DailyFlowBuilder.creditPurchases(
                 from: screen,
-                days: Self.recentCreditPurchaseDays
+                days: days,
+                now: now,
+                limit: 100
             )
             if !fromCards.isEmpty {
-                recentCreditPurchases = fromCards
-                return
+                return fromCards
+            }
+        }
+
+        if let snapshot {
+            let windowed = DailyFlowBuilder.creditPurchases(
+                from: snapshot.recentCreditPurchases,
+                days: days,
+                now: now
+            )
+            if !windowed.isEmpty {
+                return windowed
             }
         }
 
         guard let transactions else {
-            recentCreditPurchases = []
-            return
+            return []
         }
 
-        let now = Date()
         let current = YearMonth(from: now)
         var creditIds = Set<String>()
         if let accounts,
@@ -599,11 +732,12 @@ public final class DashboardViewModel {
             }
         }
 
-        recentCreditPurchases = DailyFlowBuilder.creditPurchases(
+        return DailyFlowBuilder.creditPurchases(
             from: collected,
             creditAccountIds: creditIds,
-            days: Self.recentCreditPurchaseDays,
-            now: now
+            days: days,
+            now: now,
+            limit: 100
         )
     }
 }

@@ -40,8 +40,14 @@ struct DailyFlowChart: View {
                     x: .value("Dia", point.dateValue),
                     y: .value("Gasto", point.doubleAmount)
                 )
-                .symbolSize(point.day == selectedDay || point.isToday ? 70 : 40)
+                .symbolSize(point.day == selectedDay ? 84 : (point.isToday ? 64 : 40))
                 .foregroundStyle(fillColor(for: point))
+            }
+
+            if let selectedDay, let selPoint = points.first(where: { $0.day == selectedDay }) {
+                RuleMark(x: .value("Dia", selPoint.dateValue))
+                    .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [4, 4]))
+                    .foregroundStyle(MeuFluxColors.primary.opacity(0.6))
             }
 
             RuleMark(y: .value("Média", NSDecimalNumber(decimal: average).doubleValue))
@@ -71,6 +77,7 @@ struct DailyFlowChart: View {
         .chartYScale(domain: 0...yMax)
         .chartLegend(.hidden)
         .chartXSelection(value: selectionBinding)
+        .sensoryFeedback(.selection, trigger: selectedDay)
         .chartPlotStyle { plot in
             plot
                 .padding(.horizontal, 14)
@@ -92,7 +99,11 @@ struct DailyFlowChart: View {
             get: { selectedDay?.date() },
             set: { date in
                 guard let date else { return }
-                onSelect(InstantDate(from: date))
+                if let closest = points.min(by: { abs($0.dateValue.timeIntervalSince(date)) < abs($1.dateValue.timeIntervalSince(date)) }) {
+                    onSelect(closest.day)
+                } else {
+                    onSelect(InstantDate(from: date))
+                }
             }
         )
     }
@@ -118,12 +129,8 @@ struct DailyFlowChart: View {
     }
 
     private func fillColor(for point: DailySpendPoint) -> Color {
-        if point.isToday { return MeuFluxColors.success }
         if point.day == selectedDay { return MeuFluxColors.primary }
+        if point.isToday { return MeuFluxColors.success }
         return Color.white
     }
-}
-
-private extension InstantDate {
-    var isToday: Bool { self == InstantDate(from: Date()) }
 }

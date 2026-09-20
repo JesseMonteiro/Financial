@@ -4,6 +4,7 @@ import { Button } from './ui/Button';
 import { Badge } from './ui/Badge';
 import { lineItemKindTitle, paidActionTitle } from '../utils/lineItemDetail';
 import { selectedCategoryValue } from '../utils/categories';
+import { CategoryIcon } from './CategoryIcon';
 import { useIsMobile } from '../hooks/useMediaQuery';
 
 function badgeVariant(text) {
@@ -53,8 +54,18 @@ export function ItemDetailSheet({
         </button>
         {editor || (
           <>
-            <p className="item-sheet__kind">{lineItemKindTitle(item.kind)}</p>
-            <h2 id="item-sheet-title" className="item-sheet__title">{item.title}</h2>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem', marginBottom: '0.65rem' }}>
+              <CategoryIcon
+                title={item.title}
+                category={item.categoryKey || item.category}
+                size={44}
+                isCredit={item.isCredit}
+              />
+              <div style={{ minWidth: 0 }}>
+                <p className="item-sheet__kind" style={{ margin: 0 }}>{lineItemKindTitle(item.kind)}</p>
+                <h2 id="item-sheet-title" className="item-sheet__title" style={{ margin: 0 }}>{item.title}</h2>
+              </div>
+            </div>
             <p
               className="item-sheet__amount"
               style={{ color: item.isCredit ? 'var(--success)' : 'var(--danger)' }}

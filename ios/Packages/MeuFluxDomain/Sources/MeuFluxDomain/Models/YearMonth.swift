@@ -126,6 +126,8 @@ public struct InstantDate: Sendable, Hashable, Codable, Comparable, CustomString
 
     public var yearMonth: YearMonth { YearMonth(year: year, month: month) }
 
+    public var isToday: Bool { self == InstantDate(from: Date()) }
+
     public static func < (lhs: InstantDate, rhs: InstantDate) -> Bool {
         if lhs.year != rhs.year { return lhs.year < rhs.year }
         if lhs.month != rhs.month { return lhs.month < rhs.month }

@@ -810,6 +810,8 @@ export function CreditCards() {
                         categories={purchaseCategories}
                         isPayment={isPayment}
                         isCredit={isCredit && !isPayment}
+                        title={isPayment ? null : tx.description}
+                        merchant={isPayment ? null : tx.merchant}
                         emptyFallback="receipt"
                         size={36}
                       />

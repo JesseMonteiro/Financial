@@ -99,6 +99,11 @@ public struct DashboardDailySpendDTO: Codable, Sendable {
     public let date: String
     public let amount: Double
     public let maxPurchase: Double?
+    public let topPurchaseDescription: String?
+    public let topPurchaseCategory: String?
+    public let topPurchaseAmount: Double?
+    public let topPurchaseId: String?
+    public let topPurchaseAccountName: String?
 }
 
 public struct DashboardBudgetCategoryDTO: Codable, Sendable {

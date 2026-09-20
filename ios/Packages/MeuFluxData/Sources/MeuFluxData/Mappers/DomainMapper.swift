@@ -861,7 +861,12 @@ public enum DomainMapper {
                 DashboardDailySpendPoint(
                     date: $0.date,
                     amount: money($0.amount).amount,
-                    maxPurchase: money($0.maxPurchase ?? 0).amount
+                    maxPurchase: money($0.maxPurchase ?? 0).amount,
+                    topPurchaseDescription: $0.topPurchaseDescription,
+                    topPurchaseCategory: $0.topPurchaseCategory,
+                    topPurchaseAmount: $0.topPurchaseAmount.map { money($0).amount },
+                    topPurchaseId: $0.topPurchaseId,
+                    topPurchaseAccountName: $0.topPurchaseAccountName
                 )
             },
             budgetCategories: dto.budgetCategories.map {

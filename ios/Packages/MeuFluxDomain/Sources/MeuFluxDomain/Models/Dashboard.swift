@@ -240,11 +240,30 @@ public struct DashboardDailySpendPoint: Sendable, Hashable, Identifiable {
     public var date: String
     public var amount: Decimal
     public var maxPurchase: Decimal
+    public var topPurchaseDescription: String?
+    public var topPurchaseCategory: String?
+    public var topPurchaseAmount: Decimal?
+    public var topPurchaseId: String?
+    public var topPurchaseAccountName: String?
 
-    public init(date: String, amount: Decimal, maxPurchase: Decimal = 0) {
+    public init(
+        date: String,
+        amount: Decimal,
+        maxPurchase: Decimal = 0,
+        topPurchaseDescription: String? = nil,
+        topPurchaseCategory: String? = nil,
+        topPurchaseAmount: Decimal? = nil,
+        topPurchaseId: String? = nil,
+        topPurchaseAccountName: String? = nil
+    ) {
         self.date = date
         self.amount = amount
         self.maxPurchase = maxPurchase
+        self.topPurchaseDescription = topPurchaseDescription
+        self.topPurchaseCategory = topPurchaseCategory
+        self.topPurchaseAmount = topPurchaseAmount
+        self.topPurchaseId = topPurchaseId
+        self.topPurchaseAccountName = topPurchaseAccountName
     }
 }
 

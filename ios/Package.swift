@@ -57,6 +57,7 @@ let package = Package(
             resources: [
                 .process("Resources/CardFaces.xcassets"),
                 .process("Resources/CardFaces"),
+                .copy("Resources/MerchantLogos"),
                 .process("Resources/Brand.xcassets"),
                 .copy("Resources/LogoLoading.gif"),
             ]
@@ -89,7 +90,7 @@ let package = Package(
         ),
         .testTarget(
             name: "MeuFluxTests",
-            dependencies: ["MeuFluxDomain", "MeuFluxCore", "MeuFluxData", "MeuFluxDesignSystem", "MeuFluxIntelligence"],
+            dependencies: ["MeuFluxDomain", "MeuFluxCore", "MeuFluxData", "MeuFluxDesignSystem", "MeuFluxIntelligence", "Dashboard"],
             path: "MeuFluxTests"
         ),
     ]

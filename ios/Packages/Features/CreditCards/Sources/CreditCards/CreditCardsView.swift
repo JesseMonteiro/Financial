@@ -648,12 +648,17 @@ public struct CreditCardsView: View {
         let cardName = viewModel.cardDisplayName(for: line)
         let tint = statementIconTint(for: line)
         let icon = statementIcon(for: line)
+        let merchantMatch = line.isPayment ? nil : MerchantLogoCatalog.match(text: line.description)
         return HStack(alignment: .top, spacing: 12) {
-            Image(systemName: icon)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(tint)
-                .frame(width: 36, height: 36)
-                .background(tint.opacity(0.12), in: Circle())
+            if let merchant = merchantMatch {
+                MerchantLogoView(entry: merchant, size: 36)
+            } else {
+                Image(systemName: icon)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(tint)
+                    .frame(width: 36, height: 36)
+                    .background(tint.opacity(0.12), in: Circle())
+            }
             VStack(alignment: .leading, spacing: 4) {
                 Text(line.description)
                     .font(.subheadline.weight(.semibold))

@@ -175,6 +175,8 @@ export function Transactions() {
                       category={tx.category}
                       categories={purchaseCategories}
                       isCredit={isIncome}
+                      title={tx.description}
+                      merchant={tx.merchant}
                       size={38}
                     />
                     <div style={{ minWidth: 0 }}>

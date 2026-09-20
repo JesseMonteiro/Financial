@@ -289,6 +289,8 @@ export function Dashboard() {
                       category={tx.category}
                       categories={purchaseCategories}
                       isCredit={tx.amount >= 0}
+                      title={tx.description}
+                      merchant={tx.merchant}
                       size={32}
                     />
                     <div style={{ minWidth: 0 }}>

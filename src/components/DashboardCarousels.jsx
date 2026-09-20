@@ -286,7 +286,12 @@ export function CreditPurchasesCarousel({ purchases = [], onSelect }) {
                 : undefined
             }
           >
-            <CategoryIcon category={purchase.category} size={36} emptyFallback="receipt" />
+            <CategoryIcon
+              category={purchase.category}
+              title={purchase.description}
+              size={36}
+              emptyFallback="receipt"
+            />
             <div className="dash-carousel__purchase-main">
               <span className="dash-carousel__eyebrow dash-carousel__eyebrow--muted">Últimas compras</span>
               <p className="dash-carousel__purchase-title">{purchase.description}</p>

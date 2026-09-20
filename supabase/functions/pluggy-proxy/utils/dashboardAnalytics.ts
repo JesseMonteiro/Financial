@@ -586,8 +586,24 @@ export function buildDailySpend(
   days = 30,
   now = new Date(),
   creditAccountIds: Set<string> = new Set(),
-): { date: string; amount: number; maxPurchase: number }[] {
-  const byDay = new Map<string, { amount: number; maxPurchase: number }>();
+): {
+  date: string;
+  amount: number;
+  maxPurchase: number;
+  topPurchaseDescription?: string | null;
+  topPurchaseCategory?: string | null;
+  topPurchaseAmount?: number | null;
+  topPurchaseId?: string | null;
+}[] {
+  interface DailyRecord {
+    amount: number;
+    maxPurchase: number;
+    topPurchaseDescription?: string;
+    topPurchaseCategory?: string;
+    topPurchaseAmount?: number;
+    topPurchaseId?: string;
+  }
+  const byDay = new Map<string, DailyRecord>();
   const seenIds = new Set<string>();
   const seenPurchases = new Set<string>();
   for (const t of transactions) {
@@ -605,7 +621,13 @@ export function buildDailySpend(
     const abs = Math.abs(Number(t.amount) || 0);
     const cur = byDay.get(iso) || { amount: 0, maxPurchase: 0 };
     cur.amount += abs;
-    cur.maxPurchase = Math.max(cur.maxPurchase, abs);
+    if (abs > cur.maxPurchase || !cur.topPurchaseDescription) {
+      cur.maxPurchase = abs;
+      cur.topPurchaseDescription = String(t.description || "");
+      cur.topPurchaseCategory = String(t.category || "");
+      cur.topPurchaseAmount = abs;
+      cur.topPurchaseId = id;
+    }
     byDay.set(iso, cur);
   }
 
@@ -616,7 +638,15 @@ export function buildDailySpend(
     day: "2-digit",
   });
   const [ty, tm, td] = sp.format(now).split("-").map(Number);
-  const out: { date: string; amount: number; maxPurchase: number }[] = [];
+  const out: {
+    date: string;
+    amount: number;
+    maxPurchase: number;
+    topPurchaseDescription?: string | null;
+    topPurchaseCategory?: string | null;
+    topPurchaseAmount?: number | null;
+    topPurchaseId?: string | null;
+  }[] = [];
   for (let i = days - 1; i >= 0; i--) {
     const utc = new Date(Date.UTC(ty, tm - 1, td - i));
     const key = `${utc.getUTCFullYear()}-${String(utc.getUTCMonth() + 1).padStart(2, "0")}-${String(utc.getUTCDate()).padStart(2, "0")}`;
@@ -625,6 +655,10 @@ export function buildDailySpend(
       date: key,
       amount: Number((row?.amount || 0).toFixed(2)),
       maxPurchase: Number((row?.maxPurchase || 0).toFixed(2)),
+      topPurchaseDescription: row?.topPurchaseDescription || null,
+      topPurchaseCategory: row?.topPurchaseCategory || null,
+      topPurchaseAmount: row?.topPurchaseAmount ? Number(row.topPurchaseAmount.toFixed(2)) : null,
+      topPurchaseId: row?.topPurchaseId || null,
     });
   }
   return out;

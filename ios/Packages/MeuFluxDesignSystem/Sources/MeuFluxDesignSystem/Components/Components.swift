@@ -147,6 +147,9 @@ public struct MetricCard: View {
                     Text(title)
                         .font(.caption.weight(.medium))
                         .foregroundStyle(MeuFluxColors.textSecondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                        .allowsTightening(true)
                     Spacer(minLength: 0)
                     if let systemImage {
                         Image(systemName: systemImage)
@@ -159,13 +162,17 @@ public struct MetricCard: View {
                 Text(value)
                     .font(.title3.weight(.bold).monospacedDigit())
                     .foregroundStyle(tint)
-                    .minimumScaleFactor(0.7)
+                    .minimumScaleFactor(0.65)
+                    .allowsTightening(true)
                     .lineLimit(1)
                     .accessibilityLabel("\(title): \(value)")
                 if let subtitle {
                     Text(subtitle)
                         .font(.caption2)
                         .foregroundStyle(MeuFluxColors.textMuted)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.8)
+                        .allowsTightening(true)
                 }
             }
         }
@@ -651,14 +658,22 @@ public struct TransactionRow: View {
         return isCredit ? MeuFluxColors.success : MeuFluxColors.danger
     }
 
+    private var merchantMatch: MerchantEntry? {
+        MerchantLogoCatalog.match(text: title)
+    }
+
     public var body: some View {
-        let tint = leadingTint
         let row = HStack(spacing: 12) {
-            Image(systemName: leadingIcon)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(tint)
-                .frame(width: 36, height: 36)
-                .background(tint.opacity(0.12), in: Circle())
+            if let merchant = merchantMatch {
+                MerchantLogoView(entry: merchant, size: 36)
+            } else {
+                let tint = leadingTint
+                Image(systemName: leadingIcon)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(tint)
+                    .frame(width: 36, height: 36)
+                    .background(tint.opacity(0.12), in: Circle())
+            }
             VStack(alignment: .leading, spacing: 3) {
                 Text(title)
                     .font(.subheadline.weight(.semibold))

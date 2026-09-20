@@ -62,6 +62,7 @@ import {
   Receipt,
 } from 'lucide-react';
 import { getCategoryIconId, getCategoryTint } from '../utils/categories';
+import { matchMerchantLogo, getMerchantLogoUrl } from '../utils/merchantLogos';
 
 export const CATEGORY_LUCIDE_ICONS = {
   utensils: UtensilsCrossed,
@@ -150,12 +151,54 @@ export function CategoryIcon({
   isPayment = false,
   /** When no category: 'arrows' (default) or 'receipt' (credit statement). */
   emptyFallback = 'arrows',
+  title,
+  description,
+  merchant,
   style,
 }) {
+  const [imgError, setImgError] = React.useState(false);
   const glyph = Math.max(12, iconSize ?? Math.round(size * 0.45));
   let Icon;
   let color;
   let background;
+
+  const merchantMatch = !isPayment && !imgError
+    ? matchMerchantLogo(title || description, merchant)
+    : null;
+  const merchantLogoUrl = merchantMatch ? getMerchantLogoUrl(merchantMatch) : null;
+
+  if (merchantLogoUrl) {
+    return (
+      <div
+        aria-hidden
+        style={{
+          width: size,
+          height: size,
+          borderRadius: '50%',
+          backgroundColor: hexToRgba(merchantMatch.color, 0.15),
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexShrink: 0,
+          overflow: 'hidden',
+          boxShadow: 'inset 0 0 0 1px rgba(255, 255, 255, 0.08)',
+          ...style,
+        }}
+      >
+        <img
+          src={merchantLogoUrl}
+          alt={merchantMatch.name}
+          onError={() => setImgError(true)}
+          style={{
+            width: Math.round(size * 0.72),
+            height: Math.round(size * 0.72),
+            borderRadius: '50%',
+            objectFit: 'contain',
+          }}
+        />
+      </div>
+    );
+  }
 
   if (isPayment) {
     Icon = CheckCircle2;

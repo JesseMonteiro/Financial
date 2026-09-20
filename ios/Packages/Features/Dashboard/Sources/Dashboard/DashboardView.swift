@@ -234,7 +234,7 @@ public struct DashboardView: View {
         let slides = kpiSlides(snap)
         let count = slides.count
 
-        return GlassCard(padding: 14) {
+        return GlassCard(padding: 12) {
             TabView(selection: $kpiSlideIndex) {
                 ForEach(Array(slides.enumerated()), id: \.offset) { offset, slide in
                     kpiSlideContent(slide)
@@ -292,7 +292,7 @@ public struct DashboardView: View {
                 emptyInsightSlide
             }
         }
-        .padding(14)
+        .padding(12)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background {
             ZStack {
@@ -411,12 +411,19 @@ public struct DashboardView: View {
             return part
         }
 
+        let merchantMatch = MerchantLogoCatalog.match(text: purchase.description)
+
         return HStack(spacing: 12) {
-            Image(systemName: PurchaseCategoryCatalog.systemImage(for: purchase.category))
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(purchaseTint(purchase.category))
-                .frame(width: 36, height: 36)
-                .background(purchaseTint(purchase.category).opacity(0.12), in: Circle())
+            if let merchant = merchantMatch {
+                MerchantLogoView(entry: merchant, size: 36)
+            } else {
+                let tint = purchaseTint(purchase.category)
+                Image(systemName: PurchaseCategoryCatalog.systemImage(for: purchase.category, in: viewModel.purchaseCategories))
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(tint)
+                    .frame(width: 36, height: 36)
+                    .background(tint.opacity(0.12), in: Circle())
+            }
 
             VStack(alignment: .leading, spacing: 2) {
                 Text("Últimas compras")
@@ -428,10 +435,14 @@ public struct DashboardView: View {
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(MeuFluxColors.textPrimary)
                     .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                    .allowsTightening(true)
                 Text(subtitleParts.joined(separator: " · "))
                     .font(.caption)
                     .foregroundStyle(MeuFluxColors.textMuted)
                     .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                    .allowsTightening(true)
             }
 
             Spacer(minLength: 8)
@@ -440,6 +451,8 @@ public struct DashboardView: View {
                 .font(.subheadline.weight(.bold).monospacedDigit())
                 .foregroundStyle(MeuFluxColors.textPrimary)
                 .lineLimit(1)
+                .minimumScaleFactor(0.8)
+                .allowsTightening(true)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
@@ -447,7 +460,7 @@ public struct DashboardView: View {
     }
 
     private func purchaseTint(_ category: String) -> Color {
-        if let hex = PurchaseCategoryCatalog.color(for: category),
+        if let hex = PurchaseCategoryCatalog.color(for: category, in: viewModel.purchaseCategories),
            let color = Color(hexString: hex) {
             return color
         }
@@ -456,82 +469,121 @@ public struct DashboardView: View {
 
     @ViewBuilder
     private func kpiSlideContent(_ slide: KPISlide) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .top, spacing: 4) {
                 Text(slide.title.uppercased())
-                    .font(.system(size: 11, weight: .bold))
-                    .tracking(0.6)
+                    .font(.system(size: 10.5, weight: .bold))
+                    .tracking(0.5)
                     .foregroundStyle(MeuFluxColors.textMuted)
-                    .lineLimit(1)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.75)
+                    .allowsTightening(true)
                     .truncationMode(.tail)
                 Spacer(minLength: 4)
                 Image(systemName: slide.icon)
-                    .font(.caption.weight(.semibold))
+                    .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(slide.iconTint)
-                    .frame(width: 28, height: 28)
-                    .background(slide.iconTint.opacity(0.12), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .frame(width: 24, height: 24)
+                    .background(slide.iconTint.opacity(0.12), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
                     .overlay(
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
                             .strokeBorder(slide.iconTint.opacity(0.18), lineWidth: 1)
                     )
             }
             Text(slide.value)
-                .font(.system(size: 20, weight: .bold).monospacedDigit())
+                .font(.system(size: 19, weight: .bold).monospacedDigit())
                 .tracking(-0.3)
                 .foregroundStyle(slide.valueColor)
                 .lineLimit(1)
-                .minimumScaleFactor(0.7)
+                .minimumScaleFactor(0.55)
+                .allowsTightening(true)
                 .truncationMode(.tail)
             Text(slide.subtitle)
-                .font(.caption.weight(.medium))
+                .font(.system(size: 10.5, weight: .medium))
+                .lineSpacing(2)
                 .foregroundStyle(MeuFluxColors.textMuted)
                 .lineLimit(2)
+                .minimumScaleFactor(0.72)
+                .allowsTightening(true)
                 .truncationMode(.tail)
-            Spacer(minLength: 0)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 2)
             SparklineChart(values: slide.sparkline, color: slide.iconTint)
                 .frame(maxWidth: .infinity)
-                .frame(height: 40)
+                .frame(height: 32)
                 .clipped()
+        }
+    }
+
+    private struct InsightTypography {
+        let fontSize: CGFloat
+        let lineSpacing: CGFloat
+        let maxLines: Int
+        let minScale: CGFloat
+    }
+
+    private func optimalInsightTypography(for text: String) -> InsightTypography {
+        let count = text.count
+        switch count {
+        case ..<45:
+            return InsightTypography(fontSize: 16.5, lineSpacing: 4.0, maxLines: 4, minScale: 0.85)
+        case 45..<75:
+            return InsightTypography(fontSize: 15.0, lineSpacing: 3.5, maxLines: 4, minScale: 0.80)
+        case 75..<110:
+            return InsightTypography(fontSize: 13.5, lineSpacing: 2.5, maxLines: 5, minScale: 0.75)
+        case 110..<150:
+            return InsightTypography(fontSize: 12.5, lineSpacing: 2.0, maxLines: 6, minScale: 0.72)
+        default:
+            return InsightTypography(fontSize: 11.5, lineSpacing: 1.5, maxLines: 6, minScale: 0.70)
         }
     }
 
     private func insightSlideContent(_ insight: DashboardInsight) -> some View {
         let accent = insightBorder(insight.type)
         let footer = insightFooter(insight)
+        let typography = optimalInsightTypography(for: insight.text)
 
-        return VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .center, spacing: 8) {
+        return VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .center, spacing: 6) {
                 Text("INSIGHTS")
-                    .font(.system(size: 11, weight: .bold))
-                    .tracking(0.6)
+                    .font(.system(size: 10.5, weight: .bold))
+                    .tracking(0.5)
                     .foregroundStyle(accent)
                     .lineLimit(1)
+                    .minimumScaleFactor(0.8)
                 Spacer(minLength: 4)
                 Button {
                     showAllInsights = true
                 } label: {
                     Text("Todos")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(accent)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
                         .background(MeuFluxColors.bgSecondary.opacity(0.72), in: Capsule())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Ver todos os insights")
             }
 
-            tintedInsightLabel(insight.text, accent: accent)
-                .lineLimit(6)
-                .truncationMode(.tail)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            Spacer(minLength: 6)
 
-            HStack(spacing: 6) {
+            tintedInsightLabel(insight.text, accent: accent, typography: typography)
+                .lineLimit(typography.maxLines)
+                .minimumScaleFactor(typography.minScale)
+                .allowsTightening(true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Spacer(minLength: 8)
+
+            HStack(spacing: 5) {
                 Image(systemName: footer.icon)
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.system(size: 11, weight: .medium))
                 Text(footer.label)
-                    .font(.caption.weight(.medium))
+                    .font(.system(size: 10.5, weight: .medium))
                     .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+                    .allowsTightening(true)
                     .truncationMode(.tail)
                 Spacer(minLength: 0)
             }
@@ -540,13 +592,14 @@ public struct DashboardView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
-    private func tintedInsightLabel(_ text: String, accent: Color) -> some View {
-        Text(tintedHighlightedInsight(text, accent: accent))
+    private func tintedInsightLabel(_ text: String, accent: Color, typography: InsightTypography) -> some View {
+        Text(tintedHighlightedInsight(text, accent: accent, fontSize: typography.fontSize))
+            .lineSpacing(typography.lineSpacing)
     }
 
-    private func tintedHighlightedInsight(_ text: String, accent: Color) -> AttributedString {
+    private func tintedHighlightedInsight(_ text: String, accent: Color, fontSize: CGFloat) -> AttributedString {
         var attributed = AttributedString(text)
-        attributed.font = .subheadline.weight(.semibold)
+        attributed.font = .system(size: fontSize, weight: .semibold)
         attributed.foregroundColor = MeuFluxColors.textPrimary
         let ns = text as NSString
         guard let regex = try? NSRegularExpression(pattern: #"[+\-]?\d+%"#) else { return attributed }
@@ -554,30 +607,37 @@ public struct DashboardView: View {
             guard let stringRange = Range(match.range, in: text),
                   let start = AttributedString.Index(stringRange.lowerBound, within: attributed),
                   let end = AttributedString.Index(stringRange.upperBound, within: attributed) else { continue }
-            attributed[start..<end].font = .subheadline.weight(.bold)
+            attributed[start..<end].font = .system(size: fontSize, weight: .bold)
             attributed[start..<end].foregroundColor = accent
         }
         return attributed
     }
 
     private var emptyInsightSlide: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 0) {
             Text("INSIGHTS")
-                .font(.system(size: 11, weight: .bold))
-                .tracking(0.6)
+                .font(.system(size: 10.5, weight: .bold))
+                .tracking(0.5)
                 .foregroundStyle(MeuFluxColors.textMuted)
                 .lineLimit(1)
+            Spacer(minLength: 6)
             Text("Ainda sem insights")
-                .font(.system(size: 17, weight: .bold))
+                .font(.system(size: 15.5, weight: .bold))
                 .foregroundStyle(MeuFluxColors.textPrimary)
                 .lineLimit(1)
+                .minimumScaleFactor(0.8)
+                .allowsTightening(true)
                 .truncationMode(.tail)
+            Spacer(minLength: 4)
             Text("Conecte contas e sincronize para ver o que mudou nas suas finanças.")
-                .font(.caption.weight(.medium))
+                .font(.system(size: 12, weight: .medium))
+                .lineSpacing(2)
                 .foregroundStyle(MeuFluxColors.textMuted)
                 .lineLimit(4)
+                .minimumScaleFactor(0.8)
+                .allowsTightening(true)
                 .truncationMode(.tail)
-            Spacer(minLength: 0)
+            Spacer(minLength: 6)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
@@ -599,7 +659,7 @@ public struct DashboardView: View {
                 id: "net-worth",
                 title: "Patrimônio Líquido",
                 value: snap.summary.netWorth.formatted(),
-                subtitle: "Ativos \(snap.summary.totalAssets.formatted()) · Dívidas -\(snap.summary.creditDebt.formatted())",
+                subtitle: "Ativos: \(snap.summary.totalAssets.formatted())\nDívidas: -\(snap.summary.creditDebt.formatted())",
                 valueColor: snap.summary.netWorth.amount >= 0 ? MeuFluxColors.textPrimary : MeuFluxColors.danger,
                 icon: "chart.line.uptrend.xyaxis",
                 iconTint: MeuFluxColors.primary,
@@ -619,7 +679,7 @@ public struct DashboardView: View {
                 id: "savings-rate",
                 title: "Taxa Poupança",
                 value: savingsRateText(snap.cashflow.savingsRate),
-                subtitle: "Líquido do mês: \(snap.cashflow.net.formatted())",
+                subtitle: "Líquido: \(snap.cashflow.net.formatted())\nReceitas: \(snap.cashflow.income.formatted())",
                 valueColor: (snap.cashflow.savingsRate ?? 0) >= 0 ? MeuFluxColors.success : MeuFluxColors.danger,
                 icon: "percent",
                 iconTint: MeuFluxColors.info,
@@ -629,7 +689,7 @@ public struct DashboardView: View {
                 id: "mom-expense",
                 title: "Gastos vs Mês Ant.",
                 value: momText(snap.monthOverMonth.expenseDeltaPct),
-                subtitle: "Este mês \(snap.cashflow.expense.formatted()) · ant. \(snap.monthOverMonth.previousExpense.formatted())",
+                subtitle: "Este mês: \(snap.cashflow.expense.formatted())\nMês ant.: \(snap.monthOverMonth.previousExpense.formatted())",
                 valueColor: snap.monthOverMonth.expenseDeltaPct > 0 ? MeuFluxColors.danger : MeuFluxColors.success,
                 icon: "chart.bar.fill",
                 iconTint: snap.monthOverMonth.expenseDeltaPct > 0 ? MeuFluxColors.danger : MeuFluxColors.success,
@@ -679,24 +739,20 @@ public struct DashboardView: View {
 
                 if !viewModel.visibleDailySpend.isEmpty {
                     HStack(alignment: .top) {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(Money(amount: viewModel.largestPurchaseAmount).formatted())
-                                .font(.system(size: 24, weight: .bold).monospacedDigit())
-                                .tracking(-0.4)
-                                .foregroundStyle(MeuFluxColors.textPrimary)
-                            Text(largestPurchaseLabel(viewModel.largestPurchase))
-                                .font(.caption.weight(.medium))
-                                .foregroundStyle(MeuFluxColors.textMuted)
-                        }
+                        dailyFlowSelectionHeader
                         Spacer()
                         VStack(alignment: .trailing, spacing: 2) {
                             Text("MÉDIA DIÁRIA")
                                 .font(.system(size: 10, weight: .bold))
                                 .tracking(0.6)
                                 .foregroundStyle(MeuFluxColors.textMuted)
+                                .lineLimit(1)
                             Text(Money(amount: viewModel.dailyAverage).formatted())
                                 .font(.subheadline.weight(.bold).monospacedDigit())
                                 .foregroundStyle(MeuFluxColors.textPrimary)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.7)
+                                .allowsTightening(true)
                         }
                     }
                 }
@@ -947,10 +1003,16 @@ public struct DashboardView: View {
                             Text(budget.category)
                                 .font(.caption.weight(.bold))
                                 .foregroundStyle(MeuFluxColors.textPrimary)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.8)
+                                .allowsTightening(true)
                             Spacer()
                             Text("\(budget.spent.formatted()) / \(budget.limit.formatted())")
                                 .font(.caption.monospacedDigit())
                                 .foregroundStyle(MeuFluxColors.textMuted)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.8)
+                                .allowsTightening(true)
                         }
                         Text("\(budget.percent)% da verba liberada")
                             .font(.caption2)
@@ -989,6 +1051,8 @@ public struct DashboardView: View {
                             .font(.system(size: 11, weight: .bold))
                             .tracking(0.5)
                             .foregroundStyle(MeuFluxColors.textMuted)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
                         Spacer()
                         Image(systemName: "chart.line.uptrend.xyaxis")
                             .foregroundStyle(MeuFluxColors.info)
@@ -996,6 +1060,9 @@ public struct DashboardView: View {
                     Text(snap.summary.investmentTotal.formatted())
                         .font(.title3.weight(.bold).monospacedDigit())
                         .foregroundStyle(MeuFluxColors.textPrimary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.65)
+                        .allowsTightening(true)
                     if onInvestments != nil {
                         Button {
                             onInvestments?()
@@ -1016,6 +1083,8 @@ public struct DashboardView: View {
                             .font(.system(size: 11, weight: .bold))
                             .tracking(0.5)
                             .foregroundStyle(MeuFluxColors.textMuted)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
                         Spacer()
                         Image(systemName: "creditcard.fill")
                             .foregroundStyle(MeuFluxColors.danger)
@@ -1023,6 +1092,9 @@ public struct DashboardView: View {
                     Text(snap.summary.creditDebt.formatted())
                         .font(.title3.weight(.bold).monospacedDigit())
                         .foregroundStyle(MeuFluxColors.danger)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.65)
+                        .allowsTightening(true)
                     if onCreditCards != nil {
                         Button {
                             onCreditCards?()
@@ -1105,11 +1177,11 @@ public struct DashboardView: View {
 
     private func bankSubtitle(_ snap: DashboardSnapshot) -> String {
         let n = snap.summary.bankCount
-        var text = "\(n) \(n == 1 ? "conta bancária" : "contas bancárias")"
+        let countText = "\(n) \(n == 1 ? "conta bancária" : "contas bancárias")"
         if snap.summary.reservedBalance.amount > 0 {
-            text += " · caixinhas \(snap.summary.reservedBalance.formatted())"
+            return "\(countText)\nCaixinhas: \(snap.summary.reservedBalance.formatted())"
         }
-        return text
+        return "\(countText)\nTotal disponível"
     }
 
     private func savingsRateText(_ rate: Double?) -> String {
@@ -1140,6 +1212,124 @@ public struct DashboardView: View {
         return ("cart.fill", "Classificação automática", MeuFluxColors.textMuted)
     }
 
+    private var dailyFlowSelectionHeader: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Text(Money(amount: viewModel.displayedDailyAmount).formatted())
+                    .font(.system(size: 24, weight: .bold).monospacedDigit())
+                    .tracking(-0.4)
+                    .foregroundStyle(MeuFluxColors.textPrimary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .allowsTightening(true)
+
+                if viewModel.isDaySelected {
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            viewModel.clearSelection()
+                        }
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 14))
+                            .foregroundStyle(MeuFluxColors.textMuted.opacity(0.8))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Limpar seleção do gráfico")
+                }
+            }
+
+            if let purchase = viewModel.displayedDailyPurchase {
+                Button {
+                    selectedDetail = LineItemDetail.from(dashboard: purchase)
+                } label: {
+                    dailyPurchaseDetailRow(purchase)
+                }
+                .buttonStyle(.plain)
+            } else if let selectedPoint = viewModel.selectedPoint {
+                if selectedPoint.amount == 0 {
+                    Text("Sem gastos · \(dateFormatted(selectedPoint.day))")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(MeuFluxColors.textMuted)
+                        .lineLimit(1)
+                } else {
+                    Text("Gasto total do dia · \(dateFormatted(selectedPoint.day))")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(MeuFluxColors.textMuted)
+                        .lineLimit(1)
+                }
+            } else {
+                Text(largestPurchaseLabel(viewModel.largestPurchase))
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(MeuFluxColors.textMuted)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                    .allowsTightening(true)
+            }
+        }
+    }
+
+    private func dailyPurchaseDetailRow(_ purchase: DashboardRecentTransaction) -> some View {
+        let category = LineItemDetail.translatedCategory(purchase.category)
+        let merchantMatch = MerchantLogoCatalog.match(text: purchase.description)
+        let subtitle: String = {
+            if viewModel.isDaySelected {
+                var parts = [category]
+                if let selectedPoint = viewModel.selectedPoint, selectedPoint.purchases.count > 1 {
+                    parts.append("+\(selectedPoint.purchases.count - 1)")
+                }
+                if let acc = purchase.accountName, !acc.isEmpty {
+                    parts.append(acc)
+                }
+                return parts.joined(separator: " · ")
+            } else {
+                let dayStr = purchase.dateRelative.isEmpty ? purchase.date : purchase.dateRelative
+                return "Maior compra · \(dayStr)"
+            }
+        }()
+
+        return HStack(spacing: 8) {
+            if let merchant = merchantMatch {
+                MerchantLogoView(entry: merchant, size: 22)
+            } else {
+                let tint = purchaseTint(purchase.category)
+                Image(systemName: PurchaseCategoryCatalog.systemImage(for: purchase.category, in: viewModel.purchaseCategories))
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(tint)
+                    .frame(width: 22, height: 22)
+                    .background(tint.opacity(0.14), in: Circle())
+            }
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(purchase.description)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(MeuFluxColors.textPrimary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                    .allowsTightening(true)
+
+                Text(subtitle)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(MeuFluxColors.textMuted)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                    .allowsTightening(true)
+            }
+
+            Image(systemName: "chevron.right")
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(MeuFluxColors.textMuted.opacity(0.6))
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(MeuFluxColors.bgTertiary.opacity(0.6), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .contentShape(Rectangle())
+    }
+
+    private func dateFormatted(_ day: InstantDate) -> String {
+        if day.isToday { return "Hoje" }
+        return day.formatted(template: "d MMM")
+    }
+
     private func largestPurchaseLabel(_ point: DailySpendPoint?) -> String {
         guard let point else { return "Maior compra do período" }
         if point.isToday {
@@ -1150,7 +1340,9 @@ public struct DashboardView: View {
 
     private func insightLabel(_ text: String, accent: Color, truncated: Bool) -> some View {
         Text(highlightedInsight(text, accent: accent))
-            .lineLimit(truncated ? 1 : nil)
+            .lineLimit(truncated ? 2 : nil)
+            .minimumScaleFactor(0.85)
+            .allowsTightening(true)
     }
 
     private func highlightedInsight(_ text: String, accent: Color) -> AttributedString {
@@ -1167,13 +1359,6 @@ public struct DashboardView: View {
             attributed[start..<end].foregroundColor = accent
         }
         return attributed
-    }
-}
-
-private extension DashboardViewModel {
-    var loadedSnapshot: DashboardSnapshot? {
-        if case .loaded(let snap) = state { return snap }
-        return nil
     }
 }
 
