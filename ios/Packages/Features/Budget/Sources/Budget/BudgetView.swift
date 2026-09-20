@@ -269,6 +269,20 @@ public struct BudgetView: View {
         GlassCard {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(alignment: .top, spacing: 8) {
+                    Button {
+                        withAnimation {
+                            viewModel.expandedCategory = viewModel.expandedCategory == limit.category ? nil : limit.category
+                        }
+                    } label: {
+                        Image(systemName: "chevron.down")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(MeuFluxColors.textMuted)
+                            .rotationEffect(.degrees(viewModel.expandedCategory == limit.category ? 180 : 0))
+                    }
+                    .buttonStyle(.plain)
+                    .frame(width: 20, height: 20)
+                    .padding(.top, 2)
+
                     Circle()
                         .fill(categoryTint(limit.category))
                         .frame(width: 10, height: 10)
@@ -317,6 +331,22 @@ public struct BudgetView: View {
                     Text("\(limit.spentBank.formatted()) banco/cartão · \(limit.spentMeal.formatted()) VA/VR")
                         .font(.caption2)
                         .foregroundStyle(MeuFluxColors.textMuted)
+                }
+
+                if viewModel.expandedCategory == limit.category {
+                    Divider()
+                        .padding(.vertical, 4)
+                    
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("TRANSAÇÕES")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(MeuFluxColors.textMuted)
+                        
+                        Text("Lista de transações disponível em breve")
+                            .font(.caption)
+                            .foregroundStyle(MeuFluxColors.textMuted)
+                            .padding(.vertical, 8)
+                    }
                 }
 
                 HStack(spacing: 12) {

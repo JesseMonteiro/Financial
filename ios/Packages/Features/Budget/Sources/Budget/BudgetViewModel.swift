@@ -16,6 +16,8 @@ public final class BudgetViewModel {
     public var draftPeriod: BudgetPeriod = .monthly
     /// When non-nil, the editor is updating an existing meta (category locked).
     public private(set) var editingCategory: String?
+    /// Expanded category for showing transactions
+    public var expandedCategory: String?
 
     private let repository: (any BudgetRepository)?
     private let purchaseCategoriesRepository: (any PurchaseCategoriesRepository)?

@@ -2,6 +2,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import {
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   Edit2,
   Check,
   X,
@@ -97,6 +98,9 @@ export function Budget() {
   const [newPeriod, setNewPeriod] = useState('monthly');
   const [savingBudget, setSavingBudget] = useState(false);
 
+  // Expanded category state
+  const [expandedCat, setExpandedCat] = useState(null);
+
   // ── Load data ─────────────────────────────────────────────────────────────
   useEffect(() => { loadBudgets(); loadAccounts(); loadReceivables(); loadMealBenefits(); loadCategories(); }, []);
 
@@ -155,6 +159,27 @@ export function Budget() {
 
       const label = translateCategory(tx.category);
       map[label] = (map[label] || 0) + Math.abs(tx.amount);
+    });
+    return map;
+  }, [allTransactions, officialBills, selectedMonth, forecastOffset]);
+
+  // ── Map transactions by category for expanded view ─────────────────────────
+  const transactionsByCategory = useMemo(() => {
+    const map = {};
+    allTransactions.forEach(tx => {
+      if (isBillPayment(tx)) return;
+      if (tx.amount > 0) return;
+
+      const txMonth = txDueMonth(tx);
+      if (txMonth !== selectedMonth) return;
+
+      const label = translateCategory(tx.category);
+      if (!map[label]) map[label] = [];
+      map[label].push(tx);
+    });
+    // Sort transactions by date descending
+    Object.keys(map).forEach(cat => {
+      map[cat].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
     });
     return map;
   }, [allTransactions, officialBills, selectedMonth, forecastOffset]);
@@ -505,6 +530,24 @@ export function Budget() {
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem' }}>
                     {/* Category + badge */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, minWidth: 0 }}>
+                      <button
+                        onClick={() => setExpandedCat(expandedCat === row.category ? null : row.category)}
+                        className="tap-target"
+                        style={{
+                          border: 'none',
+                          background: 'transparent',
+                          cursor: 'pointer',
+                          color: 'var(--text-muted)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          padding: 0,
+                          transition: 'transform 0.2s',
+                          transform: expandedCat === row.category ? 'rotate(180deg)' : 'rotate(0deg)'
+                        }}
+                        title={expandedCat === row.category ? 'Recolher transações' : 'Ver transações'}
+                      >
+                        <ChevronDown size={16} />
+                      </button>
                       <div style={{ width: 10, height: 10, borderRadius: '50%', backgroundColor: getCategoryColor(row.category), flexShrink: 0 }} />
                       <span style={{ fontWeight: 600, fontSize: 'var(--font-size-sm)', truncate: 'ellipsis' }}>
                         {row.category}
@@ -599,6 +642,50 @@ export function Budget() {
                     <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>
                       {formatCurrency(row.spentBank)} banco/cartão · {formatCurrency(row.spentMeal)} VA/VR
                     </span>
+                  )}
+
+                  {/* Expanded transactions list */}
+                  {expandedCat === row.category && (
+                    <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border-color)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                        <span style={{ fontSize: 'var(--font-size-xs)', fontWeight: 600, color: 'var(--text-muted)' }}>
+                          TRANSAÇÕES ({(transactionsByCategory[row.category] || []).length})
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '300px', overflowY: 'auto' }}>
+                        {(transactionsByCategory[row.category] || []).map((tx, idx) => (
+                          <div
+                            key={`${tx.id || idx}-${tx.date}`}
+                            style={{
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              padding: '0.5rem',
+                              backgroundColor: 'var(--bg-secondary)',
+                              borderRadius: 'var(--radius-sm)',
+                              gap: '0.5rem'
+                            }}
+                          >
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: 'var(--font-size-xs)', fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                {tx.description || 'Sem descrição'}
+                              </div>
+                              <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                                {new Date(tx.date).toLocaleDateString('pt-BR')}
+                              </div>
+                            </div>
+                            <div style={{ fontSize: 'var(--font-size-xs)', fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
+                              {formatCurrency(Math.abs(tx.amount))}
+                            </div>
+                          </div>
+                        ))}
+                        {(transactionsByCategory[row.category] || []).length === 0 && (
+                          <div style={{ padding: '1rem', textAlign: 'center', fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>
+                            Nenhuma transação encontrada
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   )}
                 </div>
               );
