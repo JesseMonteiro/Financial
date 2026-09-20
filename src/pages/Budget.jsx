@@ -166,6 +166,8 @@ export function Budget() {
   // ── Map transactions by category for expanded view ─────────────────────────
   const transactionsByCategory = useMemo(() => {
     const map = {};
+    
+    // Add bank/card transactions
     allTransactions.forEach(tx => {
       if (isBillPayment(tx)) return;
       if (tx.amount > 0) return;
@@ -175,14 +177,36 @@ export function Budget() {
 
       const label = translateCategory(tx.category);
       if (!map[label]) map[label] = [];
-      map[label].push(tx);
+      map[label].push({
+        ...tx,
+        isMeal: false,
+      });
     });
+    
+    // Add meal purchases (VA/VR)
+    mealPurchases.forEach(purchase => {
+      const purchaseMonth = String(purchase.purchasedAt || '').slice(0, 7);
+      if (purchaseMonth !== selectedMonth) return;
+      
+      const category = purchase.category;
+      if (!category) return;
+      
+      if (!map[category]) map[category] = [];
+      map[category].push({
+        id: purchase.id,
+        description: purchase.description || 'Compra VA/VR',
+        date: purchase.purchasedAt,
+        amount: -purchase.amount, // Negative to match transaction format
+        isMeal: true,
+      });
+    });
+    
     // Sort transactions by date descending
     Object.keys(map).forEach(cat => {
       map[cat].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
     });
     return map;
-  }, [allTransactions, officialBills, selectedMonth, forecastOffset]);
+  }, [allTransactions, officialBills, selectedMonth, forecastOffset, mealPurchases]);
 
   const mealSpendMap = useMemo(
     () => mealSpendByCategory(mealBenefits, mealPurchases, selectedMonth),
