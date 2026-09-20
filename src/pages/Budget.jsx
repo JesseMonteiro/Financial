@@ -88,7 +88,7 @@ export function Budget() {
     billsByAccount,
   } = useCreditDataStore();
   const { categories, loadCategories } = useCategoryStore();
-  const { transactions: allStoredTransactions, loadTransactions } = useTransactionStore();
+  const { loadTransactions } = useTransactionStore();
 
   // Selected due month (current by default)
   const [selectedMonth, setSelectedMonth] = useState(currentDueMonthKey);
@@ -171,39 +171,18 @@ export function Budget() {
   }, [allTransactions, officialBills, selectedMonth, forecastOffset]);
 
   // ── Map transactions by category for expanded view ─────────────────────────
-  // Uses transactionStore (calendar date) so pending/debit transactions that
-  // txDueMonth maps to a future bill month still appear under their actual month.
+  // Uses allTransactions (same source as spendingByCategory) with CALENDAR DATE
+  // so credit card purchases appear in their transaction month, not the bill due month.
   const transactionsByCategory = useMemo(() => {
     const map = {};
-    const seenIds = new Set();
 
-    // 1. All stored transactions (transactionStore) — filter by calendar month
-    allStoredTransactions.forEach(tx => {
-      if (isBillPayment(tx)) return;
-      if ((tx.amount ?? 0) > 0) return;
-      const txCalendarMonth = String(tx.date || '').slice(0, 7);
-      if (txCalendarMonth !== selectedMonth) return;
-      const label = translateCategory(tx.category);
-      if (!map[label]) map[label] = [];
-      const entry = {
-        id: tx.id,
-        description: tx.description || tx.descriptionTranslated || tx.descriptionRaw || 'Sem descrição',
-        date: String(tx.date || '').slice(0, 10),
-        amount: Math.abs(tx.amount),
-        isMeal: false,
-      };
-      map[label].push(entry);
-      if (tx.id) seenIds.add(tx.id);
-    });
-
-    // 2. creditDataStore transactions not already captured (e.g. manual entries)
     allTransactions.forEach(tx => {
-      if (!tx.id || seenIds.has(tx.id)) return;
       if (isBillPayment(tx)) return;
       if ((tx.amount ?? 0) > 0) return;
       const txCalendarMonth = String(tx.date || '').slice(0, 7);
       if (txCalendarMonth !== selectedMonth) return;
       const label = translateCategory(tx.category);
+      if (!label) return;
       if (!map[label]) map[label] = [];
       map[label].push({
         id: tx.id,
@@ -212,10 +191,9 @@ export function Budget() {
         amount: Math.abs(tx.amount),
         isMeal: false,
       });
-      seenIds.add(tx.id);
     });
 
-    // 3. Meal purchases (VA/VR)
+    // Meal purchases (VA/VR)
     const benefitsById = {};
     mealBenefits.map(normalizeMealBenefit).forEach(b => { if (b.id) benefitsById[b.id] = b; });
     mealPurchases.map(normalizeMealPurchase).forEach(p => {
@@ -233,12 +211,11 @@ export function Budget() {
       });
     });
 
-    // Sort each category's list by date descending
     Object.keys(map).forEach(cat => {
       map[cat].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
     });
     return map;
-  }, [allStoredTransactions, allTransactions, selectedMonth, mealBenefits, mealPurchases]);
+  }, [allTransactions, selectedMonth, mealBenefits, mealPurchases]);
 
   const mealSpendMap = useMemo(
     () => mealSpendByCategory(mealBenefits, mealPurchases, selectedMonth),
