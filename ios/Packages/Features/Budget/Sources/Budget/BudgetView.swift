@@ -174,9 +174,9 @@ public struct BudgetView: View {
     private var kpiGrid: some View {
         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
             MetricCard(
-                title: "Gasto real no mês",
+                title: "Gasto nas metas",
                 value: viewModel.spentTotal.formatted(),
-                subtitle: "\(viewModel.limits.count) categorias",
+                subtitle: "\(viewModel.limits.count) \(viewModel.limits.count == 1 ? "categoria" : "categorias") com meta",
                 tint: viewModel.isOverTotalAllowance ? MeuFluxColors.danger : MeuFluxColors.primary,
                 systemImage: "cart",
                 leadingAccent: true
@@ -236,26 +236,22 @@ public struct BudgetView: View {
             }
 
             if viewModel.limits.isEmpty {
-                Text("Nenhuma transação encontrada para este mês.")
-                    .font(.subheadline)
-                    .foregroundStyle(MeuFluxColors.textMuted)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 24)
-            } else {
-                ForEach(viewModel.limits) { limit in
-                    categoryRow(limit)
-                }
-            }
-
-            if viewModel.categoriesWithBudget == 0, !viewModel.limits.isEmpty {
                 GlassCard {
                     HStack(alignment: .top, spacing: 10) {
                         Image(systemName: "info.circle")
                             .foregroundStyle(MeuFluxColors.info)
-                        Text("Você ainda não definiu metas. Toque em Editar em qualquer categoria ou use + Meta. A verba diária, semanal e quinzenal acumula no mês e zera na virada.")
-                            .font(.caption)
-                            .foregroundStyle(MeuFluxColors.textMuted)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Nenhuma meta de orçamento definida")
+                                .font(.subheadline.weight(.semibold))
+                            Text("Use + Meta para definir limites de gasto por categoria. A verba diária, semanal e quinzenal acumula no mês e zera na virada.")
+                                .font(.caption)
+                                .foregroundStyle(MeuFluxColors.textMuted)
+                        }
                     }
+                }
+            } else {
+                ForEach(viewModel.limits) { limit in
+                    categoryRow(limit)
                 }
             }
         }
@@ -302,34 +298,20 @@ public struct BudgetView: View {
                             } else if isNear {
                                 StatusBadge("Atenção", style: .warning)
                             }
-                            if limit.hasLimit {
-                                StatusBadge(
-                                    "\(limit.periodAmount.formatted())\(limit.period.unitLabel)",
-                                    style: .neutral
-                                )
-                            } else {
-                                StatusBadge("sem meta", style: .neutral)
-                            }
+                            StatusBadge(
+                                "\(limit.periodAmount.formatted())\(limit.period.unitLabel)",
+                                style: .neutral
+                            )
                         }
                     }
                 }
 
-                if limit.hasLimit, limit.limit.amount > 0 {
-                    BudgetProgressBar(percent: min(100, percent), color: barColor)
-                        .accessibilityLabel("\(percent) por cento da verba liberada")
+                BudgetProgressBar(percent: min(100, percent), color: barColor)
+                    .accessibilityLabel("\(percent) por cento da verba liberada")
 
-                    Text(progressCaption(limit: limit, percent: percent, isOver: isOver))
-                        .font(.caption2)
-                        .foregroundStyle(MeuFluxColors.textMuted)
-                } else if viewModel.spentTotal.amount > 0 {
-                    let share = NSDecimalNumber(
-                        decimal: min(1, max(0, limit.spent.amount / viewModel.spentTotal.amount))
-                    ).doubleValue
-                    BudgetProgressBar(percent: Int((share * 100).rounded()), color: categoryTint(limit.category))
-                    Text("\(Int((share * 100).rounded()))% do total gasto no mês · defina uma meta")
-                        .font(.caption2)
-                        .foregroundStyle(MeuFluxColors.textMuted)
-                }
+                Text(progressCaption(limit: limit, percent: percent, isOver: isOver))
+                    .font(.caption2)
+                    .foregroundStyle(MeuFluxColors.textMuted)
 
                 if limit.spentMeal.amount > 0 {
                     Text("\(limit.spentBank.formatted()) banco/cartão · \(limit.spentMeal.formatted()) VA/VR")
@@ -341,25 +323,20 @@ public struct BudgetView: View {
                     Button {
                         openEdit(limit)
                     } label: {
-                        Label(
-                            limit.hasLimit ? "Editar" : "Definir meta",
-                            systemImage: "pencil"
-                        )
-                        .font(.caption.weight(.semibold))
+                        Label("Editar", systemImage: "pencil")
+                            .font(.caption.weight(.semibold))
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
 
-                    if limit.hasLimit {
-                        Button(role: .destructive) {
-                            Task { await viewModel.delete(limit) }
-                        } label: {
-                            Label("Excluir", systemImage: "trash")
-                                .font(.caption.weight(.semibold))
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
+                    Button(role: .destructive) {
+                        Task { await viewModel.delete(limit) }
+                    } label: {
+                        Label("Excluir", systemImage: "trash")
+                            .font(.caption.weight(.semibold))
                     }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
 
                     Spacer(minLength: 0)
                 }
@@ -369,14 +346,12 @@ public struct BudgetView: View {
             Button {
                 openEdit(limit)
             } label: {
-                Label(limit.hasLimit ? "Editar meta" : "Definir meta", systemImage: "pencil")
+                Label("Editar meta", systemImage: "pencil")
             }
-            if limit.hasLimit {
-                Button(role: .destructive) {
-                    Task { await viewModel.delete(limit) }
-                } label: {
-                    Label("Excluir meta", systemImage: "trash")
-                }
+            Button(role: .destructive) {
+                Task { await viewModel.delete(limit) }
+            } label: {
+                Label("Excluir meta", systemImage: "trash")
             }
         }
     }

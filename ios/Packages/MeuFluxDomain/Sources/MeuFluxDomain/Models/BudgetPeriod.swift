@@ -56,4 +56,22 @@ public enum BudgetCategoryCatalog {
         "Games & Entretenimento",
         "Outros",
     ]
+    
+    /// Categories that should be excluded from budget by default (transfers, income, etc.)
+    public static let excludedCategories: Set<String> = [
+        "Transferências",
+        "Pagamento de Fatura",
+        "Tarifas Bancárias",
+        "Salário & Renda",
+        "Investimentos",
+        // Pluggy categories in English (before translation)
+        "Transfers",
+        "Credit card payment",
+        "Bank fees",
+        "Salary",
+        "Investments",
+        "Cashback",
+        "cashback",
+        "CASHBACK",
+    ]
 }

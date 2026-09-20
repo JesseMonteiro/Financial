@@ -2,6 +2,24 @@
 
 export const BUDGET_PERIODS = ['daily', 'weekly', 'biweekly', 'monthly'];
 
+/** Categories that should be excluded from budget by default (transfers, income, etc.) */
+export const BUDGET_EXCLUDED_CATEGORIES = [
+  'Transferências',
+  'Pagamento de Fatura',
+  'Tarifas Bancárias',
+  'Salário & Renda',
+  'Investimentos',
+  // Pluggy categories in English (before translation)
+  'Transfers',
+  'Credit card payment',
+  'Bank fees',
+  'Salary',
+  'Investments',
+  'Cashback',
+  'cashback',
+  'CASHBACK',
+];
+
 export const BUDGET_PERIOD_LABELS = {
   daily: 'Diária',
   weekly: 'Semanal',
@@ -154,6 +172,7 @@ export function mergeBudgetRows({
   });
 
   return Object.values(rows)
+    .filter((row) => row.hasLimit) // Show only categories with defined budget
     .map((row) => {
       const spent = Number(row.spent.toFixed(2));
       const spentBank = Number(row.spentBank.toFixed(2));

@@ -42,13 +42,18 @@ public final class BudgetViewModel {
         for limit in limits {
             labels.insert(limit.category)
         }
-        return labels.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+        // Filter out excluded categories
+        return labels
+            .filter { !BudgetCategoryCatalog.excludedCategories.contains($0) }
+            .sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
     }
 
-    /// Categories available when creating a new meta (exclude ones that already have a limit).
+    /// Categories available when creating a new meta (exclude ones that already have a limit and excluded categories).
     public var availableCategoriesForCreate: [String] {
         let taken = Set(limits.filter(\.hasLimit).map(\.category))
-        return categoryPickerLabels.filter { !taken.contains($0) }
+        return categoryPickerLabels.filter { 
+            !taken.contains($0) && !BudgetCategoryCatalog.excludedCategories.contains($0)
+        }
     }
 
     public var spentTotal: Money {

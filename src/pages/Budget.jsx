@@ -274,7 +274,8 @@ export function Budget() {
     });
     Object.values(allTranslations()).forEach((label) => cats.add(label));
     categories.forEach((c) => { if (c.label) cats.add(c.label); });
-    return [...cats].sort();
+    // Filter out excluded categories
+    return [...cats].filter(c => !BUDGET_EXCLUDED_CATEGORIES.includes(c)).sort();
   }, [spendingByCategory, mealSpendMap, budgets, allTransactions, categories]);
 
   // Navigation
@@ -336,12 +337,12 @@ export function Budget() {
       {/* KPI Row */}
       <div className="dashboard-grid">
         <Card className="col-3" style={{ borderLeft: '4px solid var(--primary)' }}>
-          <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)', fontWeight: 600 }}>GASTO REAL NO MÊS</span>
+          <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)', fontWeight: 600 }}>GASTO NAS METAS</span>
           <h2 style={{ fontSize: 'var(--font-size-2xl)', fontWeight: 700, margin: '0.4rem 0', color: totalSpent > totalAllowance && totalAllowance > 0 ? 'var(--danger)' : 'var(--text-primary)' }}>
             {loadingTx ? '...' : formatCurrency(totalSpent)}
           </h2>
           <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>
-            Banco/cartão + VA/VR · {budgetRows.length} categorias
+            {budgetRows.length} {budgetRows.length === 1 ? 'categoria' : 'categorias'} com meta definida
           </span>
         </Card>
 
@@ -464,9 +465,17 @@ export function Budget() {
         {loadingTx ? (
           <SkeletonList rows={6} />
         ) : budgetRows.length === 0 ? (
-          <p style={{ color: 'var(--text-muted)', padding: '2rem', textAlign: 'center' }}>
-            Nenhuma transação encontrada para {dueMonthLabel(selectedMonth)}.
-          </p>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', marginTop: '1rem', padding: '2rem', backgroundColor: 'var(--bg-tertiary)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}>
+            <Info size={18} style={{ color: 'var(--info)', flexShrink: 0, marginTop: 1 }} />
+            <div style={{ flex: 1 }}>
+              <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--text-primary)', margin: 0, marginBottom: '0.5rem', fontWeight: 600 }}>
+                Nenhuma meta de orçamento definida
+              </p>
+              <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)', margin: 0 }}>
+                Use o botão <strong>+ Adicionar meta</strong> acima para definir limites de gasto por categoria. A verba diária, semanal e quinzenal acumula no mês e zera na virada.
+              </p>
+            </div>
+          </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', marginTop: '1rem' }}>
             {budgetRows.map(row => {
@@ -501,14 +510,9 @@ export function Budget() {
                       </span>
                       {isOver && <Badge variant="danger"><AlertTriangle size={10} style={{ marginRight: 3 }} />Estourado</Badge>}
                       {isNear && !isOver && <Badge variant="warning">Atenção</Badge>}
-                      {row.hasLimit && (
-                        <Badge variant="neutral">
-                          {formatCurrency(row.periodAmount)}{BUDGET_PERIOD_UNIT[row.period] || ''}
-                        </Badge>
-                      )}
-                      {!row.hasLimit && (
-                        <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontStyle: 'italic' }}>sem meta definida</span>
-                      )}
+                      <Badge variant="neutral">
+                        {formatCurrency(row.periodAmount)}{BUDGET_PERIOD_UNIT[row.period] || ''}
+                      </Badge>
                     </div>
 
                     {/* Spent / Limit + edit controls */}
@@ -554,85 +558,50 @@ export function Budget() {
                           <span style={{ fontSize: 'var(--font-size-sm)', fontWeight: 700, color: isOver ? 'var(--danger)' : 'var(--text-primary)' }}>
                             {formatCurrency(row.spent)}
                           </span>
-                          {row.hasLimit && (
-                            <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>
-                              / {formatCurrency(row.limit)}
-                            </span>
-                          )}
+                          <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>
+                            / {formatCurrency(row.limit)}
+                          </span>
                           <button
                             onClick={() => {
                               setEditingCat(row.category);
                               setEditValue(row.periodAmount || row.limit || '');
                               setEditPeriod(row.period || 'monthly');
                             }}
-                            title="Definir meta"
+                            title="Editar meta"
                             className="tap-target"
                             style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--text-muted)' }}
                           >
                             <Edit2 size={13} />
                           </button>
-                          {row.hasLimit && (
-                            <IconBusyButton
-                              onClick={() => deleteBudget(row.category)}
-                              busy={Boolean(pending[row.category])}
-                              title="Remover meta"
-                              style={{ color: 'var(--danger)' }}
-                            >
-                              <Trash2 size={13} />
-                            </IconBusyButton>
-                          )}
+                          <IconBusyButton
+                            onClick={() => deleteBudget(row.category)}
+                            busy={Boolean(pending[row.category])}
+                            title="Remover meta"
+                            style={{ color: 'var(--danger)' }}
+                          >
+                            <Trash2 size={13} />
+                          </IconBusyButton>
                         </>
                       )}
                     </div>
                   </div>
 
-                  {/* Progress bar (only if limit defined) */}
-                  {row.hasLimit && row.limit > 0 && (
-                    <>
-                      <ProgressBar percent={Math.min(100, pct)} color={barColor} height={9} />
-                      <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>
-                        {periodProgressLabel(row.period, selectedMonth, asOfDate)} · {pct}% da verba liberada
-                        {isOver
-                          ? ` • Excedeu em ${formatCurrency(row.spent - row.limit)}`
-                          : ` • Restam ${formatCurrency(row.limit - row.spent)}`}
-                      </span>
-                      {row.spentMeal > 0 && (
-                        <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>
-                          {formatCurrency(row.spentBank)} banco/cartão · {formatCurrency(row.spentMeal)} VA/VR
-                        </span>
-                      )}
-                    </>
-                  )}
-
-                  {/* No limit: just show the spend bar relative to month total */}
-                  {!row.hasLimit && totalSpent > 0 && (
-                    <>
-                      <div style={{ height: 6, borderRadius: 3, backgroundColor: 'var(--border-color)', overflow: 'hidden' }}>
-                        <div style={{ height: '100%', width: `${Math.min(100, (row.spent / totalSpent) * 100)}%`, backgroundColor: getCategoryColor(row.category), borderRadius: 3 }} />
-                      </div>
-                      <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>
-                        {Math.round((row.spent / totalSpent) * 100)}% do total gasto no mês • Clique em ✏ para definir uma meta
-                      </span>
-                      {row.spentMeal > 0 && (
-                        <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>
-                          {formatCurrency(row.spentBank)} banco/cartão · {formatCurrency(row.spentMeal)} VA/VR
-                        </span>
-                      )}
-                    </>
+                  {/* Progress bar */}
+                  <ProgressBar percent={Math.min(100, pct)} color={barColor} height={9} />
+                  <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>
+                    {periodProgressLabel(row.period, selectedMonth, asOfDate)} · {pct}% da verba liberada
+                    {isOver
+                      ? ` • Excedeu em ${formatCurrency(row.spent - row.limit)}`
+                      : ` • Restam ${formatCurrency(row.limit - row.spent)}`}
+                  </span>
+                  {row.spentMeal > 0 && (
+                    <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>
+                      {formatCurrency(row.spentBank)} banco/cartão · {formatCurrency(row.spentMeal)} VA/VR
+                    </span>
                   )}
                 </div>
               );
             })}
-          </div>
-        )}
-
-        {/* Hint when no limits are set */}
-        {!loadingTx && budgets.length === 0 && budgetRows.length > 0 && (
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', marginTop: '1.5rem', padding: '1rem', backgroundColor: 'var(--bg-tertiary)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}>
-            <Info size={18} style={{ color: 'var(--info)', flexShrink: 0, marginTop: 1 }} />
-            <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)', margin: 0 }}>
-              Você ainda não definiu metas de orçamento. Clique no ícone <strong>✏</strong> ao lado de qualquer categoria ou use o botão <strong>+ Adicionar meta</strong>. A verba diária, semanal e quinzenal acumula no mês e zera na virada. Compras de VA entram em supermercado e de VR em restaurantes, salvo se você marcar a compra.
-            </p>
           </div>
         )}
       </Card>
