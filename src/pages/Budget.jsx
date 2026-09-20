@@ -42,7 +42,12 @@ import {
   mergeBudgetRows,
   periodProgressLabel,
 } from '../utils/budgetPeriod';
-import { mealSpendByCategory } from '../utils/mealBenefits';
+import {
+  mealSpendByCategory,
+  normalizeMealBenefit,
+  normalizeMealPurchase,
+  defaultMealCategoryForKind,
+} from '../utils/mealBenefits';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell
 } from 'recharts';
@@ -166,47 +171,49 @@ export function Budget() {
   // ── Map transactions by category for expanded view ─────────────────────────
   const transactionsByCategory = useMemo(() => {
     const map = {};
-    
+
     // Add bank/card transactions
     allTransactions.forEach(tx => {
       if (isBillPayment(tx)) return;
       if (tx.amount > 0) return;
-
       const txMonth = txDueMonth(tx);
       if (txMonth !== selectedMonth) return;
-
       const label = translateCategory(tx.category);
       if (!map[label]) map[label] = [];
       map[label].push({
-        ...tx,
+        id: tx.id,
+        description: tx.description || tx.descriptionTranslated || tx.descriptionRaw || 'Sem descrição',
+        date: tx.date,
+        amount: Math.abs(tx.amount),
         isMeal: false,
       });
     });
-    
-    // Add meal purchases (VA/VR)
-    mealPurchases.forEach(purchase => {
-      const purchaseMonth = String(purchase.purchasedAt || '').slice(0, 7);
-      if (purchaseMonth !== selectedMonth) return;
-      
-      const category = purchase.category;
+
+    // Add meal purchases (VA/VR) — same category resolution as mealSpendByCategory
+    const benefitsById = {};
+    mealBenefits.map(normalizeMealBenefit).forEach(b => { if (b.id) benefitsById[b.id] = b; });
+
+    mealPurchases.map(normalizeMealPurchase).forEach(p => {
+      if (!String(p.purchasedAt || '').startsWith(selectedMonth)) return;
+      const benefit = benefitsById[p.benefitId];
+      const category = p.category || defaultMealCategoryForKind(benefit?.kind);
       if (!category) return;
-      
       if (!map[category]) map[category] = [];
       map[category].push({
-        id: purchase.id,
-        description: purchase.description || 'Compra VA/VR',
-        date: purchase.purchasedAt,
-        amount: -purchase.amount, // Negative to match transaction format
+        id: p.id,
+        description: p.description || (benefit ? `${benefit.kind === 'VR' ? 'VR' : 'VA'} — compra` : 'Compra VA/VR'),
+        date: p.purchasedAt,
+        amount: p.amount,
         isMeal: true,
       });
     });
-    
-    // Sort transactions by date descending
+
+    // Sort each category's list by date descending
     Object.keys(map).forEach(cat => {
       map[cat].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
     });
     return map;
-  }, [allTransactions, officialBills, selectedMonth, forecastOffset, mealPurchases]);
+  }, [allTransactions, officialBills, selectedMonth, forecastOffset, mealBenefits, mealPurchases]);
 
   const mealSpendMap = useMemo(
     () => mealSpendByCategory(mealBenefits, mealPurchases, selectedMonth),
@@ -677,32 +684,42 @@ export function Budget() {
                         </span>
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '300px', overflowY: 'auto' }}>
-                        {(transactionsByCategory[row.category] || []).map((tx, idx) => (
-                          <div
-                            key={`${tx.id || idx}-${tx.date}`}
-                            style={{
-                              display: 'flex',
-                              justifyContent: 'space-between',
-                              alignItems: 'center',
-                              padding: '0.5rem',
-                              backgroundColor: 'var(--bg-secondary)',
-                              borderRadius: 'var(--radius-sm)',
-                              gap: '0.5rem'
-                            }}
-                          >
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ fontSize: 'var(--font-size-xs)', fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                {tx.description || 'Sem descrição'}
+                        {(transactionsByCategory[row.category] || []).map((tx, idx) => {
+                          // Parse YYYY-MM-DD safely without timezone shift
+                          const [ty, tm, td] = (tx.date || '').split('-');
+                          const dateLabel = ty
+                            ? `${td}/${tm}/${ty}`
+                            : '—';
+                          return (
+                            <div
+                              key={`${tx.id || idx}-${tx.date}`}
+                              style={{
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                                padding: '0.5rem',
+                                backgroundColor: 'var(--bg-secondary)',
+                                borderRadius: 'var(--radius-sm)',
+                                gap: '0.5rem',
+                              }}
+                            >
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontSize: 'var(--font-size-xs)', fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  {tx.description}
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', marginTop: '2px' }}>
+                                  <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{dateLabel}</span>
+                                  {tx.isMeal && (
+                                    <span style={{ fontSize: '9px', fontWeight: 700, color: 'var(--info)', backgroundColor: 'rgba(99,179,237,0.15)', borderRadius: '3px', padding: '0 4px' }}>VA/VR</span>
+                                  )}
+                                </div>
                               </div>
-                              <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>
-                                {new Date(tx.date).toLocaleDateString('pt-BR')}
+                              <div style={{ fontSize: 'var(--font-size-xs)', fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
+                                {formatCurrency(tx.amount)}
                               </div>
                             </div>
-                            <div style={{ fontSize: 'var(--font-size-xs)', fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
-                              {formatCurrency(Math.abs(tx.amount))}
-                            </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                         {(transactionsByCategory[row.category] || []).length === 0 && (
                           <div style={{ padding: '1rem', textAlign: 'center', fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>
                             Nenhuma transação encontrada
