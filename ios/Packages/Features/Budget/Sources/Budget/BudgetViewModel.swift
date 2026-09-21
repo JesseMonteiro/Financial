@@ -189,13 +189,64 @@ public final class BudgetViewModel {
         return needles.contains { d.contains($0) }
     }
 
+    /// Recalculate budget spending using calendar month (purchase date) instead of due month.
+    /// This ensures the displayed totals match the transaction list.
+    private func recalculateSpendingByCalendarMonth(
+        transactions: [Transaction],
+        mealPurchases: [MealBenefitPurchase],
+        mealBenefits: [MealBenefit]
+    ) {
+        var spendingByCategory: [String: (total: Decimal, bank: Decimal, meal: Decimal)] = [:]
+        
+        // Process regular transactions
+        for tx in transactions {
+            let calendarMonth = Self.ymFromIso(tx.date.isoString)
+            guard calendarMonth == selectedMonth.key else { continue }
+            guard tx.kind == .debit else { continue }
+            guard !Self.isBillPayment(tx.description) else { continue }
+            
+            let category = BudgetCategoryCatalog.translateCategory(tx.category)
+            let amount = tx.amount.amount
+            
+            var entry = spendingByCategory[category] ?? (0, 0, 0)
+            entry.total += amount
+            entry.bank += amount
+            spendingByCategory[category] = entry
+        }
+        
+        // Process meal purchases
+        for purchase in mealPurchases {
+            let calendarMonth = Self.ymFromIso(purchase.date.isoString)
+            guard calendarMonth == selectedMonth.key else { continue }
+            
+            let benefit = mealBenefits.first { $0.id == purchase.benefitId }
+            let category = benefit?.kind == .vr ? "Restaurante" : "Supermercado & Alimentação"
+            let amount = purchase.amount.amount
+            
+            var entry = spendingByCategory[category] ?? (0, 0, 0)
+            entry.total += amount
+            entry.meal += amount
+            spendingByCategory[category] = entry
+        }
+        
+        // Update limits with recalculated spending
+        limits = limits.map { limit in
+            guard let spending = spendingByCategory[limit.category] else { return limit }
+            
+            var updated = limit
+            updated.spent = Money(amount: spending.total, currencyCode: "BRL")
+            updated.spentBank = Money(amount: spending.bank, currencyCode: "BRL")
+            updated.spentMeal = Money(amount: spending.meal, currencyCode: "BRL")
+            return updated
+        }
+    }
+    
     /// Builds the per-category transaction list shown when a budget row is expanded.
     ///
-    /// Uses due-month logic to match budget totals: credit card transactions are grouped
-    /// by bill due month (not purchase calendar month), while bank transactions use calendar month.
+    /// Uses **calendar month** (purchase date) for filtering. Budget totals are also
+    /// recalculated using calendar month to ensure they match the transaction list.
     ///
-    /// Fetches with `month: nil` (unbounded, like `TransactionsViewModel`) and filters
-    /// by due month client-side using the same logic as the backend (budgetSpent.ts).
+    /// Fetches with `month: nil` (unbounded) and filters by calendar month client-side.
     private func loadTransactionsByCategory(force: Bool) async {
         guard let transactionsRepository else { return }
         var map: [String: [BudgetTransactionItem]] = [:]
@@ -247,22 +298,23 @@ public final class BudgetViewModel {
             print("🔍 [Budget] Credit account IDs: \(creditAccountIds)")
             
             for tx in txs {
-                // Use due month logic instead of calendar month
-                guard let txMonth = Self.txDueMonth(
-                    tx: tx,
-                    bills: bills,
-                    creditAccountIds: creditAccountIds,
-                    forecastToDueOffset: forecastToDueOffset
-                ) else { continue }
+                // Use calendar month for transaction list (not due month)
+                // This shows purchases made in the selected month, regardless of billing month
+                let calendarMonth = Self.ymFromIso(tx.date.isoString)
                 
-                // Debug: Log first few transactions with due month calculation
+                // Debug: Log first few transactions
                 if map.values.flatMap({ $0 }).count < 5 {
-                    let calendarMonth = Self.ymFromIso(tx.date.isoString)
+                    let dueMonth = Self.txDueMonth(
+                        tx: tx,
+                        bills: bills,
+                        creditAccountIds: creditAccountIds,
+                        forecastToDueOffset: forecastToDueOffset
+                    )
                     let isCard = creditAccountIds.contains(tx.accountId)
-                    print("🔍 [Budget] TX: \(tx.description.prefix(30)) | Calendar: \(calendarMonth ?? "nil") | Due: \(txMonth) | IsCard: \(isCard) | Selected: \(selectedMonth.key)")
+                    print("🔍 [Budget] TX: \(tx.description.prefix(30)) | Calendar: \(calendarMonth ?? "nil") | Due: \(dueMonth ?? "nil") | IsCard: \(isCard) | Selected: \(selectedMonth.key)")
                 }
                 
-                guard txMonth == selectedMonth.key else { continue }
+                guard calendarMonth == selectedMonth.key else { continue }
                 guard tx.kind == .debit else { continue }
                 guard !Self.isBillPayment(tx.description) else { continue }
                 let label = BudgetCategoryCatalog.translateCategory(tx.category)
@@ -297,6 +349,17 @@ public final class BudgetViewModel {
             map[key]?.sort { $0.date > $1.date }
         }
         transactionsByCategory = map
+        
+        // Recalculate budget spending using calendar month to match transaction list
+        let allMealPurchases = (try? await benefitsTask)?.flatMap(\.purchases) ?? []
+        let allBenefits = (try? await benefitsTask) ?? []
+        if let txs = try? await txTask {
+            recalculateSpendingByCalendarMonth(
+                transactions: txs,
+                mealPurchases: allMealPurchases,
+                mealBenefits: allBenefits
+            )
+        }
     }
 
     public var isEditing: Bool { editingCategory != nil }
