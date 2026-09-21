@@ -207,14 +207,30 @@ public final class BudgetViewModel {
         )
         async let benefitsTask = mealBenefitsRepository?.fetchBenefits(force: force)
         async let accountsTask = accountsRepository?.fetchAccounts(force: force)
-        async let billsTask = billsRepository?.fetchBills(accountId: nil, dueMonth: nil)
 
         let accounts = (try? await accountsTask) ?? []
         let accountsById = Dictionary(uniqueKeysWithValues: accounts.map { ($0.id, $0) })
-        let bills = (try? await billsTask) ?? []
         
         // Identify credit card accounts
         let creditAccountIds = Set(accounts.filter { $0.type == .credit }.map(\.id))
+        
+        // Fetch bills for each credit card account
+        var bills: [Bill] = []
+        if let billsRepo = billsRepository {
+            print("🔍 [Budget] Fetching bills for \(creditAccountIds.count) credit card accounts...")
+            for accountId in creditAccountIds {
+                do {
+                    let accountBills = try await billsRepo.fetchBills(accountId: accountId, dueMonth: nil)
+                    bills.append(contentsOf: accountBills)
+                    print("🔍 [Budget] Account \(accountId.prefix(8))... fetched \(accountBills.count) bills")
+                } catch {
+                    print("❌ [Budget] Error fetching bills for \(accountId.prefix(8))...: \(error)")
+                }
+            }
+            print("🔍 [Budget] Total bills fetched: \(bills.count)")
+        } else {
+            print("❌ [Budget] BillsRepository is nil")
+        }
         
         if let txs = try? await txTask {
             // Calculate forecastToDueOffset
