@@ -50,6 +50,7 @@ public final class BudgetViewModel {
     private let mealBenefitsRepository: (any MealBenefitsRepository)?
     private let purchaseCategoriesRepository: (any PurchaseCategoriesRepository)?
     private let accountsRepository: (any AccountsRepository)?
+    private let billsRepository: (any BillsRepository)?
     private var lastLoadedAt: Date?
     private var lastCacheKey: String?
 
@@ -58,15 +59,118 @@ public final class BudgetViewModel {
         transactions: (any TransactionsRepository)? = nil,
         mealBenefits: (any MealBenefitsRepository)? = nil,
         purchaseCategories: (any PurchaseCategoriesRepository)? = nil,
-        accounts: (any AccountsRepository)? = nil
+        accounts: (any AccountsRepository)? = nil,
+        bills: (any BillsRepository)? = nil
     ) {
         self.repository = repository
         self.transactionsRepository = transactions
         self.mealBenefitsRepository = mealBenefits
         self.purchaseCategoriesRepository = purchaseCategories
         self.accountsRepository = accounts
+        self.billsRepository = bills
     }
 
+    // MARK: - Due Month Helpers (mirrors creditBillPeriod.ts)
+    
+    /// Extract YYYY-MM from ISO date string
+    private static func ymFromIso(_ iso: String?) -> String? {
+        guard let iso = iso, iso.count >= 7 else { return nil }
+        return String(iso.prefix(7))
+    }
+    
+    /// Add months to YYYY-MM string
+    private static func ymAdd(_ ym: String?, months: Int) -> String? {
+        guard let ym = ym, ym.count == 7, ym != "Outros" else { return ym }
+        let parts = ym.split(separator: "-")
+        guard parts.count == 2,
+              var year = Int(parts[0]),
+              var month = Int(parts[1]) else { return ym }
+        
+        month += months
+        while month > 12 {
+            month -= 12
+            year += 1
+        }
+        while month < 1 {
+            month += 12
+            year -= 1
+        }
+        return String(format: "%04d-%02d", year, month)
+    }
+    
+    /// Infer forecastToDueOffset from transactions and bills (0 or 1)
+    private static func inferForecastToDueOffset(transactions: [Transaction], bills: [Bill]) -> Int {
+        let billMap = Dictionary(uniqueKeysWithValues: bills.map { ($0.id, $0) })
+        var eqDue = 0
+        var eqDueMinus1 = 0
+        
+        for tx in transactions {
+            guard let fc = tx.billForecastDate,
+                  let billId = tx.billId,
+                  let bill = billMap[billId],
+                  let dueYm = ymFromIso(bill.dueDate?.isoString) else { continue }
+            
+            if fc == dueYm { eqDue += 1 }
+            if fc == ymAdd(dueYm, months: -1) { eqDueMinus1 += 1 }
+        }
+        
+        if eqDue + eqDueMinus1 > 0 {
+            return eqDue >= eqDueMinus1 ? 0 : 1
+        }
+        
+        // Simplified: default to 0 (forecast == due, Nubank-like)
+        // Note: Bill model doesn't include closingDate field
+        return 0
+    }
+    
+    /// Get due month key for a transaction
+    private static func getDueMonthKey(
+        tx: Transaction,
+        bills: [Bill],
+        forecastToDueOffset: Int
+    ) -> String? {
+        let billMap = Dictionary(uniqueKeysWithValues: bills.map { ($0.id, $0) })
+        
+        // Try billId first
+        if let billId = tx.billId,
+           let bill = billMap[billId],
+           let dueYm = ymFromIso(bill.dueDate?.isoString) {
+            return dueYm
+        }
+        
+        // Try forecast date
+        if let fc = tx.billForecastDate {
+            return ymAdd(fc, months: forecastToDueOffset)
+        }
+        
+        // Last resort: use transaction date
+        let txYm = ymFromIso(tx.date.isoString)
+        if forecastToDueOffset == 0 {
+            return txYm
+        } else {
+            return ymAdd(txYm, months: 1)
+        }
+    }
+    
+    /// Determine due month for a transaction (credit cards use bill due, bank uses calendar)
+    private static func txDueMonth(
+        tx: Transaction,
+        bills: [Bill],
+        creditAccountIds: Set<String>,
+        forecastToDueOffset: Int
+    ) -> String? {
+        let accountId = tx.accountId
+        let isCard = tx.creditCardMetadata != nil ||
+                     creditAccountIds.contains(accountId) ||
+                     bills.contains { $0.accountId == accountId }
+        
+        if isCard {
+            return getDueMonthKey(tx: tx, bills: bills, forecastToDueOffset: forecastToDueOffset)
+        }
+        
+        return ymFromIso(tx.date.isoString)
+    }
+    
     /// Mirrors web `isBillPayment` (src/utils/creditBillPeriod.js) — keeps bill
     /// payments/transfers out of the expanded transaction list.
     private static func isBillPayment(_ description: String) -> Bool {
@@ -87,22 +191,11 @@ public final class BudgetViewModel {
 
     /// Builds the per-category transaction list shown when a budget row is expanded.
     ///
-    /// ⚠️ KNOWN LIMITATION: This list uses calendar date filtering (tx.date.yearMonth)
-    /// but budget totals use due-month logic (credit card purchases grouped by bill month).
-    /// This causes a mismatch between the displayed total and transaction count for
-    /// credit card categories. The web version correctly uses due-month for both.
-    ///
-    /// To fix properly, we would need to:
-    /// 1. Fetch bills data to calculate due month offsets
-    /// 2. Identify credit card accounts vs bank accounts
-    /// 3. Apply txDueMonth logic (see supabase/.../budgetSpent.ts)
-    ///
-    /// For now, use the web version for accurate transaction lists matching budget totals.
+    /// Uses due-month logic to match budget totals: credit card transactions are grouped
+    /// by bill due month (not purchase calendar month), while bank transactions use calendar month.
     ///
     /// Fetches with `month: nil` (unbounded, like `TransactionsViewModel`) and filters
-    /// by calendar date client-side — passing `month:` here triggers server-side
-    /// `from`/`to` filtering on Pluggy's `/v2/transactions`, which unreliably drops
-    /// credit-card purchases (filtered against invoice/due date, not purchase date).
+    /// by due month client-side using the same logic as the backend (budgetSpent.ts).
     private func loadTransactionsByCategory(force: Bool) async {
         guard let transactionsRepository else { return }
         var map: [String: [BudgetTransactionItem]] = [:]
@@ -114,13 +207,32 @@ public final class BudgetViewModel {
         )
         async let benefitsTask = mealBenefitsRepository?.fetchBenefits(force: force)
         async let accountsTask = accountsRepository?.fetchAccounts(force: force)
+        async let billsTask = billsRepository?.fetchBills(accountId: nil, dueMonth: nil)
 
         let accounts = (try? await accountsTask) ?? []
         let accountsById = Dictionary(uniqueKeysWithValues: accounts.map { ($0.id, $0) })
-
+        let bills = (try? await billsTask) ?? []
+        
+        // Identify credit card accounts
+        let creditAccountIds = Set(accounts.filter { $0.type == .credit }.map(\.id))
+        
         if let txs = try? await txTask {
+            // Calculate forecastToDueOffset
+            let forecastToDueOffset = Self.inferForecastToDueOffset(
+                transactions: txs.filter { $0.creditCardMetadata != nil },
+                bills: bills
+            )
+            
             for tx in txs {
-                guard tx.date.yearMonth == selectedMonth else { continue }
+                // Use due month logic instead of calendar month
+                guard let txMonth = Self.txDueMonth(
+                    tx: tx,
+                    bills: bills,
+                    creditAccountIds: creditAccountIds,
+                    forecastToDueOffset: forecastToDueOffset
+                ) else { continue }
+                
+                guard txMonth == selectedMonth.key else { continue }
                 guard tx.kind == .debit else { continue }
                 guard !Self.isBillPayment(tx.description) else { continue }
                 let label = BudgetCategoryCatalog.translateCategory(tx.category)

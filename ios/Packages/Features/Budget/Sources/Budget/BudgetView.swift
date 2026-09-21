@@ -11,14 +11,16 @@ public struct BudgetView: View {
         transactions: (any TransactionsRepository)? = nil,
         mealBenefits: (any MealBenefitsRepository)? = nil,
         purchaseCategories: (any PurchaseCategoriesRepository)? = nil,
-        accounts: (any AccountsRepository)? = nil
+        accounts: (any AccountsRepository)? = nil,
+        bills: (any BillsRepository)? = nil
     ) {
         _viewModel = State(initialValue: BudgetViewModel(
             repository: repository,
             transactions: transactions,
             mealBenefits: mealBenefits,
             purchaseCategories: purchaseCategories,
-            accounts: accounts
+            accounts: accounts,
+            bills: bills
         ))
     }
 

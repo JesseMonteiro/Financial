@@ -106,6 +106,16 @@ public struct TransactionCategory: Sendable, Hashable, Identifiable, Codable {
     }
 }
 
+public struct CreditCardMetadata: Sendable, Hashable, Codable {
+    public let billId: String?
+    public let billForecastDate: String?
+    
+    public init(billId: String? = nil, billForecastDate: String? = nil) {
+        self.billId = billId
+        self.billForecastDate = billForecastDate
+    }
+}
+
 public struct Transaction: Sendable, Identifiable, Hashable, Codable {
     public let id: String
     public var accountId: String
@@ -116,6 +126,9 @@ public struct Transaction: Sendable, Identifiable, Hashable, Codable {
     public var categoryId: String?
     public var kind: TransactionKind
     public var isPending: Bool
+    public var creditCardMetadata: CreditCardMetadata?
+    public var billId: String?
+    public var billForecastDate: String?
 
     public init(
         id: String,
@@ -126,7 +139,10 @@ public struct Transaction: Sendable, Identifiable, Hashable, Codable {
         category: String? = nil,
         categoryId: String? = nil,
         kind: TransactionKind,
-        isPending: Bool = false
+        isPending: Bool = false,
+        creditCardMetadata: CreditCardMetadata? = nil,
+        billId: String? = nil,
+        billForecastDate: String? = nil
     ) {
         self.id = id
         self.accountId = accountId
@@ -137,6 +153,9 @@ public struct Transaction: Sendable, Identifiable, Hashable, Codable {
         self.categoryId = categoryId
         self.kind = kind
         self.isPending = isPending
+        self.creditCardMetadata = creditCardMetadata
+        self.billId = billId
+        self.billForecastDate = billForecastDate
     }
 }
 

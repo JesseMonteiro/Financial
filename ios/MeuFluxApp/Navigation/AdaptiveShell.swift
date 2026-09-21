@@ -261,7 +261,8 @@ struct AdaptiveShell: View {
                 transactions: composition.transactionsRepository,
                 mealBenefits: composition.mealBenefitsRepository,
                 purchaseCategories: composition.purchaseCategoriesRepository,
-                accounts: composition.accountsRepository
+                accounts: composition.accountsRepository,
+                bills: composition.billsRepository
             )
         case .receivables:
             ReceivablesView(repository: composition.receivablesRepository)
