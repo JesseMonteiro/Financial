@@ -28,8 +28,6 @@ import { allTranslations, translateCategory } from '../utils/categories';
 import { useCategoryStore } from '../stores/categoryStore';
 import { getCategoryColor } from '../utils/colors';
 import {
-  getDueMonthKey,
-  inferForecastToDueOffset,
   isBillPayment,
   signedTxAmount,
   MONTHS_PT,
@@ -142,12 +140,11 @@ export function Budget() {
     loading: creditLoading,
     lastUpdatedByAccount,
     transactionsByAccount,
-    billsByAccount,
   } = useCreditDataStore();
   const { categories, loadCategories } = useCategoryStore();
   const { loadTransactions } = useTransactionStore();
 
-  // Selected due month (current by default)
+  // Selected calendar month of the purchase (current by default)
   const [selectedMonth, setSelectedMonth] = useState(currentDueMonthKey);
 
   // Edit state
@@ -182,36 +179,12 @@ export function Budget() {
     return txs;
   }, [accountIds, transactionsByAccount]);
 
-  const officialBills = useMemo(() => {
-    const bills = [];
-    for (const id of accountIds) bills.push(...(billsByAccount[id] || []));
-    return bills;
-  }, [accountIds, billsByAccount]);
-
   const hasCached =
     accountIds.length === 0 || accountIds.every((id) => lastUpdatedByAccount[id]);
   const loadingTx = accountIds.length > 0 && !hasCached && creditLoading;
 
-  const forecastOffset = useMemo(
-    () => inferForecastToDueOffset(
-      allTransactions.filter(t => t.creditCardMetadata || t.type === undefined),
-      officialBills
-    ),
-    [allTransactions, officialBills]
-  );
-
-  /** Due-month key for credit txs; calendar month for bank/manual. */
-  const txDueMonth = (tx) => {
-    if (tx.creditCardMetadata || officialBills.some(b => b.accountId === tx.accountId)) {
-      const cardBills = officialBills.filter(b => b.accountId === tx.accountId);
-      const cardTxs = allTransactions.filter(t => t.accountId === tx.accountId);
-      const offset = inferForecastToDueOffset(cardTxs, cardBills.length ? cardBills : officialBills);
-      return getDueMonthKey(tx, cardBills.length ? cardBills : officialBills, offset);
-    }
-    return (tx.date || '').slice(0, 7);
-  };
-
-  // ── Compute spending by category for selected due month ────────────────────
+  // ── Compute spending by category for selected CALENDAR month ───────────────
+  // Uses purchase date (calendar month), not billing month (due month)
   const spendingByCategory = useMemo(() => {
     const map = {};
     allTransactions.forEach(tx => {
@@ -219,18 +192,20 @@ export function Budget() {
       const signed = signedTxAmount(tx);
       if (signed <= 0) return;
 
-      const txMonth = txDueMonth(tx);
-      if (txMonth !== selectedMonth) return;
+      // Use calendar month (purchase date) instead of due month
+      const txCalendarMonth = String(tx.date || '').slice(0, 7);
+      if (txCalendarMonth !== selectedMonth) return;
 
       const label = translateCategory(tx.category);
+      if (!label) return;
       map[label] = (map[label] || 0) + signed;
     });
     return map;
-  }, [allTransactions, officialBills, selectedMonth, forecastOffset]);
+  }, [allTransactions, selectedMonth]);
 
   // ── Map transactions by category for expanded view ─────────────────────────
-  // Uses allTransactions (same source as spendingByCategory) with DUE MONTH
-  // so the list matches the budget totals (credit card txs grouped by bill due month).
+  // Uses allTransactions with CALENDAR MONTH (purchase date) to match spendingByCategory.
+  // Both totals and list show when purchases were made, not when they will be billed.
   const transactionsByCategory = useMemo(() => {
     const map = {};
 
@@ -238,8 +213,9 @@ export function Budget() {
       if (isBillPayment(tx)) return;
       const signed = signedTxAmount(tx);
       if (signed <= 0) return;
-      const txMonth = txDueMonth(tx);
-      if (txMonth !== selectedMonth) return;
+      // Use calendar month (purchase date) instead of due month
+      const txCalendarMonth = String(tx.date || '').slice(0, 7);
+      if (txCalendarMonth !== selectedMonth) return;
       const label = translateCategory(tx.category);
       if (!label) return;
       if (!map[label]) map[label] = [];
@@ -277,7 +253,7 @@ export function Budget() {
       map[cat].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
     });
     return map;
-  }, [allTransactions, selectedMonth, mealBenefits, mealPurchases, accounts, officialBills, forecastOffset]);
+  }, [allTransactions, selectedMonth, mealBenefits, mealPurchases, accounts]);
 
   const mealSpendMap = useMemo(
     () => mealSpendByCategory(mealBenefits, mealPurchases, selectedMonth),
@@ -293,8 +269,8 @@ export function Budget() {
     const months = new Set();
     allTransactions.forEach(tx => {
       if (isBillPayment(tx)) return;
-      const m = txDueMonth(tx);
-      if (m && m !== 'Outros') months.add(m);
+      const m = String(tx.date || '').slice(0, 7);
+      if (m) months.add(m);
     });
     mealPurchases.forEach((p) => {
       const m = String(p.purchasedAt || '').slice(0, 7);
@@ -303,7 +279,7 @@ export function Budget() {
     months.add(currentDueMonthKey());
     months.add(selectedMonth);
     return [...months].sort();
-  }, [allTransactions, officialBills, forecastOffset, mealPurchases, selectedMonth]);
+  }, [allTransactions, mealPurchases, selectedMonth]);
 
   const budgetRows = useMemo(() => mergeBudgetRows({
     spentBankMap: spendingByCategory,
@@ -347,13 +323,13 @@ export function Budget() {
       const monthTxs = allTransactions.filter(tx => {
         if (isBillPayment(tx)) return false;
         if (signedTxAmount(tx) <= 0) return false;
-        return txDueMonth(tx) === m;
+        return String(tx.date || '').slice(0, 7) === m;
       });
       const total = monthTxs.reduce((s, t) => s + signedTxAmount(t), 0);
       const [, mo] = m.split('-');
       return { label: MONTHS_PT[parseInt(mo, 10) - 1].slice(0, 3), total, month: m };
     });
-  }, [availableMonths, allTransactions, officialBills]);
+  }, [availableMonths, allTransactions]);
 
   // ── Actions ────────────────────────────────────────────────────────────────
   const handleSaveEdit = async (cat) => {
