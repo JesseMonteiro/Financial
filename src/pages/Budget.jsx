@@ -187,12 +187,14 @@ export function Budget() {
       const label = translateCategory(tx.category);
       if (!label) return;
       if (!map[label]) map[label] = [];
+      const account = accounts.find(a => a.id === tx.accountId);
       map[label].push({
         id: tx.id,
         description: tx.description || tx.descriptionTranslated || tx.descriptionRaw || 'Sem descrição',
         date: String(tx.date || '').slice(0, 10),
         amount: signed,
         isMeal: false,
+        accountName: account?.name || 'Conta',
       });
     });
 
@@ -211,6 +213,7 @@ export function Budget() {
         date: String(p.purchasedAt || '').slice(0, 10),
         amount: p.amount,
         isMeal: true,
+        accountName: benefit?.label || (benefit?.kind === 'VR' ? 'VR' : 'VA'),
       });
     });
 
@@ -218,7 +221,7 @@ export function Budget() {
       map[cat].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
     });
     return map;
-  }, [allTransactions, selectedMonth, mealBenefits, mealPurchases]);
+  }, [allTransactions, selectedMonth, mealBenefits, mealPurchases, accounts]);
 
   const mealSpendMap = useMemo(
     () => mealSpendByCategory(mealBenefits, mealPurchases, selectedMonth),
@@ -713,8 +716,13 @@ export function Budget() {
                                 <div style={{ fontSize: 'var(--font-size-xs)', fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                   {tx.description}
                                 </div>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', marginTop: '2px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', marginTop: '2px', flexWrap: 'wrap' }}>
                                   <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{dateLabel}</span>
+                                  {tx.accountName && (
+                                    <span style={{ fontSize: '9px', fontWeight: 600, color: 'var(--text-muted)', backgroundColor: 'var(--bg-tertiary)', borderRadius: '3px', padding: '0 4px', border: '1px solid var(--border-color)' }}>
+                                      {tx.accountName}
+                                    </span>
+                                  )}
                                   {tx.isMeal && (
                                     <span style={{ fontSize: '9px', fontWeight: 700, color: 'var(--info)', backgroundColor: 'rgba(99,179,237,0.15)', borderRadius: '3px', padding: '0 4px' }}>VA/VR</span>
                                   )}

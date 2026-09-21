@@ -3,12 +3,23 @@ import Observation
 import MeuFluxDomain
 import MeuFluxDesignSystem
 
+/// A single line item shown in a budget category's expanded transaction list.
+public struct BudgetTransactionItem: Sendable, Identifiable, Hashable {
+    public let id: String
+    public let description: String
+    public let date: InstantDate
+    public let amount: Money
+    public let isMeal: Bool
+    public let accountName: String
+}
+
 @Observable
 @MainActor
 public final class BudgetViewModel {
     public private(set) var state: FeatureLoadState<[BudgetLimit]> = .idle
     public private(set) var limits: [BudgetLimit] = []
     public private(set) var purchaseCategories: [PurchaseCategory] = PurchaseCategoryCatalog.defaults
+    public private(set) var transactionsByCategory: [String: [BudgetTransactionItem]] = [:]
     public var selectedMonth: YearMonth = YearMonth(from: Date())
     public var errorMessage: String?
     public var draftCategory = BudgetCategoryCatalog.labels[0]
@@ -20,18 +31,105 @@ public final class BudgetViewModel {
     public var expandedCategory: String?
 
     private let repository: (any BudgetRepository)?
+    private let transactionsRepository: (any TransactionsRepository)?
+    private let mealBenefitsRepository: (any MealBenefitsRepository)?
     private let purchaseCategoriesRepository: (any PurchaseCategoriesRepository)?
+    private let accountsRepository: (any AccountsRepository)?
     private var lastLoadedAt: Date?
     private var lastCacheKey: String?
 
     public init(
         repository: (any BudgetRepository)? = nil,
         transactions: (any TransactionsRepository)? = nil,
-        purchaseCategories: (any PurchaseCategoriesRepository)? = nil
+        mealBenefits: (any MealBenefitsRepository)? = nil,
+        purchaseCategories: (any PurchaseCategoriesRepository)? = nil,
+        accounts: (any AccountsRepository)? = nil
     ) {
         self.repository = repository
+        self.transactionsRepository = transactions
+        self.mealBenefitsRepository = mealBenefits
         self.purchaseCategoriesRepository = purchaseCategories
-        _ = transactions
+        self.accountsRepository = accounts
+    }
+
+    /// Mirrors web `isBillPayment` (src/utils/creditBillPeriod.js) — keeps bill
+    /// payments/transfers out of the expanded transaction list.
+    private static func isBillPayment(_ description: String) -> Bool {
+        let d = description
+            .uppercased()
+            .folding(options: .diacriticInsensitive, locale: Locale(identifier: "pt_BR"))
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if d.hasPrefix("PAGAMENTO") { return true }
+        let needles = [
+            "PAGAMENTO DE FATURA", "PAGAMENTO RECEBIDO", "PAGAMENTO ON LINE",
+            "PAGAMENTO ONLINE", "PAGAMENTO COM SALDO", "PAGAMENTO PIX",
+            "PAGTO FATURA", "PAGAMENTO FATURA", "PAGTO DEBITO AUTOMATICO",
+            "DEBITO AUTOMATICO FATURA",
+        ]
+        return needles.contains { d.contains($0) }
+    }
+
+    /// Builds the per-category transaction list shown when a budget row is expanded.
+    /// Uses calendar date (tx.date) rather than card due-month so purchases appear
+    /// under the month they happened in, matching web's transactionsByCategory.
+    ///
+    /// Fetches with `month: nil` (unbounded, like `TransactionsViewModel`) and filters
+    /// by calendar date client-side — passing `month:` here triggers server-side
+    /// `from`/`to` filtering on Pluggy's `/v2/transactions`, which unreliably drops
+    /// credit-card purchases (filtered against invoice/due date, not purchase date).
+    private func loadTransactionsByCategory(force: Bool) async {
+        guard let transactionsRepository else { return }
+        var map: [String: [BudgetTransactionItem]] = [:]
+
+        async let txTask = transactionsRepository.fetchTransactions(
+            accountId: nil,
+            month: nil,
+            force: force
+        )
+        async let benefitsTask = mealBenefitsRepository?.fetchBenefits(force: force)
+        async let accountsTask = accountsRepository?.fetchAccounts(force: force)
+
+        let accounts = (try? await accountsTask) ?? []
+        let accountsById = Dictionary(uniqueKeysWithValues: accounts.map { ($0.id, $0) })
+
+        if let txs = try? await txTask {
+            for tx in txs {
+                guard tx.date.yearMonth == selectedMonth else { continue }
+                guard tx.kind == .debit else { continue }
+                guard !Self.isBillPayment(tx.description) else { continue }
+                let label = BudgetCategoryCatalog.translateCategory(tx.category)
+                let accountName = accountsById[tx.accountId]?.name ?? "Conta"
+                map[label, default: []].append(
+                    BudgetTransactionItem(id: tx.id, description: tx.description, date: tx.date, amount: tx.amount, isMeal: false, accountName: accountName)
+                )
+            }
+        }
+
+        if let benefits = try? await benefitsTask {
+            for benefit in benefits {
+                for purchase in benefit.purchases {
+                    guard purchase.purchasedAt.yearMonth == selectedMonth else { continue }
+                    let category = purchase.category.isEmpty
+                        ? benefit.kind.defaultBudgetCategory
+                        : purchase.category
+                    let description = purchase.description.isEmpty
+                        ? (benefit.kind == .vr ? "VR — compra" : "VA — compra")
+                        : purchase.description
+                    let accountName = benefit.label.isEmpty
+                        ? (benefit.kind == .vr ? "VR" : "VA")
+                        : benefit.label
+                    map[category, default: []].append(
+                        BudgetTransactionItem(id: purchase.id, description: description, date: purchase.purchasedAt, amount: purchase.amount, isMeal: true, accountName: accountName)
+                    )
+                }
+            }
+        }
+
+        for key in map.keys {
+            map[key]?.sort { $0.date > $1.date }
+        }
+        transactionsByCategory = map
     }
 
     public var isEditing: Bool { editingCategory != nil }
@@ -159,6 +257,7 @@ public final class BudgetViewModel {
             if let loaded = try? await categoriesTask {
                 purchaseCategories = PurchaseCategoryCatalog.resolved(loaded)
             }
+            await loadTransactionsByCategory(force: force)
             if !categoryPickerLabels.contains(draftCategory) {
                 draftCategory = categoryPickerLabels.first ?? BudgetCategoryCatalog.labels[0]
             }

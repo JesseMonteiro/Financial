@@ -9,12 +9,16 @@ public struct BudgetView: View {
     public init(
         repository: any BudgetRepository,
         transactions: (any TransactionsRepository)? = nil,
-        purchaseCategories: (any PurchaseCategoriesRepository)? = nil
+        mealBenefits: (any MealBenefitsRepository)? = nil,
+        purchaseCategories: (any PurchaseCategoriesRepository)? = nil,
+        accounts: (any AccountsRepository)? = nil
     ) {
         _viewModel = State(initialValue: BudgetViewModel(
             repository: repository,
             transactions: transactions,
-            purchaseCategories: purchaseCategories
+            mealBenefits: mealBenefits,
+            purchaseCategories: purchaseCategories,
+            accounts: accounts
         ))
     }
 
@@ -336,16 +340,26 @@ public struct BudgetView: View {
                 if viewModel.expandedCategory == limit.category {
                     Divider()
                         .padding(.vertical, 4)
-                    
+
+                    let items = viewModel.transactionsByCategory[limit.category] ?? []
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("TRANSAÇÕES")
+                        Text("TRANSAÇÕES (\(items.count))")
                             .font(.caption2.weight(.semibold))
                             .foregroundStyle(MeuFluxColors.textMuted)
-                        
-                        Text("Lista de transações disponível em breve")
-                            .font(.caption)
-                            .foregroundStyle(MeuFluxColors.textMuted)
-                            .padding(.vertical, 8)
+
+                        if items.isEmpty {
+                            Text("Nenhuma transação encontrada")
+                                .font(.caption)
+                                .foregroundStyle(MeuFluxColors.textMuted)
+                                .padding(.vertical, 8)
+                                .frame(maxWidth: .infinity, alignment: .center)
+                        } else {
+                            VStack(alignment: .leading, spacing: 6) {
+                                ForEach(items) { item in
+                                    transactionRow(item)
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -384,6 +398,45 @@ public struct BudgetView: View {
                 Label("Excluir meta", systemImage: "trash")
             }
         }
+    }
+
+    @ViewBuilder
+    private func transactionRow(_ item: BudgetTransactionItem) -> some View {
+        let d = item.date
+        let dateLabel = String(format: "%02d/%02d/%04d", d.day, d.month, d.year)
+        HStack(alignment: .center, spacing: 8) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(item.description)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(MeuFluxColors.textPrimary)
+                    .lineLimit(1)
+                HStack(spacing: 6) {
+                    Text(dateLabel)
+                        .font(.system(size: 10))
+                        .foregroundStyle(MeuFluxColors.textMuted)
+                    Text(item.accountName)
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(MeuFluxColors.textMuted)
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background(MeuFluxColors.bgTertiary)
+                        .cornerRadius(3)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 3)
+                                .stroke(MeuFluxColors.border, lineWidth: 1)
+                        )
+                    if item.isMeal {
+                        StatusBadge("VA/VR", style: .info)
+                    }
+                }
+            }
+            Spacer(minLength: 8)
+            Text(item.amount.formatted())
+                .font(.caption.weight(.bold).monospacedDigit())
+                .foregroundStyle(MeuFluxColors.textPrimary)
+        }
+        .padding(8)
+        .background(MeuFluxColors.bgSecondary, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 
     private func openCreate() {

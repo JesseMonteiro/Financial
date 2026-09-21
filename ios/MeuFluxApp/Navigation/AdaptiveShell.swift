@@ -259,7 +259,9 @@ struct AdaptiveShell: View {
             BudgetView(
                 repository: composition.budgetRepository,
                 transactions: composition.transactionsRepository,
-                purchaseCategories: composition.purchaseCategoriesRepository
+                mealBenefits: composition.mealBenefitsRepository,
+                purchaseCategories: composition.purchaseCategoriesRepository,
+                accounts: composition.accountsRepository
             )
         case .receivables:
             ReceivablesView(repository: composition.receivablesRepository)
@@ -323,7 +325,8 @@ struct AdaptiveShell: View {
                     NotificationImportSetupView(
                         importer: composition.notificationImportService,
                         mealBenefits: composition.mealBenefitsRepository,
-                        accounts: composition.accountsRepository
+                        accounts: composition.accountsRepository,
+                        bankConnections: composition.bankConnectionsRepository
                     )
                 ),
                 siriShortcutsTip: AnyView(SiriBalanceTip())
