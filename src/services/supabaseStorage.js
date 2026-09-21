@@ -122,15 +122,29 @@ export async function deleteStoredGoal(goalId) {
 }
 
 const DEFAULT_PURCHASE_CATEGORY_SEED = [
-  { key: 'Food', label: 'Alimentação', color: '#f97316', icon: 'utensils', sortOrder: 0 },
-  { key: 'Groceries', label: 'Supermercado', color: '#fb923c', icon: 'cart', sortOrder: 1 },
-  { key: 'Rent', label: 'Aluguel / Habitação', color: '#a855f7', icon: 'home', sortOrder: 2 },
-  { key: 'Utilities', label: 'Contas de Consumo (Água, Luz)', color: '#c084fc', icon: 'bolt', sortOrder: 3 },
-  { key: 'Transport', label: 'Transporte', color: '#0ea5e9', icon: 'car', sortOrder: 4 },
-  { key: 'Entertainment', label: 'Lazer / Entretenimento', color: '#ec4899', icon: 'ticket', sortOrder: 5 },
-  { key: 'Health', label: 'Saúde', color: '#10b981', icon: 'crosscase', sortOrder: 6 },
+  { key: 'Food and drinks', label: 'Alimentação', color: '#f97316', icon: 'utensils', sortOrder: 0 },
+  { key: 'Groceries', label: 'Supermercados', color: '#fb923c', icon: 'cart', sortOrder: 1 },
+  { key: 'Housing', label: 'Habitação', color: '#a855f7', icon: 'home', sortOrder: 2 },
+  { key: 'Transportation', label: 'Transporte', color: '#0ea5e9', icon: 'car', sortOrder: 3 },
+  { key: 'Services', label: 'Serviços', color: '#0284c7', icon: 'wrench', sortOrder: 4 },
+  { key: 'Shopping', label: 'Compras', color: '#ec4899', icon: 'bag', sortOrder: 5 },
+  { key: 'Healthcare', label: 'Saúde', color: '#10b981', icon: 'heart', sortOrder: 6 },
   { key: 'Education', label: 'Educação', color: '#eab308', icon: 'graduationcap', sortOrder: 7 },
-  { key: 'Other', label: 'Outros', color: '#64748b', icon: 'ellipsis', sortOrder: 8 },
+  { key: 'Leisure', label: 'Lazer', color: '#f43f5e', icon: 'ticket', sortOrder: 8 },
+  { key: 'Digital services', label: 'Serviços digitais', color: '#8b5cf6', icon: 'tv', sortOrder: 9 },
+  { key: 'Travel', label: 'Viagens', color: '#06b6d4', icon: 'airplane', sortOrder: 10 },
+  { key: 'Income', label: 'Renda', color: '#22c55e', icon: 'banknote', sortOrder: 11 },
+  { key: 'Investments', label: 'Investimentos', color: '#3b82f6', icon: 'chart', sortOrder: 12 },
+  { key: 'Transfers', label: 'Transferências', color: '#8b5cf6', icon: 'creditcard', sortOrder: 13 },
+  { key: 'Same person transfer', label: 'Transferência entre mesma pessoa', color: '#6366f1', icon: 'creditcard', sortOrder: 14 },
+  { key: 'Loans and Financing', label: 'Empréstimos e Financiamentos', color: '#ef4444', icon: 'percent', sortOrder: 15 },
+  { key: 'Bank fees', label: 'Taxas bancárias', color: '#78716c', icon: 'percent', sortOrder: 16 },
+  { key: 'Taxes', label: 'Impostos', color: '#dc2626', icon: 'doc', sortOrder: 17 },
+  { key: 'Insurance', label: 'Seguro', color: '#2563eb', icon: 'shield', sortOrder: 18 },
+  { key: 'Donations', label: 'Doações', color: '#14b8a6', icon: 'handraised', sortOrder: 19 },
+  { key: 'Gambling', label: 'Jogos de azar', color: '#d946ef', icon: 'sparkles', sortOrder: 20 },
+  { key: 'Legal obligations', label: 'Obrigações legais', color: '#64748b', icon: 'doc', sortOrder: 21 },
+  { key: 'Other', label: 'Outros', color: '#64748b', icon: 'ellipsis', sortOrder: 22 },
 ];
 
 async function seedPurchaseCategories(userId) {

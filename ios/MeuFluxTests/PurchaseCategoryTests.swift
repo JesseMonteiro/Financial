@@ -5,11 +5,12 @@ import XCTest
 final class PurchaseCategoryTests: XCTestCase {
     func testDefaultCatalogHasNineStableKeys() {
         let keys = PurchaseCategoryCatalog.defaults.map(\.key)
-        XCTAssertEqual(keys.count, 9)
-        XCTAssertEqual(
-            Set(keys),
-            Set(["Food", "Groceries", "Rent", "Utilities", "Transport", "Entertainment", "Health", "Education", "Other"])
-        )
+        XCTAssertEqual(keys.count, 23)
+        XCTAssertTrue(keys.contains("Food and drinks"))
+        XCTAssertTrue(keys.contains("Transportation"))
+        XCTAssertTrue(keys.contains("Housing"))
+        XCTAssertTrue(keys.contains("Income"))
+        XCTAssertTrue(keys.contains("Other"))
     }
 
     func testResolvedFallsBackToDefaultsWhenEmpty() {

@@ -3,6 +3,7 @@ import MeuFluxDesignSystem
 import MeuFluxDomain
 
 public struct LoansView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var viewModel: LoansViewModel
 
     public init(repository: any LoansRepository) {
@@ -18,18 +19,23 @@ public struct LoansView: View {
             switch viewModel.state {
             case .idle, .loading:
                 PageLoadingSkeleton(style: .summaryList)
+                    .transition(.opacity.combined(with: .scale(scale: 0.98)))
             case .empty:
                 EmptyState(
                     title: "Sem empréstimos",
                     message: "Parcelas e saldos devedores aparecerão após sincronizar o Open Finance.",
                     systemImage: "building.columns"
                 )
+                .transition(.opacity)
             case .failed(let message):
                 ErrorState(message: message) { Task { await viewModel.retry() } }
+                    .transition(.opacity)
             case .loaded:
                 content
+                    .transition(.opacity)
             }
         }
+        .animation(reduceMotion ? nil : MotionTokens.stateTransition, value: viewModel.state.stage)
         .meuFluxPageTitle("Empréstimos")
         .refreshable { await viewModel.load(force: true) }
         .task { await viewModel.load() }
@@ -40,7 +46,8 @@ public struct LoansView: View {
             Section {
                 LabeledContent("Saldo devedor", value: viewModel.outstandingTotal.formatted())
             }
-            ForEach(viewModel.loans) { loan in
+            .cardEntrance(index: 0)
+            ForEach(Array(viewModel.loans.enumerated()), id: \.element.id) { index, loan in
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
                         Text(loan.name).font(.headline)
@@ -61,6 +68,7 @@ public struct LoansView: View {
                     .font(.caption)
                     .foregroundStyle(MeuFluxColors.textSecondary)
                 }
+                .cardEntrance(index: index + 1)
                 .padding(.vertical, 4)
             }
         }

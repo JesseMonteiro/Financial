@@ -17,24 +17,67 @@ public struct LineItemCapabilities: OptionSet, Sendable, Hashable {
 public struct LineItemCategoryOption: Sendable, Hashable, Identifiable {
     public var id: String
     public var label: String
+    public var key: String?
 
-    public init(id: String, label: String) {
+    public init(id: String, label: String, key: String? = nil) {
         self.id = id
         self.label = label
+        self.key = key
     }
 
     public static func manualOptions(_ categories: [PurchaseCategory] = PurchaseCategoryCatalog.defaults) -> [LineItemCategoryOption] {
         PurchaseCategoryCatalog.resolved(categories).map {
-            LineItemCategoryOption(id: $0.key, label: $0.label)
+            LineItemCategoryOption(id: $0.key, label: $0.label, key: $0.key)
         }
     }
 
-    public static func pluggyOptions(_ categories: [TransactionCategory]) -> [LineItemCategoryOption] {
-        let leaves = categories.filter { $0.parentId != nil && !$0.parentId!.isEmpty }
-        let source = leaves.isEmpty ? categories : leaves
-        return source
-            .map { LineItemCategoryOption(id: $0.id, label: $0.label) }
+    public static func recategorizationOptions(
+        pluggyCategories: [TransactionCategory] = [],
+        purchaseCategories: [PurchaseCategory] = PurchaseCategoryCatalog.defaults
+    ) -> [LineItemCategoryOption] {
+        let defaultKeys = Set(PurchaseCategoryCatalog.defaults.map(\.key))
+
+        // 1. Custom user categories
+        let customOptions: [LineItemCategoryOption] = purchaseCategories
+            .filter { !defaultKeys.contains($0.key) && !$0.id.hasPrefix("default-") }
+            .map { LineItemCategoryOption(id: $0.key, label: $0.label, key: $0.key) }
             .sorted { $0.label.localizedCaseInsensitiveCompare($1.label) == .orderedAscending }
+
+        // 2. Index Pluggy Level 1 category IDs
+        var pluggyIdByKey: [String: String] = [:]
+        for pc in pluggyCategories {
+            let desc = pc.label.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            let hasParent = pc.parentId != nil && !pc.parentId!.isEmpty
+            if !desc.isEmpty {
+                if !hasParent || pluggyIdByKey[desc] == nil {
+                    pluggyIdByKey[desc] = pc.id
+                }
+            }
+        }
+
+        // 3. Base options strictly from the 23 Level 1 categories
+        let baseOptions: [LineItemCategoryOption] = PurchaseCategoryCatalog.defaults.map { base in
+            let lowerKey = base.key.lowercased()
+            let lowerLabel = base.label.lowercased()
+            var resolvedId = pluggyIdByKey[lowerKey] ?? pluggyIdByKey[lowerLabel]
+            if resolvedId == nil && base.key == "Food and drinks" {
+                resolvedId = pluggyIdByKey["food and drinks"]
+                    ?? pluggyIdByKey["comida e bebidas"]
+                    ?? pluggyIdByKey["alimentação"]
+                    ?? pluggyIdByKey["food"]
+            }
+            return LineItemCategoryOption(
+                id: resolvedId ?? base.key,
+                label: base.label,
+                key: base.key
+            )
+        }.sorted { $0.label.localizedCaseInsensitiveCompare($1.label) == .orderedAscending }
+
+        return customOptions + baseOptions
+    }
+
+    public static func pluggyOptions(_ categories: [TransactionCategory]) -> [LineItemCategoryOption] {
+        recategorizationOptions(pluggyCategories: categories, purchaseCategories: PurchaseCategoryCatalog.defaults)
     }
 }
 
@@ -132,12 +175,28 @@ public struct LineItemDetail: Sendable, Hashable, Identifiable {
         let preferred = categorySelectionId
         if options.contains(where: { $0.id == preferred }) { return preferred }
         if let categoryId, options.contains(where: { $0.id == categoryId }) { return categoryId }
-        if let categoryKey, options.contains(where: { $0.id == categoryKey }) { return categoryKey }
-        if let category {
-            if let match = options.first(where: { $0.label.caseInsensitiveCompare(category) == .orderedSame }) {
-                return match.id
+        if let categoryKey, let match = options.first(where: { $0.id == categoryKey || $0.key == categoryKey }) {
+            return match.id
+        }
+        if let category, let match = options.first(where: { $0.label.caseInsensitiveCompare(category) == .orderedSame }) {
+            return match.id
+        }
+
+        // Subcategory or candidate resolution to Level 1 base category
+        let candidates = [category, categoryKey, preferred].compactMap { $0 }
+        for cand in candidates {
+            if let baseKey = PurchaseCategoryCatalog.baseCategoryKey(for: cand) {
+                let baseLabel = PurchaseCategoryCatalog.label(for: baseKey)
+                if let match = options.first(where: {
+                    $0.id == baseKey ||
+                    $0.key == baseKey ||
+                    $0.label.caseInsensitiveCompare(baseLabel) == .orderedSame
+                }) {
+                    return match.id
+                }
             }
         }
+
         return preferred
     }
 
@@ -436,22 +495,40 @@ public extension LineItemDetail {
         guard let category, !category.isEmpty else { return "Geral" }
         if let kind = ExpenseCategoryKind(rawValue: category) { return kind.labelPT }
         switch category {
-        case "Groceries": return "Alimentação"
+        case "Food and drinks", "Comida e bebidas", "Food": return "Alimentação"
+        case "Groceries": return "Supermercados"
+        case "Housing": return "Habitação"
+        case "Transportation", "Transport": return "Transporte"
+        case "Services": return "Serviços"
+        case "Shopping": return "Compras"
+        case "Healthcare", "Health": return "Saúde"
+        case "Education": return "Educação"
+        case "Leisure", "Entertainment": return "Lazer"
+        case "Digital services": return "Serviços digitais"
+        case "Travel": return "Viagens"
+        case "Income": return "Renda"
+        case "Investments": return "Investimentos"
+        case "Transfers": return "Transferências"
+        case "Same person transfer": return "Transferência entre mesma pessoa"
+        case "Loans and Financing": return "Empréstimos e Financiamentos"
+        case "Bank fees": return "Taxas bancárias"
+        case "Taxes": return "Impostos"
+        case "Insurance": return "Seguro"
+        case "Donations": return "Doações"
+        case "Gambling": return "Jogos de azar"
+        case "Legal obligations": return "Obrigações legais"
+        case "Other": return "Outros"
         case "Eating out": return "Restaurantes"
         case "Food delivery": return "Delivery"
         case "Cinema, theater and concerts": return "Cinema & Shows"
         case "Parking": return "Estacionamento"
-        case "Shopping": return "Compras"
-        case "Services": return "Serviços"
         case "Tickets": return "Ingressos"
-        case "Digital services": return "Serviços digitais"
         case "Telecommunications": return "Telefone & Internet"
         case "Car rental": return "Aluguel de carros"
         case "Automotive": return "Automóvel"
         case "Gas stations": return "Combustível"
         case "Vehicle maintenance": return "Manutenção"
         case "Taxi and ride-hailing": return "Uber / Táxi"
-        case "Healthcare": return "Saúde"
         case "Dentist": return "Odontologia"
         case "Pharmacy": return "Farmácia"
         case "Optometry": return "Ótica"
@@ -461,12 +538,8 @@ public extension LineItemDetail {
         case "Rent": return "Aluguel"
         case "Clothing": return "Vestuário"
         case "Gaming": return "Games"
-        case "Transfers": return "Transferências"
         case "Credit card payment": return "Pagamento de fatura"
-        case "Bank fees": return "Tarifas"
         case "Salary": return "Salário"
-        case "Investments": return "Investimentos"
-        case "Other": return "Outros"
         default: return category
         }
     }

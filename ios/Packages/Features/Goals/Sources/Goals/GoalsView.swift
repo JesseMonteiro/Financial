@@ -3,6 +3,7 @@ import MeuFluxDesignSystem
 import MeuFluxDomain
 
 public struct GoalsView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var viewModel: GoalsViewModel
     @State private var showEditor = false
 
@@ -19,6 +20,7 @@ public struct GoalsView: View {
             switch viewModel.state {
             case .idle, .loading:
                 PageLoadingSkeleton(style: .list)
+                    .transition(.opacity.combined(with: .scale(scale: 0.98)))
             case .empty:
                 EmptyState(
                     title: "Nenhuma meta",
@@ -27,12 +29,16 @@ public struct GoalsView: View {
                     actionTitle: "Nova meta",
                     action: { showEditor = true }
                 )
+                .transition(.opacity)
             case .failed(let message):
                 ErrorState(message: message) { Task { await viewModel.retry() } }
+                    .transition(.opacity)
             case .loaded:
                 content
+                    .transition(.opacity)
             }
         }
+        .animation(reduceMotion ? nil : MotionTokens.stateTransition, value: viewModel.state.stage)
         .meuFluxPageTitle("Metas")
         .refreshable { await viewModel.load(force: true) }
         .task { await viewModel.load() }
@@ -69,7 +75,7 @@ public struct GoalsView: View {
 
     private var content: some View {
         List {
-            ForEach(viewModel.goals) { goal in
+            ForEach(Array(viewModel.goals.enumerated()), id: \.element.id) { index, goal in
                 VStack(alignment: .leading, spacing: 6) {
                     HStack {
                         Text(goal.name).font(.headline)
@@ -87,6 +93,7 @@ public struct GoalsView: View {
                     .font(.caption)
                     .foregroundStyle(MeuFluxColors.textSecondary)
                 }
+                .cardEntrance(index: index)
                 .swipeActions {
                     Button(role: .destructive) {
                         Task { await viewModel.delete(goal) }

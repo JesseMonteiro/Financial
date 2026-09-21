@@ -221,6 +221,55 @@ public struct CreditBillPeriod: Sendable, Hashable {
             return sum + max(0, bill.total.amount)
         }
     }
+
+    /// Resolved key for the current bill ("fatura atual").
+    /// Aligns with the web project logic: prioritizes the next open or closed unpaid bill.
+    /// When the current calendar month is already paid, focus advances to the next open bill.
+    public func resolvedCurrentDueKey(referenceDate: Date = Date()) -> String? {
+        let calendarKey = YearMonth(from: referenceDate).key
+
+        // 1. If openDueKey matches a bill that is not paid, or is open:
+        if let openDueKey, let bill = bills.first(where: { $0.dueMonth == openDueKey }) {
+            if !bill.isPaid || bill.type == .currentOpen {
+                return openDueKey
+            }
+            // If the bill at openDueKey is already paid, advance to the next unpaid bill
+            if let nextUnpaid = bills.first(where: { $0.dueMonth >= openDueKey && !$0.isPaid }) {
+                return nextUnpaid.dueMonth
+            }
+        }
+
+        // 2. Next unpaid or open bill
+        if let open = bills.first(where: { $0.type == .currentOpen && !$0.isPaid }) ?? bills.first(where: { $0.type == .currentOpen }) {
+            return open.dueMonth
+        }
+
+        // 3. Upcoming unpaid bill starting from calendar month or future
+        if let upcomingUnpaid = bills.first(where: { $0.dueMonth >= calendarKey && !$0.isPaid }) {
+            return upcomingUnpaid.dueMonth
+        }
+
+        // 4. Any unpaid bill in the list (e.g. overdue closed bill)
+        if let anyUnpaid = bills.first(where: { !$0.isPaid }) {
+            return anyUnpaid.dueMonth
+        }
+
+        // 5. Fallback to openDueKey if present in bills
+        if let openDueKey, bills.contains(where: { $0.dueMonth == openDueKey }) {
+            return openDueKey
+        }
+
+        // 6. Fallback: calendar month if present, or closest month to calendar month, or last bill
+        if bills.contains(where: { $0.dueMonth == calendarKey }) {
+            return calendarKey
+        }
+        guard let refYm = YearMonth(key: calendarKey) else { return bills.last?.dueMonth }
+        return bills.min(by: { a, b in
+            let distA = (YearMonth(key: a.dueMonth).map { abs(($0.year * 12 + $0.month) - (refYm.year * 12 + refYm.month)) }) ?? Int.max
+            let distB = (YearMonth(key: b.dueMonth).map { abs(($0.year * 12 + $0.month) - (refYm.year * 12 + refYm.month)) }) ?? Int.max
+            return distA < distB
+        })?.dueMonth ?? bills.last?.dueMonth
+    }
 }
 
 public enum CreditBillKind: String, Sendable, Hashable, Codable {

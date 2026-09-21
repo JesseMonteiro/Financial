@@ -3,6 +3,7 @@ import MeuFluxDesignSystem
 import MeuFluxDomain
 
 public struct ReceivablesView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var viewModel: ReceivablesViewModel
     @State private var showEditor = false
     @State private var selectedDetail: LineItemDetail?
@@ -21,14 +22,19 @@ public struct ReceivablesView: View {
                 switch viewModel.state {
                 case .idle, .loading:
                     PageLoadingSkeleton(style: .dashboard)
+                        .transition(.opacity.combined(with: .scale(scale: 0.98)))
                 case .empty:
                     emptyContent
+                        .transition(.opacity)
                 case .failed(let message):
                     ErrorState(message: message) { Task { await viewModel.retry() } }
+                        .transition(.opacity)
                 case .loaded:
                     content
+                        .transition(.opacity)
                 }
             }
+            .animation(reduceMotion ? nil : MotionTokens.stateTransition, value: viewModel.state.stage)
         }
         .meuFluxPageTitle("Valores a Receber")
         .refreshable { await viewModel.load(force: true) }
@@ -120,6 +126,7 @@ public struct ReceivablesView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 header
+                    .cardEntrance(index: 0)
 
                 if let error = viewModel.errorMessage {
                     Text(error)
@@ -131,9 +138,11 @@ public struct ReceivablesView: View {
                 }
 
                 kpiGrid
+                    .cardEntrance(index: 1)
 
-                ForEach(viewModel.personGroups) { group in
+                ForEach(Array(viewModel.personGroups.enumerated()), id: \.element.id) { index, group in
                     personCard(group)
+                        .cardEntrance(index: index + 2)
                 }
             }
             .meuFluxPageGutter()

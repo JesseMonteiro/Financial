@@ -3,6 +3,7 @@ import MeuFluxDesignSystem
 import MeuFluxDomain
 
 public struct NotificationImportSetupView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var viewModel: NotificationImportSetupViewModel
     @Environment(\.openURL) private var openURL
     @State private var tutorialMode: TutorialMode = .applePay
@@ -38,18 +39,26 @@ public struct NotificationImportSetupView: View {
             switch viewModel.state {
             case .idle, .loading:
                 PageLoadingSkeleton(style: .form)
+                    .transition(.opacity.combined(with: .scale(scale: 0.98)))
             case .failed(let message):
                 ErrorState(message: message) { Task { await viewModel.load() } }
+                    .transition(.opacity)
             case .empty:
                 EmptyState(
                     title: "Leitor indisponível",
                     message: "Entre na sua conta para configurar o importador de notificações.",
                     systemImage: "bell.slash"
                 )
+                .transition(.opacity)
             case .loaded:
                 content
+                    .transition(reduceMotion ? .opacity : .asymmetric(
+                        insertion: .opacity.combined(with: .move(edge: .bottom).combined(with: .scale(scale: 0.98))),
+                        removal: .opacity
+                    ))
             }
         }
+        .animation(MotionTokens.stateTransition, value: viewModel.state.stage)
         .meuFluxPageTitle("Leitor de notificações")
         .task { await viewModel.load() }
         .sheet(item: $viewModel.configuringSource) { source in
@@ -64,6 +73,7 @@ public struct NotificationImportSetupView: View {
                     .font(.subheadline)
                     .foregroundStyle(MeuFluxColors.textSecondary)
             }
+            .cardEntrance(index: 0)
 
             Section("Permissão do MeuFlux") {
                 if viewModel.notificationsGranted {
@@ -75,6 +85,7 @@ public struct NotificationImportSetupView: View {
                     }
                 }
             }
+            .cardEntrance(index: 1)
 
             if viewModel.destinationOptions.isEmpty {
                 Section {
@@ -89,6 +100,7 @@ public struct NotificationImportSetupView: View {
                     sourceRow(source)
                 }
             }
+            .cardEntrance(index: 2)
 
             Section {
                 ForEach(bankSources) { source in
@@ -101,12 +113,14 @@ public struct NotificationImportSetupView: View {
                     .font(.caption)
                     .foregroundStyle(MeuFluxColors.textMuted)
             }
+            .cardEntrance(index: 3)
 
             Section("Carteira e Outros") {
                 ForEach(otherSources) { source in
                     sourceRow(source)
                 }
             }
+            .cardEntrance(index: 4)
 
             Section("Como configurar no Atalhos") {
                 Picker("Tipo de Automação", selection: $tutorialMode) {
@@ -179,6 +193,7 @@ public struct NotificationImportSetupView: View {
                         .font(.subheadline.weight(.semibold))
                 }
             }
+            .cardEntrance(index: 5)
 
             Section("Colar uma notificação") {
                 TextField("App de origem (ex.: Nubank, Alelo)", text: $viewModel.pasteSourceApp)
@@ -193,6 +208,7 @@ public struct NotificationImportSetupView: View {
                         .foregroundStyle(MeuFluxColors.textSecondary)
                 }
             }
+            .cardEntrance(index: 6)
 
             if !viewModel.history.isEmpty {
                 Section("Recentes") {
@@ -200,6 +216,7 @@ public struct NotificationImportSetupView: View {
                         historyRow(record)
                     }
                 }
+                .cardEntrance(index: 7)
             }
         }
     }

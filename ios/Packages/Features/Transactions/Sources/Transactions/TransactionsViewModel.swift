@@ -44,7 +44,10 @@ public final class TransactionsViewModel {
     }
 
     public var categoryOptions: [LineItemCategoryOption] {
-        LineItemCategoryOption.pluggyOptions(pluggyCategories)
+        LineItemCategoryOption.recategorizationOptions(
+            pluggyCategories: pluggyCategories,
+            purchaseCategories: purchaseCategories
+        )
     }
 
     public var filteredTransactions: [Transaction] {

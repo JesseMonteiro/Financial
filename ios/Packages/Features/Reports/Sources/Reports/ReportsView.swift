@@ -3,6 +3,7 @@ import MeuFluxDesignSystem
 import MeuFluxDomain
 
 public struct ReportsView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var viewModel: ReportsViewModel
 
     public init(repository: any ReportsRepository) {
@@ -18,18 +19,23 @@ public struct ReportsView: View {
             switch viewModel.state {
             case .idle, .loading:
                 PageLoadingSkeleton(style: .dashboard)
+                    .transition(.opacity.combined(with: .scale(scale: 0.98)))
             case .empty:
                 EmptyState(
                     title: "Sem relatório",
                     message: "Conecte contas para ver categorias, fluxo e tendências.",
                     systemImage: "chart.bar.xaxis"
                 )
+                .transition(.opacity)
             case .failed(let message):
                 ErrorState(message: message) { Task { await viewModel.retry() } }
+                    .transition(.opacity)
             case .loaded:
                 content
+                    .transition(.opacity)
             }
         }
+        .animation(reduceMotion ? nil : MotionTokens.stateTransition, value: viewModel.state.stage)
         .meuFluxPageTitle("Relatórios")
         .refreshable { await viewModel.load(force: true) }
         .task(id: "\(viewModel.months.rawValue)-\(viewModel.accountId ?? "all")") {
@@ -64,10 +70,12 @@ public struct ReportsView: View {
                     }
                 }
             }
+            .cardEntrance(index: 0)
             Section("Resumo") {
                 LabeledContent("Receitas", value: viewModel.incomeTotal.formatted())
                 LabeledContent("Despesas", value: viewModel.expenseTotal.formatted())
             }
+            .cardEntrance(index: 1)
             Section("Por categoria") {
                 ForEach(viewModel.byCategory, id: \.name) { row in
                     HStack {
@@ -77,6 +85,7 @@ public struct ReportsView: View {
                     }
                 }
             }
+            .cardEntrance(index: 2)
         }
     }
 }

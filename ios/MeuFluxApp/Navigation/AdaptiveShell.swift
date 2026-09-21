@@ -51,9 +51,6 @@ struct AdaptiveShell: View {
                 iPhoneShell
             }
         }
-        .task {
-            await composition.refreshJointNav()
-        }
         .onChange(of: composition.hasJointLink) { _, hasLink in
             if !hasLink, composition.selectedRoute == .jointFinance {
                 composition.selectedRoute = .more
@@ -644,7 +641,7 @@ private struct TabBarFrameProbe: UIViewRepresentable {
             self.probe = probe
         }
 
-        @objc func tick() {
+        @MainActor @objc func tick() {
             guard let probe else {
                 link?.invalidate()
                 link = nil

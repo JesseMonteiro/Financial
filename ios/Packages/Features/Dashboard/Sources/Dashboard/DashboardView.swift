@@ -85,19 +85,24 @@ public struct DashboardView: View {
     public var body: some View {
         PageChrome {
             ScrollView(.vertical) {
-                VStack(alignment: .leading, spacing: 24) {
+                LazyVStack(alignment: .leading, spacing: 24) {
                     homeTopBar
                     switch viewModel.state {
                     case .idle, .loading:
                         PageLoadingSkeleton(style: .dashboard, embedded: true)
+                            .transition(.opacity.combined(with: .scale(scale: 0.98)))
                     case .empty:
                         emptyContent
+                            .transition(.opacity)
                     case .failed(let message):
                         ErrorState(message: message) { Task { await viewModel.load(force: true) } }
+                            .transition(.opacity)
                     case .loaded(let snap):
                         loadedContent(snap)
+                            .transition(.opacity)
                     }
                 }
+                .animation(reduceMotion ? nil : MotionTokens.stateTransition, value: viewModel.state.stage)
                 .meuFluxPageGutter()
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -164,22 +169,26 @@ public struct DashboardView: View {
     @ViewBuilder
     private var emptyContent: some View {
         homeHero(displayName: "você")
+            .cardEntrance(index: 0)
         EmptyState(
             title: "Nenhum dado ainda",
             message: "Conecte uma conta via Open Finance para ver patrimônio, gastos e insights.",
             systemImage: "chart.bar.doc.horizontal"
         )
+        .cardEntrance(index: 1)
         if onConnect != nil {
             GradientCapsuleButton("Conectar Nova Conta", systemImage: "plus") {
                 onConnect?()
             }
             .frame(maxWidth: .infinity, alignment: .center)
+            .cardEntrance(index: 2)
         }
     }
 
     @ViewBuilder
     private func loadedContent(_ snap: DashboardSnapshot) -> some View {
         homeHero(displayName: snap.displayName)
+            .cardEntrance(index: 0)
 
         if !CalculationVersion.matches(snap.calculationVersion) {
             Text("Versão de cálculo desatualizada (\(snap.calculationVersion ?? "—")). Atualize o app.")
@@ -188,17 +197,26 @@ public struct DashboardView: View {
         }
 
         summaryCarousels(snap)
+            .cardEntrance(index: 1)
         creditPurchasesCarousel
+            .cardEntrance(index: 2)
         dailyFlowCard
+            .cardEntrance(index: 3)
 
         netWorthChart(snap)
+            .cardEntrance(index: 4)
         categoryChart(snap)
+            .cardEntrance(index: 5)
         cashflowChart(snap)
+            .cardEntrance(index: 6)
         recentTransactionsSection(snap)
+            .cardEntrance(index: 7)
         if !snap.budgetCategories.isEmpty {
             budgetSection(snap)
+                .cardEntrance(index: 8)
         }
         footerLinks(snap)
+            .cardEntrance(index: 9)
     }
 
     private func homeHero(displayName: String) -> some View {
@@ -242,7 +260,7 @@ public struct DashboardView: View {
                         .tag(offset)
                 }
             }
-            .tabViewStyle(.page(indexDisplayMode: .never))
+            .pageTabViewStyleNever()
         }
         .aspectRatio(1, contentMode: .fit)
         .task(id: "\(kpiAutoToken)-\(count)-\(reduceMotion)") {
@@ -287,7 +305,7 @@ public struct DashboardView: View {
                             .tag(offset)
                     }
                 }
-                .tabViewStyle(.page(indexDisplayMode: .never))
+                .pageTabViewStyleNever()
             } else {
                 emptyInsightSlide
             }
@@ -380,7 +398,7 @@ public struct DashboardView: View {
                             }
                     }
                 }
-                .tabViewStyle(.page(indexDisplayMode: .never))
+                .pageTabViewStyleNever()
                 .frame(height: 76)
             }
             .onChange(of: purchases.count) { _, newCount in
@@ -1404,4 +1422,15 @@ private struct SparklineChart: View {
 #Preview("Dark") {
     NavigationStack { DashboardView() }
         .preferredColorScheme(.dark)
+}
+
+private extension View {
+    @ViewBuilder
+    func pageTabViewStyleNever() -> some View {
+        #if os(iOS)
+        self.tabViewStyle(.page(indexDisplayMode: .never))
+        #else
+        self.tabViewStyle(.automatic)
+        #endif
+    }
 }

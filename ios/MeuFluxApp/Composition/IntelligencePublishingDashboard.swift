@@ -26,15 +26,33 @@ struct IntelligencePublishingDashboard: LoadDashboardUseCase {
 
     func execute(month: YearMonth, force: Bool) async throws -> DashboardSnapshot {
         var snapshot = try await inner.execute(month: month, force: force)
-        let narrated = await narrator.narrate(snapshot)
-        snapshot.insights = narrated.items
-        let siri = SiriSnapshotMapper.make(from: snapshot).preservingLists(from: store.load())
+        snapshot.insights.append(contentsOf: InsightNarrator.budgetPressureInsights(from: snapshot))
+
+        let immediateSnapshot = snapshot
+        let siri = SiriSnapshotMapper.make(from: immediateSnapshot).preservingLists(from: store.load())
         store.save(siri)
-        if let onIndexed {
-            await onIndexed(siri)
-        }
-        if let enrich {
-            Task { await enrich() }
+
+        let narrator = self.narrator
+        let store = self.store
+        let onIndexed = self.onIndexed
+        let enrich = self.enrich
+
+        Task.detached(priority: .utility) {
+            let narrated = await narrator.narrate(immediateSnapshot)
+            if narrated.usedOnDeviceModel {
+                var updatedSnapshot = immediateSnapshot
+                updatedSnapshot.insights = narrated.items
+                let updatedSiri = SiriSnapshotMapper.make(from: updatedSnapshot).preservingLists(from: store.load())
+                store.save(updatedSiri)
+                if let onIndexed {
+                    await onIndexed(updatedSiri)
+                }
+            } else if let onIndexed {
+                await onIndexed(siri)
+            }
+            if let enrich {
+                await enrich()
+            }
         }
         return snapshot
     }
@@ -49,7 +67,9 @@ struct IntelligencePublishingCreditCards: CreditCardsRepository, Sendable {
         let screen = try await inner.fetchScreen(force: force)
         if let snapshot = store.mergeCards(SiriSnapshotMapper.cards(from: screen)) {
             if let onIndexed {
-                await onIndexed(snapshot)
+                Task.detached(priority: .utility) {
+                    await onIndexed(snapshot)
+                }
             }
         }
         return screen
@@ -65,7 +85,9 @@ struct IntelligencePublishingAccounts: AccountsRepository, Sendable {
         let accounts = try await inner.fetchAccounts(force: force)
         if let snapshot = store.mergeAccounts(SiriSnapshotMapper.accounts(from: accounts)) {
             if let onIndexed {
-                await onIndexed(snapshot)
+                Task.detached(priority: .utility) {
+                    await onIndexed(snapshot)
+                }
             }
         }
         return accounts

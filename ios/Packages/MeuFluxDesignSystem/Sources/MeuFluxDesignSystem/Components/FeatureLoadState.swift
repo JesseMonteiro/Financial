@@ -18,11 +18,30 @@ public enum FeatureLoadState<Value: Sendable>: Sendable {
         return false
     }
 
+    /// Discrete stage used for animating state changes without requiring Equatable on Value.
+    public var stage: FeatureLoadStage {
+        switch self {
+        case .idle: return .idle
+        case .loading: return .loading
+        case .loaded: return .loaded
+        case .empty: return .empty
+        case .failed: return .failed
+        }
+    }
+
     /// Enter loading only when there is nothing to show yet.
     public mutating func beginLoad(silentIfPossible: Bool = true) {
         if silentIfPossible && hasContent { return }
         self = .loading
     }
+}
+
+public enum FeatureLoadStage: Equatable, Hashable, Sendable {
+    case idle
+    case loading
+    case loaded
+    case empty
+    case failed
 }
 
 /// Mirrors web `CACHE_TTL_MS` / `isFreshTimestamp` in `clientCache.js`.

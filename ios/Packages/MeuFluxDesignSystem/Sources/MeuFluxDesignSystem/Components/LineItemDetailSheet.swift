@@ -13,6 +13,7 @@ public struct LineItemDetailSheet: View {
 
     @State private var confirmDelete = false
     @State private var selectedCategoryId: String
+    @State private var lastCommittedCategoryId: String
     @State private var sheetHeight: CGFloat = 520
 
     public init(
@@ -33,7 +34,9 @@ public struct LineItemDetailSheet: View {
         self.onDelete = onDelete
         self.onCreateReceivable = onCreateReceivable
         self.onChangeCategory = onChangeCategory
-        _selectedCategoryId = State(initialValue: item.resolvedCategorySelection(in: categoryOptions))
+        let initial = item.resolvedCategorySelection(in: categoryOptions)
+        _selectedCategoryId = State(initialValue: initial)
+        _lastCommittedCategoryId = State(initialValue: initial)
     }
 
     public var body: some View {
@@ -93,10 +96,14 @@ public struct LineItemDetailSheet: View {
             sheetHeight = height
         }
         .onChange(of: item.categorySelectionId) { _, _ in
-            selectedCategoryId = item.resolvedCategorySelection(in: categoryOptions)
+            let resolved = item.resolvedCategorySelection(in: categoryOptions)
+            selectedCategoryId = resolved
+            lastCommittedCategoryId = resolved
         }
         .onChange(of: categoryOptions) { _, newValue in
-            selectedCategoryId = item.resolvedCategorySelection(in: newValue)
+            let resolved = item.resolvedCategorySelection(in: newValue)
+            selectedCategoryId = resolved
+            lastCommittedCategoryId = resolved
         }
     }
 
@@ -164,8 +171,9 @@ public struct LineItemDetailSheet: View {
                 .pickerStyle(.menu)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .onChange(of: selectedCategoryId) { _, newValue in
-                    guard let option = categoryOptions.first(where: { $0.id == newValue }),
-                          newValue != item.resolvedCategorySelection(in: categoryOptions) else { return }
+                    guard newValue != lastCommittedCategoryId,
+                          let option = categoryOptions.first(where: { $0.id == newValue }) else { return }
+                    lastCommittedCategoryId = newValue
                     onChangeCategory?(option)
                 }
             }

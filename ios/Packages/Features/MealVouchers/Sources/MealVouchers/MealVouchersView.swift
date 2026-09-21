@@ -3,6 +3,7 @@ import MeuFluxDesignSystem
 import MeuFluxDomain
 
 public struct MealVouchersView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var viewModel: MealVouchersViewModel
     @State private var showEditor = false
     @State private var showPurchase = false
@@ -20,6 +21,7 @@ public struct MealVouchersView: View {
             switch viewModel.state {
             case .idle, .loading:
                 PageLoadingSkeleton(style: .list)
+                    .transition(.opacity.combined(with: .scale(scale: 0.98)))
             case .empty:
                 EmptyState(
                     title: "Nenhum VA ou VR",
@@ -31,12 +33,19 @@ public struct MealVouchersView: View {
                         showEditor = true
                     }
                 )
+                .transition(.opacity)
             case .failed(let message):
                 ErrorState(message: message) { Task { await viewModel.retry() } }
+                    .transition(.opacity)
             case .loaded:
                 content
+                    .transition(reduceMotion ? .opacity : .asymmetric(
+                        insertion: .opacity.combined(with: .move(edge: .bottom).combined(with: .scale(scale: 0.98))),
+                        removal: .opacity
+                    ))
             }
         }
+        .animation(MotionTokens.stateTransition, value: viewModel.state.stage)
         .meuFluxPageTitle("VA / VR")
         .refreshable { await viewModel.load(force: true) }
         .task { await viewModel.load() }
@@ -56,7 +65,7 @@ public struct MealVouchersView: View {
 
     private var content: some View {
         List {
-            ForEach(viewModel.benefits) { benefit in
+            ForEach(Array(viewModel.benefits.enumerated()), id: \.element.id) { index, benefit in
                 let snap = viewModel.snapshot(for: benefit)
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
@@ -120,6 +129,7 @@ public struct MealVouchersView: View {
                     .font(.subheadline.weight(.semibold))
                 }
                 .padding(.vertical, 6)
+                .cardEntrance(index: index)
                 .swipeActions {
                     Button("Editar") {
                         viewModel.beginEdit(benefit)

@@ -6,6 +6,7 @@ import UIKit
 #endif
 
 public struct FinancialMomentView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var viewModel: FinancialMomentDetailViewModel
     @State private var selectedDetail: LineItemDetail?
     private let onCreateManualExpense: (() -> Void)?
@@ -61,6 +62,7 @@ public struct FinancialMomentView: View {
                 switch viewModel.state {
                 case .idle, .loading:
                     PageLoadingSkeleton(style: .moment)
+                        .transition(.opacity.combined(with: .scale(scale: 0.98)))
                 case .empty:
                     EmptyState(
                         title: "Mês zerado",
@@ -69,14 +71,18 @@ public struct FinancialMomentView: View {
                         actionTitle: onCreateManualExpense == nil ? nil : "Criar despesa",
                         action: onCreateManualExpense
                     )
+                    .transition(.opacity)
                 case .failed(let message):
                     ErrorState(message: message) {
                         Task { await viewModel.retry() }
                     }
+                    .transition(.opacity)
                 case .loaded(let detail):
                     content(detail)
+                        .transition(.opacity)
                 }
             }
+            .animation(reduceMotion ? nil : MotionTokens.stateTransition, value: viewModel.state.stage)
         }
         .meuFluxPageTitle("Momento Financeiro")
         .refreshable { await viewModel.load(force: true) }
@@ -131,18 +137,27 @@ public struct FinancialMomentView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 monthSelector(detail)
+                    .cardEntrance(index: 0)
 
                 VStack(alignment: .leading, spacing: 16) {
                     if isPhoneIdiom {
                         mobileKPIs(detail)
+                            .cardEntrance(index: 1)
                         utilizationCard(detail)
+                            .cardEntrance(index: 2)
                         mealBenefitsCards(detail)
+                            .cardEntrance(index: 3)
                         mobileContentStack(detail)
+                            .cardEntrance(index: 4)
                     } else {
                         desktopKPIs(detail)
+                            .cardEntrance(index: 1)
                         utilizationCard(detail)
+                            .cardEntrance(index: 2)
                         mealBenefitsCards(detail)
+                            .cardEntrance(index: 3)
                         desktopContentColumns(detail)
+                            .cardEntrance(index: 4)
                     }
                 }
                 .padding(.horizontal, PageLayout.gutter)

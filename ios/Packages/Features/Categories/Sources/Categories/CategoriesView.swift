@@ -3,6 +3,7 @@ import MeuFluxDesignSystem
 import MeuFluxDomain
 
 public struct CategoriesView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var viewModel: CategoriesViewModel
     @State private var showEditor = false
 
@@ -19,6 +20,7 @@ public struct CategoriesView: View {
             switch viewModel.state {
             case .idle, .loading:
                 PageLoadingSkeleton(style: .list)
+                    .transition(.opacity.combined(with: .scale(scale: 0.98)))
             case .empty:
                 EmptyState(
                     title: "Nenhuma categoria",
@@ -30,12 +32,19 @@ public struct CategoriesView: View {
                         showEditor = true
                     }
                 )
+                .transition(.opacity)
             case .failed(let message):
                 ErrorState(message: message) { Task { await viewModel.retry() } }
+                    .transition(.opacity)
             case .loaded:
                 content
+                    .transition(reduceMotion ? .opacity : .asymmetric(
+                        insertion: .opacity.combined(with: .move(edge: .bottom).combined(with: .scale(scale: 0.98))),
+                        removal: .opacity
+                    ))
             }
         }
+        .animation(MotionTokens.stateTransition, value: viewModel.state.stage)
         .meuFluxPageTitle("Categorias")
         .refreshable { await viewModel.load(force: true) }
         .task { await viewModel.load() }
@@ -113,7 +122,7 @@ public struct CategoriesView: View {
 
     private var content: some View {
         List {
-            ForEach(viewModel.categories) { category in
+            ForEach(Array(viewModel.categories.enumerated()), id: \.element.id) { index, category in
                 HStack(spacing: 12) {
                     let tint = Color(hexString: category.color ?? "#64748b") ?? MeuFluxColors.primary
                     Image(systemName: PurchaseCategoryCatalog.systemImage(for: category.key, in: [category]))
@@ -130,6 +139,7 @@ public struct CategoriesView: View {
                     Spacer()
                 }
                 .contentShape(Rectangle())
+                .cardEntrance(index: index)
                 .onTapGesture {
                     viewModel.beginEdit(category)
                     showEditor = true

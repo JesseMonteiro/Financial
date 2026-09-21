@@ -1,4 +1,4 @@
-import { translateCategory, userCategoryOptions, pluggyCategoryOptions } from './categories.js';
+import { translateCategory, userCategoryOptions, pluggyCategoryOptions, recategorizationOptions } from './categories.js';
 import { formatCurrency, formatDate, formatDateRelative } from './formatters.js';
 
 export const LINE_ITEM_KINDS = {
@@ -250,11 +250,8 @@ export function paidActionTitle(item) {
 
 export function categoryOptionsForItem(item, pluggyCategories = [], purchaseCategories = []) {
   if (!item?.capabilities?.changeCategory) return [];
-  if (item.kind === LINE_ITEM_KINDS.manualExpense) return userCategoryOptions(purchaseCategories);
-  if (item.kind === LINE_ITEM_KINDS.transaction || item.kind === LINE_ITEM_KINDS.creditBillLine) {
-    return pluggyCategoryOptions(pluggyCategories);
-  }
-  return [];
+  const options = recategorizationOptions(pluggyCategories, purchaseCategories);
+  return options.all;
 }
 
 export function applyingCategory(item, option) {
@@ -269,6 +266,7 @@ export function applyingCategory(item, option) {
     ...item,
     categoryId: option.value,
     categoryKey: option.value,
+    category: option.label,
     metadata,
   };
 }

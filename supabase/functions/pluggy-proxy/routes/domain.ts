@@ -24,15 +24,29 @@ const TABLE_MAP: Record<string, DomainTable> = {
 };
 
 const DEFAULT_PURCHASE_CATEGORIES = [
-  { key: "Food", label: "Alimentação", color: "#f97316", icon: "utensils", sort_order: 0 },
-  { key: "Groceries", label: "Supermercado", color: "#fb923c", icon: "cart", sort_order: 1 },
-  { key: "Rent", label: "Aluguel / Habitação", color: "#a855f7", icon: "home", sort_order: 2 },
-  { key: "Utilities", label: "Contas de Consumo (Água, Luz)", color: "#c084fc", icon: "bolt", sort_order: 3 },
-  { key: "Transport", label: "Transporte", color: "#0ea5e9", icon: "car", sort_order: 4 },
-  { key: "Entertainment", label: "Lazer / Entretenimento", color: "#ec4899", icon: "ticket", sort_order: 5 },
-  { key: "Health", label: "Saúde", color: "#10b981", icon: "crosscase", sort_order: 6 },
+  { key: "Food and drinks", label: "Alimentação", color: "#f97316", icon: "utensils", sort_order: 0 },
+  { key: "Groceries", label: "Supermercados", color: "#fb923c", icon: "cart", sort_order: 1 },
+  { key: "Housing", label: "Habitação", color: "#a855f7", icon: "home", sort_order: 2 },
+  { key: "Transportation", label: "Transporte", color: "#0ea5e9", icon: "car", sort_order: 3 },
+  { key: "Services", label: "Serviços", color: "#0284c7", icon: "wrench", sort_order: 4 },
+  { key: "Shopping", label: "Compras", color: "#ec4899", icon: "bag", sort_order: 5 },
+  { key: "Healthcare", label: "Saúde", color: "#10b981", icon: "heart", sort_order: 6 },
   { key: "Education", label: "Educação", color: "#eab308", icon: "graduationcap", sort_order: 7 },
-  { key: "Other", label: "Outros", color: "#64748b", icon: "ellipsis", sort_order: 8 },
+  { key: "Leisure", label: "Lazer", color: "#f43f5e", icon: "ticket", sort_order: 8 },
+  { key: "Digital services", label: "Serviços digitais", color: "#8b5cf6", icon: "tv", sort_order: 9 },
+  { key: "Travel", label: "Viagens", color: "#06b6d4", icon: "airplane", sort_order: 10 },
+  { key: "Income", label: "Renda", color: "#22c55e", icon: "banknote", sort_order: 11 },
+  { key: "Investments", label: "Investimentos", color: "#3b82f6", icon: "chart", sort_order: 12 },
+  { key: "Transfers", label: "Transferências", color: "#8b5cf6", icon: "creditcard", sort_order: 13 },
+  { key: "Same person transfer", label: "Transferência entre mesma pessoa", color: "#6366f1", icon: "creditcard", sort_order: 14 },
+  { key: "Loans and Financing", label: "Empréstimos e Financiamentos", color: "#ef4444", icon: "percent", sort_order: 15 },
+  { key: "Bank fees", label: "Taxas bancárias", color: "#78716c", icon: "percent", sort_order: 16 },
+  { key: "Taxes", label: "Impostos", color: "#dc2626", icon: "doc", sort_order: 17 },
+  { key: "Insurance", label: "Seguro", color: "#2563eb", icon: "shield", sort_order: 18 },
+  { key: "Donations", label: "Doações", color: "#14b8a6", icon: "handraised", sort_order: 19 },
+  { key: "Gambling", label: "Jogos de azar", color: "#d946ef", icon: "sparkles", sort_order: 20 },
+  { key: "Legal obligations", label: "Obrigações legais", color: "#64748b", icon: "doc", sort_order: 21 },
+  { key: "Other", label: "Outros", color: "#64748b", icon: "ellipsis", sort_order: 22 },
 ];
 
 async function listPurchaseCategories(

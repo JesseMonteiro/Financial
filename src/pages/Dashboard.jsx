@@ -454,7 +454,7 @@ export function Dashboard() {
       {selectedItem && (
         <ItemDetailSheet
           item={selectedItem}
-          categoryOptions={categoryOptionsForItem(selectedItem, pluggyCategories)}
+          categoryOptions={categoryOptionsForItem(selectedItem, pluggyCategories, purchaseCategories)}
           onChangeCategory={async (option) => {
             await updateOpenFinanceCategory(selectedItem.sourceId, option.value, option.label);
             setSelectedItem(applyingCategory(selectedItem, option));

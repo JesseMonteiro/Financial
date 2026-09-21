@@ -164,4 +164,64 @@ final class LineItemDetailTests: XCTestCase {
         ]
         XCTAssertEqual(detail.resolvedCategorySelection(in: options), "07010100")
     }
+
+    func testRecategorizationOptionsReturns23BaseCategoriesWithAlimentacao() {
+        let mockPluggyCats = [
+            TransactionCategory(id: "01000000", label: "Income", parentId: nil),
+            TransactionCategory(id: "01010000", label: "Salary", parentId: "01000000"),
+            TransactionCategory(id: "07000000", label: "Food and drinks", parentId: nil),
+            TransactionCategory(id: "07010000", label: "Eating out", parentId: "07000000"),
+        ]
+        let options = LineItemCategoryOption.recategorizationOptions(pluggyCategories: mockPluggyCats)
+        // Must contain strictly the 23 Level 1 categories
+        XCTAssertEqual(options.count, 23)
+        // Must NOT contain leaf subcategories
+        XCTAssertFalse(options.contains(where: { $0.id == "01010000" }))
+        XCTAssertFalse(options.contains(where: { $0.id == "07010000" }))
+        // Must contain Alimentação resolved to 07000000
+        let food = options.first(where: { $0.key == "Food and drinks" || $0.label == "Alimentação" })
+        XCTAssertNotNil(food)
+        XCTAssertEqual(food?.label, "Alimentação")
+        XCTAssertEqual(food?.id, "07000000")
+    }
+
+    func testRecategorizationOptionsCombinesCustomCategories() {
+        let customCategories = [
+            PurchaseCategory(id: "cust-1", key: "PetsAndVet", label: "Pets e Veterinário", color: "#ff0055", sortOrder: 0),
+        ]
+        let options = LineItemCategoryOption.recategorizationOptions(
+            pluggyCategories: [],
+            purchaseCategories: PurchaseCategoryCatalog.defaults + customCategories
+        )
+        XCTAssertEqual(options.count, 24) // 1 custom + 23 base
+        XCTAssertTrue(options.contains(where: { $0.id == "PetsAndVet" && $0.label == "Pets e Veterinário" }))
+        XCTAssertTrue(options.contains(where: { $0.label == "Alimentação" }))
+    }
+
+    func testResolvedCategorySelectionResolvesSubcategoryToBaseCategory() {
+        let tx = Transaction(
+            id: "tx-3",
+            accountId: "acc-1",
+            description: "Restaurante",
+            amount: Money(amount: 55),
+            date: date,
+            category: "Eating out",
+            categoryId: "07010100",
+            kind: .debit
+        )
+        let detail = LineItemDetail.from(transaction: tx, accountName: "Nubank")
+        let baseOptions = [
+            LineItemCategoryOption(id: "07000000", label: "Alimentação", key: "Food and drinks"),
+            LineItemCategoryOption(id: "04000000", label: "Transporte", key: "Transportation"),
+        ]
+        // "Eating out" must resolve to base category "Alimentação" (07000000)
+        XCTAssertEqual(detail.resolvedCategorySelection(in: baseOptions), "07000000")
+    }
+
+    func testTranslatedCategoryFoodAndDrinksIsAlimentacao() {
+        XCTAssertEqual(LineItemDetail.translatedCategory("Food and drinks"), "Alimentação")
+        XCTAssertEqual(LineItemDetail.translatedCategory("Comida e bebidas"), "Alimentação")
+        XCTAssertEqual(LineItemDetail.translatedCategory("Food"), "Alimentação")
+        XCTAssertEqual(LineItemDetail.translatedCategory("Groceries"), "Supermercado")
+    }
 }

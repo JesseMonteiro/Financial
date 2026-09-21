@@ -3,6 +3,7 @@ import MeuFluxDesignSystem
 import MeuFluxDomain
 
 public struct BudgetView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var viewModel: BudgetViewModel
     @State private var showEditor = false
 
@@ -33,6 +34,7 @@ public struct BudgetView: View {
             switch viewModel.state {
             case .idle, .loading:
                 PageLoadingSkeleton(style: .summaryList)
+                    .transition(.opacity.combined(with: .scale(scale: 0.98)))
             case .empty:
                 EmptyState(
                     title: "Sem orçamento",
@@ -41,12 +43,16 @@ public struct BudgetView: View {
                     actionTitle: "Adicionar meta",
                     action: { openCreate() }
                 )
+                .transition(.opacity)
             case .failed(let message):
                 ErrorState(message: message) { Task { await viewModel.retry() } }
+                    .transition(.opacity)
             case .loaded:
                 content
+                    .transition(.opacity)
             }
         }
+        .animation(reduceMotion ? nil : MotionTokens.stateTransition, value: viewModel.state.stage)
         .meuFluxPageTitle("Orçamento")
         .refreshable { await viewModel.load(force: true) }
         .task(id: viewModel.selectedMonth.key) { await viewModel.load() }
@@ -135,8 +141,11 @@ public struct BudgetView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 monthStrip
+                    .cardEntrance(index: 0)
                 kpiGrid
+                    .cardEntrance(index: 1)
                 categoriesSection
+                    .cardEntrance(index: 2)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)

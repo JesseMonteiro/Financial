@@ -15,8 +15,8 @@ struct LaunchSplashView: View {
     @State private var bootstrapTimedOut = false
     @State private var didStartExit = false
 
-    private let minimumVisibleSeconds: TimeInterval = 1.1
-    private let maximumWaitSeconds: TimeInterval = 3.0
+    private let minimumVisibleSeconds: TimeInterval = 0.4
+    private let maximumWaitSeconds: TimeInterval = 2.0
     private let logoSide: CGFloat = 148
 
     var body: some View {
@@ -73,18 +73,18 @@ struct LaunchSplashView: View {
         didStartExit = true
 
         Task { @MainActor in
-            withAnimation(.easeIn(duration: 0.48)) {
+            withAnimation(.easeIn(duration: 0.28)) {
                 logoScale = 38
             }
 
-            try? await Task.sleep(nanoseconds: 380_000_000)
+            try? await Task.sleep(nanoseconds: 200_000_000)
 
-            withAnimation(.easeOut(duration: 0.22)) {
+            withAnimation(.easeOut(duration: 0.16)) {
                 logoOpacity = 0
                 backgroundOpacity = 0
             }
 
-            try? await Task.sleep(nanoseconds: 240_000_000)
+            try? await Task.sleep(nanoseconds: 140_000_000)
             onFinished()
         }
     }

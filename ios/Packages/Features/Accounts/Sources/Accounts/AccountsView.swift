@@ -3,6 +3,7 @@ import MeuFluxDesignSystem
 import MeuFluxDomain
 
 public struct AccountsView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var viewModel: AccountsViewModel
     @State private var showManualEditor = false
     private let onConnect: (() -> Void)?
@@ -30,6 +31,7 @@ public struct AccountsView: View {
                 switch viewModel.state {
                 case .idle, .loading:
                     PageLoadingSkeleton(style: .list)
+                        .transition(.opacity.combined(with: .scale(scale: 0.98)))
                 case .empty:
                     EmptyState(
                         title: "Nenhuma conta",
@@ -38,14 +40,18 @@ public struct AccountsView: View {
                         actionTitle: onConnect == nil ? nil : "Conectar banco",
                         action: onConnect
                     )
+                    .transition(.opacity)
                 case .failed(let message):
                     ErrorState(message: message) {
                         Task { await viewModel.retry() }
                     }
+                    .transition(.opacity)
                 case .loaded:
                     content
+                        .transition(.opacity)
                 }
             }
+            .animation(reduceMotion ? nil : MotionTokens.stateTransition, value: viewModel.state.stage)
         }
         .meuFluxPageTitle("Contas & Saldos")
         .refreshable { await viewModel.load(force: true) }
@@ -181,8 +187,9 @@ public struct AccountsView: View {
                     columns: [GridItem(.adaptive(minimum: 280), spacing: 12)],
                     spacing: 12
                 ) {
-                    ForEach(viewModel.bankAccounts) { account in
+                    ForEach(Array(viewModel.bankAccounts.enumerated()), id: \.element.id) { index, account in
                         bankCard(account)
+                            .cardEntrance(index: index)
                     }
                 }
             }
@@ -200,12 +207,14 @@ public struct AccountsView: View {
             if viewModel.creditCards.isEmpty {
                 emptySectionHint("Nenhum cartão de crédito conectado.")
             } else {
+                let baseIndex = viewModel.bankAccounts.count
                 LazyVGrid(
                     columns: [GridItem(.adaptive(minimum: 280), spacing: 12)],
                     spacing: 12
                 ) {
-                    ForEach(viewModel.creditCards) { account in
+                    ForEach(Array(viewModel.creditCards.enumerated()), id: \.element.id) { index, account in
                         creditCard(account)
+                            .cardEntrance(index: baseIndex + index)
                     }
                 }
             }

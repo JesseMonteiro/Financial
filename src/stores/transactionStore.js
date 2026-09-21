@@ -10,6 +10,29 @@ import {
 import { CACHE_TTL_MS, isFreshTimestamp } from '../services/clientCache';
 import { splitManualTotal } from '../utils/manualAccounts';
 
+const TX_CATEGORY_OVERRIDES_KEY = 'meuflux_tx_category_overrides';
+
+function getCategoryOverrides() {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = localStorage.getItem(TX_CATEGORY_OVERRIDES_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveCategoryOverride(id, categoryId, category) {
+  if (typeof window === 'undefined' || !id) return;
+  try {
+    const current = getCategoryOverrides();
+    current[id] = { categoryId, category, updatedAt: Date.now() };
+    localStorage.setItem(TX_CATEGORY_OVERRIDES_KEY, JSON.stringify(current));
+  } catch {
+    /* ignore */
+  }
+}
+
 function addPending(pending, ids) {
   const next = { ...pending };
   for (const id of ids) {
@@ -101,9 +124,21 @@ export const useTransactionStore = create((set, get) => ({
         getStoredManualTransactions()
       ]);
       const apiList = apiRes.results || apiRes || [];
+      const overrides = getCategoryOverrides();
+      const patchedApiList = apiList.map((tx) => {
+        const ov = overrides[tx.id];
+        if (ov) {
+          return {
+            ...tx,
+            category: ov.category || tx.category,
+            categoryId: ov.categoryId || tx.categoryId,
+          };
+        }
+        return tx;
+      });
 
       set({
-        transactions: [...apiList, ...manualTxs],
+        transactions: [...patchedApiList, ...manualTxs],
         loading: false,
         lastUpdated: new Date(),
       });
@@ -220,8 +255,14 @@ export const useTransactionStore = create((set, get) => ({
   },
 
   updateOpenFinanceCategory: async (id, categoryId, label) => {
-    const updated = await patchTransactionCategory(id, categoryId);
+    let updated = null;
+    try {
+      updated = await patchTransactionCategory(id, categoryId);
+    } catch (err) {
+      console.warn('Could not patch category on remote Pluggy:', err);
+    }
     const nextCategory = label || updated?.category;
+    saveCategoryOverride(id, categoryId, nextCategory);
     set((state) => ({
       transactions: state.transactions.map((t) => (
         t.id === id ? { ...t, categoryId, category: nextCategory } : t

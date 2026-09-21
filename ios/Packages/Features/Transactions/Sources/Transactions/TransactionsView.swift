@@ -3,13 +3,14 @@ import MeuFluxDesignSystem
 import MeuFluxDomain
 
 public struct TransactionsView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var viewModel: TransactionsViewModel
     @State private var showFilters = false
     @State private var selectedDetail: LineItemDetail?
 
     public init(
-        transactions: any TransactionsRepository,
-        accounts: any AccountsRepository,
+        transactions: (any TransactionsRepository)? = nil,
+        accounts: (any AccountsRepository)? = nil,
         purchaseCategories: (any PurchaseCategoriesRepository)? = nil
     ) {
         _viewModel = State(
@@ -31,20 +32,25 @@ public struct TransactionsView: View {
                 switch viewModel.state {
                 case .idle, .loading:
                     PageLoadingSkeleton(style: .list)
+                        .transition(.opacity.combined(with: .scale(scale: 0.98)))
                 case .empty:
                     EmptyState(
                         title: "Sem transações",
                         message: "As movimentações sincronizadas das suas contas aparecem aqui.",
                         systemImage: "arrow.left.arrow.right"
                     )
+                    .transition(.opacity)
                 case .failed(let message):
                     ErrorState(message: message) {
                         Task { await viewModel.retry() }
                     }
+                    .transition(.opacity)
                 case .loaded:
                     content
+                        .transition(.opacity)
                 }
             }
+            .animation(reduceMotion ? nil : MotionTokens.stateTransition, value: viewModel.state.stage)
         }
         .meuFluxPageTitle("Transações")
         .searchable(text: $viewModel.searchText, prompt: "Buscar descrição ou categoria")
@@ -128,6 +134,7 @@ public struct TransactionsView: View {
                         message: "Ajuste a busca ou os filtros.",
                         systemImage: "magnifyingglass"
                     )
+                    .cardEntrance(index: 0)
                 } else {
                     GlassCard {
                         VStack(alignment: .leading, spacing: 0) {
@@ -160,6 +167,7 @@ public struct TransactionsView: View {
                             }
                         }
                     }
+                    .cardEntrance(index: 0)
                 }
             }
             .meuFluxPageGutter()

@@ -9,23 +9,27 @@ public struct GlassCard<Content: View>: View {
     private let subtitle: String?
     private let content: Content
     private let padding: CGFloat
+    private let entranceIndex: Int?
 
-    public init(padding: CGFloat = 16, @ViewBuilder content: () -> Content) {
+    public init(padding: CGFloat = 16, entranceIndex: Int? = nil, @ViewBuilder content: () -> Content) {
         self.title = nil
         self.subtitle = nil
         self.padding = padding
+        self.entranceIndex = entranceIndex
         self.content = content()
     }
 
-    public init(title: String, subtitle: String? = nil, padding: CGFloat = 16, @ViewBuilder content: () -> Content) {
+    public init(title: String, subtitle: String? = nil, padding: CGFloat = 16, entranceIndex: Int? = nil, @ViewBuilder content: () -> Content) {
         self.title = title
         self.subtitle = subtitle
         self.padding = padding
+        self.entranceIndex = entranceIndex
         self.content = content()
     }
 
+    @ViewBuilder
     public var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        let card = VStack(alignment: .leading, spacing: 8) {
             if let title {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(title)
@@ -67,6 +71,12 @@ public struct GlassCard<Content: View>: View {
         .clipShape(RoundedRectangle(cornerRadius: Radius().xxl, style: .continuous))
         .shadow(color: MeuFluxColors.cardShadow, radius: 16, y: 8)
         .shadow(color: MeuFluxColors.cardShadowSecondary, radius: 8, y: 3)
+
+        if let entranceIndex {
+            card.cardEntrance(index: entranceIndex)
+        } else {
+            card
+        }
     }
 }
 

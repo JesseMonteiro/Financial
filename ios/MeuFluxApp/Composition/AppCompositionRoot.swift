@@ -346,9 +346,10 @@ final class AppCompositionRoot {
         jointWidgetStore.setAuthenticated(true)
         budgetWidgetStore.setAuthenticated(true)
         let month = YearMonth(from: clock.now())
-        await publishFinancialMomentWidget(month: month, force: force)
-        await publishJointWidget(month: month, force: force)
-        await publishBudgetWidget(month: month, force: force)
+        async let fin: Void = publishFinancialMomentWidget(month: month, force: force)
+        async let joint: Void = publishJointWidget(month: month, force: force)
+        async let budget: Void = publishBudgetWidget(month: month, force: force)
+        _ = await (fin, joint, budget)
         lastWidgetRefreshAt = clock.now()
         await reloadWidgetTimelines()
     }

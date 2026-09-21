@@ -44,7 +44,7 @@ import {
   installmentTotalOf,
   resolvePurchaseDate,
 } from '../utils/creditBillPeriod';
-import { attrSelector, bindSnapSelect, centerChild } from '../utils/snapCarousel';
+import { attrSelector, bindOneByOneSnap, centerChild } from '../utils/snapCarousel';
 
 function purchaseTimestamp(tx) {
   const timestamp = new Date(resolvePurchaseDate(tx)).getTime();
@@ -267,7 +267,7 @@ export function CreditCards() {
 
   useEffect(() => {
     if (!isMobile) return undefined;
-    const unbindCard = bindSnapSelect(cardStripRef.current, {
+    const unbindCard = bindOneByOneSnap(cardStripRef.current, {
       attr: 'data-card-id',
       ignoreRef: ignoreCardScrollRef,
       onSelect: (id) => {
@@ -275,7 +275,7 @@ export function CreditCards() {
         setSelectedCardId(id);
       },
     });
-    const unbindBill = bindSnapSelect(timelineRef.current, {
+    const unbindBill = bindOneByOneSnap(timelineRef.current, {
       attr: 'data-bill-key',
       ignoreRef: ignoreBillScrollRef,
       onSelect: (id) => selectBill(id),
@@ -942,14 +942,19 @@ export function CreditCards() {
       {selectedItem && (
         <ItemDetailSheet
           item={selectedItem}
-          categoryOptions={categoryOptionsForItem(selectedItem, pluggyCategories)}
+          categoryOptions={categoryOptionsForItem(selectedItem, pluggyCategories, purchaseCategories)}
           onClose={() => setSelectedItem(null)}
           onCreateReceivable={() => {
             setPrefilledReceivableTx(selectedItem.raw);
             setSelectedItem(null);
           }}
           onChangeCategory={async (option) => {
-            const updated = await patchTransactionCategory(selectedItem.sourceId, option.value);
+            let updated = null;
+            try {
+              updated = await patchTransactionCategory(selectedItem.sourceId, option.value);
+            } catch (err) {
+              console.warn('Could not update category on remote Pluggy:', err);
+            }
             updateTransactionCategory(
               selectedItem.sourceId,
               option.value,

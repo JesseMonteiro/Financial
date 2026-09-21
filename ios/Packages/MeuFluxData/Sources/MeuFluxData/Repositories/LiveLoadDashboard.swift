@@ -11,6 +11,8 @@ public struct LiveLoadDashboard: LoadDashboardUseCase {
 
     public func execute(month: YearMonth, force: Bool) async throws -> DashboardSnapshot {
         let dto = try await bff.getDashboard(month: month, force: force)
-        return DomainMapper.dashboard(dto)
+        return await Task.detached(priority: .userInitiated) {
+            DomainMapper.dashboard(dto)
+        }.value
     }
 }

@@ -3,6 +3,7 @@ import MeuFluxDesignSystem
 import MeuFluxDomain
 
 public struct ManualExpensesView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var viewModel: ManualExpensesViewModel
     @State private var showEditor = false
     @State private var selectedDetail: LineItemDetail?
@@ -31,14 +32,22 @@ public struct ManualExpensesView: View {
                 switch viewModel.state {
                 case .idle, .loading:
                     PageLoadingSkeleton(style: .list)
+                        .transition(.opacity.combined(with: .scale(scale: 0.98)))
                 case .empty:
                     emptyContent
+                        .transition(.opacity)
                 case .failed(let message):
                     ErrorState(message: message) { Task { await viewModel.retry() } }
+                        .transition(.opacity)
                 case .loaded:
                     content
+                        .transition(reduceMotion ? .opacity : .asymmetric(
+                            insertion: .opacity.combined(with: .move(edge: .bottom).combined(with: .scale(scale: 0.98))),
+                            removal: .opacity
+                        ))
                 }
             }
+            .animation(MotionTokens.stateTransition, value: viewModel.state.stage)
         }
         .meuFluxPageTitle("Despesas Manuais")
         .refreshable { await viewModel.load(force: true) }
@@ -165,7 +174,7 @@ public struct ManualExpensesView: View {
     }
 
     private var summaryCard: some View {
-        GlassCard {
+        GlassCard(entranceIndex: 0) {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Em aberto")
@@ -186,7 +195,8 @@ public struct ManualExpensesView: View {
     private var registeredCard: some View {
         GlassCard(
             title: "Despesas Cadastradas",
-            subtitle: "Edite a despesa completa pelo lápis. Expanda as parcelas para alterar o valor de um mês ou marcar como pago."
+            subtitle: "Edite a despesa completa pelo lápis. Expanda as parcelas para alterar o valor de um mês ou marcar como pago.",
+            entranceIndex: 1
         ) {
             VStack(spacing: 10) {
                 ForEach(viewModel.groups) { group in

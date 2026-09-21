@@ -86,12 +86,22 @@ enum DailyFlowBuilder {
         return isNewPurchase(kind: .debit, description: tx.description, category: tx.category)
     }
 
+    private static let multiWhitespaceRegex: NSRegularExpression? = {
+        try? NSRegularExpression(pattern: #"\s+"#)
+    }()
+
     static func isBillOrAccountPayment(_ description: String) -> Bool {
-        let d = description
+        let folded = description
             .uppercased()
             .folding(options: .diacriticInsensitive, locale: Locale(identifier: "en"))
-            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let d: String
+        if let regex = multiWhitespaceRegex {
+            let ns = folded as NSString
+            d = regex.stringByReplacingMatches(in: folded, options: [], range: NSRange(location: 0, length: ns.length), withTemplate: " ")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        } else {
+            d = folded.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
         if d.hasPrefix("PAGAMENTO") { return true }
         if d.contains("PIX ENVIADO") { return true }
         if d.contains("TRANSFERENCIA") { return true }
@@ -397,10 +407,10 @@ public final class DashboardViewModel {
     private var lastLoadedAt: Date?
     private var lastCacheKey: String?
     private var loadGeneration = 0
-    public private(set) var categoryOptions: [LineItemCategoryOption] = []
+    public private(set) var categoryOptions: [LineItemCategoryOption] = LineItemCategoryOption.recategorizationOptions()
     public private(set) var purchaseCategories: [PurchaseCategory] = PurchaseCategoryCatalog.defaults
 
-    public static let recentCreditPurchaseDays = 15
+    nonisolated public static let recentCreditPurchaseDays = 15
 
     public init(
         loadDashboard: any LoadDashboardUseCase,
@@ -537,7 +547,7 @@ public final class DashboardViewModel {
             // (stale BFF payload / first paint before credit-ledger load).
             if recentCreditPurchases.isEmpty {
                 let snap = loadedSnapshot
-                let p30 = await load30DayCreditPurchases(from: snap, force: false)
+                let p30 = await load30DayCreditPurchases(fallback: snap?.recentCreditPurchases ?? [], force: false)
                 recentCreditPurchases = DailyFlowBuilder.creditPurchases(
                     from: p30,
                     days: Self.recentCreditPurchaseDays
@@ -554,18 +564,17 @@ public final class DashboardViewModel {
             // Home “Últimas Transações”: only effected activity — never future/projected parcels.
             snapshot.recentTransactions = Self.executedRecentTransactions(snapshot.recentTransactions)
             guard generation == loadGeneration else { return }
-            let purchases30d = await load30DayCreditPurchases(from: snapshot, force: force)
-            recentCreditPurchases = DailyFlowBuilder.creditPurchases(
-                from: purchases30d,
-                days: Self.recentCreditPurchaseDays
-            )
-            await loadDailyFlow(
-                force: force,
-                recent: snapshot.recentTransactions,
-                snapshot: snapshot.dailySpend,
-                purchases: purchases30d
-            )
-            guard generation == loadGeneration else { return }
+
+            // Pre-populate daily flow quickly from snapshot points so the card is ready immediately
+            if !snapshot.dailySpend.isEmpty {
+                await loadDailyFlow(
+                    force: force,
+                    recent: snapshot.recentTransactions,
+                    snapshot: snapshot.dailySpend,
+                    purchases: []
+                )
+            }
+
             let hasAccounts = snapshot.summary.bankCount + snapshot.summary.creditCount > 0
             let hasActivity = !snapshot.recentTransactions.isEmpty
                 || snapshot.summary.netWorth.amount != 0
@@ -576,8 +585,32 @@ public final class DashboardViewModel {
                 state = .loaded(snapshot)
             }
             lastLoadedAt = Date()
-            lastCacheKey = cacheKey
-            await loadCategories(force: force)
+            let fallbackPurchases = snapshot.recentCreditPurchases
+            let recentTx = snapshot.recentTransactions
+            let dailySpendSnap = snapshot.dailySpend
+
+            // In parallel, load 30-day purchases (Cartões ledger) and categories
+            async let purchasesTask = load30DayCreditPurchases(fallback: fallbackPurchases, force: force)
+            async let categoriesTask: Void = loadCategories(force: force)
+
+            let purchases30d = await purchasesTask
+            guard generation == loadGeneration else { return }
+
+            recentCreditPurchases = await Task.detached(priority: .userInitiated) {
+                DailyFlowBuilder.creditPurchases(
+                    from: purchases30d,
+                    days: Self.recentCreditPurchaseDays
+                )
+            }.value
+
+            await loadDailyFlow(
+                force: force,
+                recent: recentTx,
+                snapshot: dailySpendSnap,
+                purchases: purchases30d
+            )
+
+            await categoriesTask
         } catch {
             guard generation == loadGeneration else { return }
             if Self.isCancellation(error) {
@@ -630,16 +663,18 @@ public final class DashboardViewModel {
     }
 
     private func loadCategories(force: Bool) async {
+        var pluggyCats: [TransactionCategory] = []
         if let transactions {
-            let cats = (try? await transactions.fetchCategories(force: force)) ?? []
-            if !cats.isEmpty {
-                categoryOptions = LineItemCategoryOption.pluggyOptions(cats)
-            }
+            pluggyCats = (try? await transactions.fetchCategories(force: force)) ?? []
         }
         if let purchaseCategoriesRepository,
            let cats = try? await purchaseCategoriesRepository.fetchCategories(force: force) {
             purchaseCategories = PurchaseCategoryCatalog.resolved(cats)
         }
+        categoryOptions = LineItemCategoryOption.recategorizationOptions(
+            pluggyCategories: pluggyCats,
+            purchaseCategories: purchaseCategories
+        )
     }
 
     private func loadDailyFlow(
@@ -663,44 +698,53 @@ public final class DashboardViewModel {
                 collected.append(contentsOf: batch)
             }
         }
-        dailySpend = DailyFlowBuilder.points(
-            from: collected,
-            recent: snapshotProvided ? [] : recent,
-            purchases: purchases,
-            snapshot: snapshot,
-            days: 30,
-            now: now
-        )
-        todayTransactionCount = DailyFlowBuilder.todayTransactionCount(from: collected, now: now)
+        let points = await Task.detached(priority: .userInitiated) {
+            DailyFlowBuilder.points(
+                from: collected,
+                recent: snapshotProvided ? [] : recent,
+                purchases: purchases,
+                snapshot: snapshot,
+                days: 30,
+                now: now
+            )
+        }.value
+        dailySpend = points
+        todayTransactionCount = await Task.detached(priority: .userInitiated) {
+            DailyFlowBuilder.todayTransactionCount(from: collected, now: now)
+        }.value
         if let current = selectedDay, !dailySpend.contains(where: { $0.day == current }) {
             selectedDay = nil
         }
     }
 
-    private func load30DayCreditPurchases(from snapshot: DashboardSnapshot?, force: Bool) async -> [DashboardRecentTransaction] {
+    private func load30DayCreditPurchases(fallback: [DashboardRecentTransaction], force: Bool) async -> [DashboardRecentTransaction] {
         let now = Date()
         let days = 30
 
         // Same ledger as Cartões — purchaseDate already matches Fluxo Diário.
         if let creditCards,
            let screen = try? await creditCards.fetchScreen(force: force) {
-            let fromCards = DailyFlowBuilder.creditPurchases(
-                from: screen,
-                days: days,
-                now: now,
-                limit: 100
-            )
+            let fromCards = await Task.detached(priority: .userInitiated) {
+                DailyFlowBuilder.creditPurchases(
+                    from: screen,
+                    days: days,
+                    now: now,
+                    limit: 100
+                )
+            }.value
             if !fromCards.isEmpty {
                 return fromCards
             }
         }
 
-        if let snapshot {
-            let windowed = DailyFlowBuilder.creditPurchases(
-                from: snapshot.recentCreditPurchases,
-                days: days,
-                now: now
-            )
+        if !fallback.isEmpty {
+            let windowed = await Task.detached(priority: .userInitiated) {
+                DailyFlowBuilder.creditPurchases(
+                    from: fallback,
+                    days: days,
+                    now: now
+                )
+            }.value
             if !windowed.isEmpty {
                 return windowed
             }
@@ -732,12 +776,14 @@ public final class DashboardViewModel {
             }
         }
 
-        return DailyFlowBuilder.creditPurchases(
-            from: collected,
-            creditAccountIds: creditIds,
-            days: days,
-            now: now,
-            limit: 100
-        )
+        return await Task.detached(priority: .userInitiated) {
+            DailyFlowBuilder.creditPurchases(
+                from: collected,
+                creditAccountIds: creditIds,
+                days: days,
+                now: now,
+                limit: 100
+            )
+        }.value
     }
 }

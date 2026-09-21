@@ -3,6 +3,7 @@ import MeuFluxDesignSystem
 import MeuFluxDomain
 
 public struct JointFinanceView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var viewModel: JointFinanceViewModel
     @State private var selectedDetail: LineItemDetail?
     @State private var mealOwnerFilter: String = Self.allOwnersFilter
@@ -32,7 +33,7 @@ public struct JointFinanceView: View {
         onOpenManualExpenses: (() -> Void)? = nil,
         onOpenReceivables: (() -> Void)? = nil
     ) {
-        _viewModel = State(wrappedValue: JointFinanceViewModel(
+        _viewModel = State(initialValue: JointFinanceViewModel(
             repository: repository,
             investments: investments,
             toggleManualExpensePaid: toggleManualExpensePaid,
@@ -56,16 +57,21 @@ public struct JointFinanceView: View {
                 switch viewModel.state {
                 case .idle, .loading:
                     PageLoadingSkeleton(style: .moment)
+                        .transition(.opacity.combined(with: .scale(scale: 0.98)))
                 case .inactive:
                     inactiveView
+                        .transition(.opacity)
                 case .failed(let message):
                     ErrorState(message: message) {
                         Task { await viewModel.retry() }
                     }
+                    .transition(.opacity)
                 case .loaded(let snapshot):
                     content(snapshot)
+                        .transition(.opacity)
                 }
             }
+            .animation(reduceMotion ? nil : MotionTokens.stateTransition, value: viewModel.state)
         }
         .meuFluxPageTitle("Conta conjunta")
         .refreshable { await viewModel.load(force: true) }
@@ -143,20 +149,27 @@ public struct JointFinanceView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 header(snapshot)
+                    .cardEntrance(index: 0)
                     .padding(.horizontal, PageLayout.gutter)
 
                 monthSelector(detail)
+                    .cardEntrance(index: 1)
 
                 VStack(alignment: .leading, spacing: 16) {
                     kpiGrid(detail)
+                        .cardEntrance(index: 2)
                     utilizationCard(detail)
+                        .cardEntrance(index: 3)
                     mealBenefitsCards(detail)
+                        .cardEntrance(index: 4)
                     salariesCard(snapshot)
-                    if !detail.creditCards.isEmpty { billsCard(detail) }
-                    if !detail.automaticDebits.isEmpty { debitsCard(detail) }
-                    if !detail.manualExpenses.isEmpty { manualsCard(detail) }
-                    if !detail.receivables.isEmpty { receivablesCard(detail) }
+                        .cardEntrance(index: 5)
+                    if !detail.creditCards.isEmpty { billsCard(detail).cardEntrance(index: 6) }
+                    if !detail.automaticDebits.isEmpty { debitsCard(detail).cardEntrance(index: 7) }
+                    if !detail.manualExpenses.isEmpty { manualsCard(detail).cardEntrance(index: 8) }
+                    if !detail.receivables.isEmpty { receivablesCard(detail).cardEntrance(index: 9) }
                     investmentsCard()
+                        .cardEntrance(index: 10)
                 }
                 .padding(.horizontal, PageLayout.gutter)
             }

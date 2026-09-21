@@ -3,6 +3,7 @@ import MeuFluxDesignSystem
 import MeuFluxDomain
 
 public struct BankConnectionsView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var viewModel: BankConnectionsViewModel
     @State private var pendingDelete: BankConnectionItem?
 
@@ -19,6 +20,7 @@ public struct BankConnectionsView: View {
             switch viewModel.state {
             case .idle, .loading:
                 PageLoadingSkeleton(style: .list)
+                    .transition(.opacity.combined(with: .scale(scale: 0.98)))
             case .empty:
                 EmptyState(
                     title: "Nenhuma conexão",
@@ -27,12 +29,19 @@ public struct BankConnectionsView: View {
                     actionTitle: "Conectar banco",
                     action: { Task { await viewModel.startConnect() } }
                 )
+                .transition(.opacity)
             case .failed(let message):
                 ErrorState(message: message) { Task { await viewModel.retry() } }
+                    .transition(.opacity)
             case .loaded:
                 content
+                    .transition(reduceMotion ? .opacity : .asymmetric(
+                        insertion: .opacity.combined(with: .move(edge: .bottom).combined(with: .scale(scale: 0.98))),
+                        removal: .opacity
+                    ))
             }
         }
+        .animation(MotionTokens.stateTransition, value: viewModel.state.stage)
         .meuFluxPageTitle("Conexões Bancárias")
         .refreshable { await viewModel.load(force: true) }
         .task { await viewModel.load() }
@@ -87,7 +96,7 @@ public struct BankConnectionsView: View {
                     .font(.caption)
                     .foregroundStyle(MeuFluxColors.danger)
             }
-            ForEach(viewModel.items) { item in
+            ForEach(Array(viewModel.items.enumerated()), id: \.element.id) { index, item in
                 VStack(alignment: .leading, spacing: 6) {
                     HStack {
                         Text(item.institutionName).font(.headline)
@@ -114,6 +123,7 @@ public struct BankConnectionsView: View {
                     .font(.caption)
                 }
                 .padding(.vertical, 4)
+                .cardEntrance(index: index)
             }
         }
     }

@@ -5,12 +5,21 @@ import MeuFluxDesignSystem
 import MeuFluxDomain
 
 public struct CreditCardsView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var viewModel: CreditCardsViewModel
     @State private var showPurchase = false
     @State private var showImporter = false
     @State private var selectedLine: CreditBillLine?
     @State private var showCreateReceivable = false
     @State private var receivablePerson = ""
+    /// Blocks scrollPosition → selection while the strip settles after load / programmatic jumps
+    /// (same idea as web `ignoreBillScrollRef` — prevents latching onto the first chip).
+    @State private var ignoreCardScrollSelection = true
+    @State private var ignoreBillScrollSelection = true
+    /// Local scroll anchors — updated after layout so the strip centres on the preferred item
+    /// instead of sticking to the leading edge on first appear.
+    @State private var cardScrollPosition: String?
+    @State private var billScrollPosition: String?
     private let onReceivables: (() -> Void)?
 
     public init(
@@ -44,18 +53,23 @@ public struct CreditCardsView: View {
                 switch viewModel.state {
                 case .idle, .loading:
                     PageLoadingSkeleton(style: .creditCards)
+                        .transition(.opacity.combined(with: .scale(scale: 0.98)))
                 case .empty:
                     EmptyState(
                         title: "Nenhum cartão",
                         message: "Conecte cartões de crédito em Conexões Bancárias.",
                         systemImage: "creditcard"
                     )
+                    .transition(.opacity)
                 case .failed(let message):
                     ErrorState(message: message) { Task { await viewModel.retry() } }
+                        .transition(.opacity)
                 case .loaded:
                     content
+                        .transition(.opacity)
                 }
             }
+            .animation(reduceMotion ? nil : MotionTokens.stateTransition, value: viewModel.state.stage)
         }
         .meuFluxPageTitle("Cartões de Crédito")
         .refreshable { await viewModel.load(force: true) }
@@ -217,13 +231,19 @@ public struct CreditCardsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 header
+                    .cardEntrance(index: 0)
                 cardCarousel
+                    .cardEntrance(index: 1)
                 kpiGrid
+                    .cardEntrance(index: 2)
                 billStrip
+                    .cardEntrance(index: 3)
                 if !viewModel.period.bills.isEmpty {
                     evolutionChart
+                        .cardEntrance(index: 4)
                 }
                 statement
+                    .cardEntrance(index: 5)
             }
             .meuFluxPageGutter()
             .containerRelativeFrame(.horizontal)
@@ -259,46 +279,80 @@ public struct CreditCardsView: View {
         )
     }
 
+    // IDs used as scroll-position anchors for the card strip.
+    private var allCardsScrollId: String { CreditCardsScreen.allCardsId }
+
     private var cardCarousel: some View {
         VStack(spacing: 10) {
-            IsolatedHScroll(height: CreditCardFaceMetrics.size.height + 16) {
-                HStack(spacing: 12) {
-                    CreditAllCardsChip(
-                        count: viewModel.cards.count,
-                        totalLabel: viewModel.screen?.outstandingTotal.formatted() ?? Money.zero.formatted(),
-                        selected: viewModel.isAllCards
-                    ) {
-                        viewModel.selectCard(CreditCardsScreen.allCardsId)
-                    }
-                    .focusEffectDisabled()
+            GeometryReader { geo in
+                let cardWidth: CGFloat = CreditCardFaceMetrics.size.width
+                // Side inset via contentMargins (not HStack padding) so viewAligned
+                // snaps one card at a time and can reach the first / last target.
+                let sideInset = max(0, (geo.size.width - cardWidth) / 2)
 
-                    ForEach(viewModel.cards) { card in
-                        Button {
-                            viewModel.selectCard(card.id)
-                        } label: {
-                            CreditCardFaceView(
-                                name: card.name,
-                                lastFour: card.lastFour,
-                                amountLabel: card.openTotal.formatted(),
-                                institutionName: card.institutionName,
-                                marketingName: card.marketingName,
-                                connectorName: card.connectorName,
-                                iconKey: card.iconKey,
-                                cardFaceURL: card.cardFaceURL,
-                                selected: viewModel.selectedCardId == card.id
-                            )
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 12) {
+                        CreditAllCardsChip(
+                            count: viewModel.cards.count,
+                            totalLabel: viewModel.screen?.outstandingTotal.formatted() ?? Money.zero.formatted(),
+                            selected: viewModel.isAllCards
+                        ) {
+                            selectCardProgrammatically(allCardsScrollId)
                         }
-                        .buttonStyle(.plain)
                         .focusEffectDisabled()
+                        .id(allCardsScrollId)
+
+                        ForEach(viewModel.cards) { card in
+                            Button {
+                                selectCardProgrammatically(card.id)
+                            } label: {
+                                CreditCardFaceView(
+                                    name: card.name,
+                                    lastFour: card.lastFour,
+                                    amountLabel: card.openTotal.formatted(),
+                                    institutionName: card.institutionName,
+                                    marketingName: card.marketingName,
+                                    connectorName: card.connectorName,
+                                    iconKey: card.iconKey,
+                                    cardFaceURL: card.cardFaceURL,
+                                    selected: viewModel.selectedCardId == card.id
+                                )
+                            }
+                            .buttonStyle(.plain)
+                            .focusEffectDisabled()
+                            .id(card.id)
+                        }
                     }
+                    .scrollTargetLayout()
                 }
-                .padding(.vertical, 8)
-                // Rest position aligns with page gutter; scroll can still reach screen edges.
-                .padding(.horizontal, PageLayout.gutter)
+                .contentMargins(.horizontal, sideInset, for: .scrollContent)
+                .scrollTargetBehavior(.viewAligned(limitBehavior: .always))
+                .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
+                .scrollPosition(
+                    id: Binding(
+                        get: { cardScrollPosition ?? viewModel.selectedCardId },
+                        set: { newId in
+                            guard !ignoreCardScrollSelection else { return }
+                            cardScrollPosition = newId
+                            if let id = newId, id != viewModel.selectedCardId {
+                                selectCardFromScroll(id)
+                            }
+                        }
+                    ),
+                    anchor: .center
+                )
+                .contentMargins(.horizontal, 0, for: .scrollIndicators)
             }
-            // Edge-to-edge like Momento / Conta conjunta — only the faces, not the title above.
+            .frame(height: CreditCardFaceMetrics.size.height + 16)
+            // Edge-to-edge — only the faces, not the title above.
             .padding(.horizontal, -PageLayout.gutter)
             .frame(maxWidth: .infinity)
+            .onAppear { syncCardScrollPosition(settle: true) }
+            .onChange(of: viewModel.selectedCardId) { _, newId in
+                if cardScrollPosition != newId {
+                    cardScrollPosition = newId
+                }
+            }
 
             HStack(spacing: 6) {
                 circleDot(active: viewModel.isAllCards)
@@ -307,6 +361,58 @@ public struct CreditCardsView: View {
                 }
             }
             .frame(maxWidth: .infinity)
+        }
+    }
+
+    private func selectCardProgrammatically(_ id: String) {
+        ignoreCardScrollSelection = true
+        ignoreBillScrollSelection = true
+        viewModel.selectCard(id)
+        cardScrollPosition = id
+        syncBillScrollPosition(settle: true)
+        releaseCardScrollSelectionAfterSettle()
+    }
+
+    private func selectCardFromScroll(_ id: String) {
+        ignoreBillScrollSelection = true
+        viewModel.selectCard(id)
+        syncBillScrollPosition(settle: true)
+    }
+
+    private func selectBillProgrammatically(_ key: String) {
+        ignoreBillScrollSelection = true
+        viewModel.selectBill(key)
+        billScrollPosition = key
+        releaseBillScrollSelectionAfterSettle()
+    }
+
+    private func syncCardScrollPosition(settle: Bool) {
+        cardScrollPosition = viewModel.selectedCardId
+        if settle { releaseCardScrollSelectionAfterSettle() }
+    }
+
+    private func syncBillScrollPosition(settle: Bool) {
+        let key = viewModel.activeBillKey
+        billScrollPosition = key.isEmpty ? nil : key
+        if settle { releaseBillScrollSelectionAfterSettle() }
+    }
+
+    private func releaseCardScrollSelectionAfterSettle() {
+        ignoreCardScrollSelection = true
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(320))
+            cardScrollPosition = viewModel.selectedCardId
+            ignoreCardScrollSelection = false
+        }
+    }
+
+    private func releaseBillScrollSelectionAfterSettle() {
+        ignoreBillScrollSelection = true
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(320))
+            let key = viewModel.activeBillKey
+            billScrollPosition = key.isEmpty ? nil : key
+            ignoreBillScrollSelection = false
         }
     }
 
@@ -362,10 +468,10 @@ public struct CreditCardsView: View {
             HStack(alignment: .center, spacing: 8) {
                 SectionHeader("Seletor de faturas")
                 Spacer(minLength: 0)
-                if !viewModel.isViewingCurrentMonthBill,
-                   viewModel.currentMonthBillKey != nil {
-                    Button("atual") {
-                        viewModel.selectCurrentMonthBill()
+                if !viewModel.isViewingCurrentBill,
+                   let currentKey = viewModel.currentBillKey {
+                    Button("Fatura atual") {
+                        selectBillProgrammatically(currentKey)
                     }
                     .font(.caption.weight(.semibold))
                     .buttonStyle(.bordered)
@@ -385,23 +491,50 @@ public struct CreditCardsView: View {
                                     .id(bill.dueMonth)
                             }
                         }
-                        .padding(.horizontal, sideInset)
+                        .scrollTargetLayout()
                         .onAppear {
-                            scrollBillStrip(proxy, to: viewModel.activeBillKey, animated: false)
+                            // scrollPosition alone stays at the leading edge when the
+                            // preferred id is already set before first layout — force centre.
+                            centerBillStrip(proxy, to: viewModel.activeBillKey, animated: false)
+                            // Second pass after GeometryReader / cardEntrance settle (web uses ~50ms).
+                            Task { @MainActor in
+                                try? await Task.sleep(for: .milliseconds(80))
+                                centerBillStrip(proxy, to: viewModel.activeBillKey, animated: false)
+                            }
                         }
                         .onChange(of: viewModel.activeBillKey) { _, newKey in
-                            scrollBillStrip(proxy, to: newKey, animated: true)
+                            centerBillStrip(proxy, to: newKey, animated: true)
                         }
                         .onChange(of: viewModel.selectedCardId) { _, _ in
-                            // Same month key across cards won't fire activeBillKey onChange —
-                            // re-center after the new card's strip lays out.
-                            scrollBillStrip(proxy, to: viewModel.activeBillKey, animated: true, deferLayout: true)
+                            // Same due-month across cards won't fire activeBillKey onChange.
+                            centerBillStrip(proxy, to: viewModel.activeBillKey, animated: true, deferLayout: true)
+                        }
+                        .onChange(of: viewModel.period.bills.map(\.dueMonth)) { _, _ in
+                            centerBillStrip(proxy, to: viewModel.activeBillKey, animated: false, deferLayout: true)
                         }
                     }
                 }
-                .contentMargins(.horizontal, 0, for: .scrollContent)
-                .contentMargins(.horizontal, 0, for: .scrollIndicators)
+                .contentMargins(.horizontal, sideInset, for: .scrollContent)
+                .scrollTargetBehavior(.viewAligned(limitBehavior: .always))
                 .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
+                .scrollPosition(
+                    id: Binding(
+                        get: {
+                            if let billScrollPosition { return billScrollPosition }
+                            let key = viewModel.activeBillKey
+                            return key.isEmpty ? nil : key
+                        },
+                        set: { newKey in
+                            guard !ignoreBillScrollSelection else { return }
+                            billScrollPosition = newKey
+                            if let key = newKey, key != viewModel.activeBillKey {
+                                viewModel.selectBill(key)
+                            }
+                        }
+                    ),
+                    anchor: .center
+                )
+                .contentMargins(.horizontal, 0, for: .scrollIndicators)
             }
             .frame(height: 148)
             .padding(.horizontal, -PageLayout.gutter)
@@ -409,15 +542,20 @@ public struct CreditCardsView: View {
         }
     }
 
-    private func scrollBillStrip(
+    /// Centres the bill strip on `key`. Prefer ScrollViewReader over scrollPosition alone —
+    /// the latter does not scroll on first appear when the id is already the preferred key.
+    private func centerBillStrip(
         _ proxy: ScrollViewProxy,
         to key: String,
         animated: Bool,
         deferLayout: Bool = false
     ) {
-        guard !key.isEmpty else { return }
+        guard !key.isEmpty,
+              viewModel.period.bills.contains(where: { $0.dueMonth == key }) else { return }
+
         let run = {
-            guard viewModel.period.bills.contains(where: { $0.dueMonth == key }) else { return }
+            ignoreBillScrollSelection = true
+            billScrollPosition = key
             if animated {
                 withAnimation(.easeInOut(duration: 0.25)) {
                     proxy.scrollTo(key, anchor: .center)
@@ -425,9 +563,13 @@ public struct CreditCardsView: View {
             } else {
                 proxy.scrollTo(key, anchor: .center)
             }
+            releaseBillScrollSelectionAfterSettle()
         }
+
         if deferLayout {
             Task { @MainActor in
+                // Wait one frame so the new card's bill chips have laid out.
+                await Task.yield()
                 run()
             }
         } else {
@@ -445,7 +587,7 @@ public struct CreditCardsView: View {
             }
         }()
         return Button {
-            viewModel.selectBill(bill.dueMonth)
+            selectBillProgrammatically(bill.dueMonth)
         } label: {
             VStack(alignment: .leading, spacing: 8) {
                 Text(bill.title)

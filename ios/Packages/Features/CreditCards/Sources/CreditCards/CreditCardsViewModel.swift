@@ -22,7 +22,7 @@ public final class CreditCardsViewModel {
     private var lastLoadedAt: Date?
     private var lastCacheKey: String?
     public private(set) var linkedTransactionIDs: Set<String> = []
-    public private(set) var categoryOptions: [LineItemCategoryOption] = []
+    public private(set) var categoryOptions: [LineItemCategoryOption] = LineItemCategoryOption.recategorizationOptions()
     public private(set) var purchaseCategories: [PurchaseCategory] = PurchaseCategoryCatalog.defaults
 
     public var purchaseDescription = ""
@@ -61,26 +61,37 @@ public final class CreditCardsViewModel {
         screen?.period(for: selectedCardId) ?? CreditBillPeriod(openDueKey: nil, bills: [])
     }
 
-    /// Calendar month focus for the bill strip (e.g. September), even when that
-    /// cycle is already paid. Distinct from `openDueKey`, which is the next unpaid due month.
-    public var currentMonthBillKey: String? {
-        preferredBillKey(matching: YearMonth(from: Date()).key)
+    /// Canonical focus for the current bill ("fatura atual"): the next open or closed unpaid bill,
+    /// matching the web project logic. When the month is already paid, focus moves to the next open bill.
+    public var currentBillKey: String? {
+        period.resolvedCurrentDueKey()
     }
 
-    public var isViewingCurrentMonthBill: Bool {
-        guard let current = currentMonthBillKey else { return true }
+    /// Backwards-compatibility alias for `currentBillKey`.
+    public var currentMonthBillKey: String? {
+        currentBillKey
+    }
+
+    public var isViewingCurrentBill: Bool {
+        guard let current = currentBillKey else { return true }
         return activeBillKey == current
+    }
+
+    /// Backwards-compatibility alias for `isViewingCurrentBill`.
+    public var isViewingCurrentMonthBill: Bool {
+        isViewingCurrentBill
     }
 
     public var activeBillKey: String {
         if let selectedBillKey, period.bills.contains(where: { $0.dueMonth == selectedBillKey }) {
             return selectedBillKey
         }
-        return currentMonthBillKey
+        return currentBillKey
             ?? period.openDueKey.flatMap { key in
                 period.bills.contains(where: { $0.dueMonth == key }) ? key : nil
             }
             ?? period.bills.first(where: { $0.type == .currentOpen })?.dueMonth
+            ?? period.bills.first(where: { !$0.isPaid })?.dueMonth
             ?? period.bills.last?.dueMonth
             ?? ""
     }
@@ -186,9 +197,12 @@ public final class CreditCardsViewModel {
                !loaded.cards.contains(where: { $0.id == selectedCardId }) {
                 selectedCardId = CreditCardsScreen.allCardsId
             }
-            selectedBillKey = preferredBillKey(
-                for: loaded.period(for: selectedCardId)
-            )
+            let activePeriod = loaded.period(for: selectedCardId)
+            if let selectedBillKey, activePeriod.bills.contains(where: { $0.dueMonth == selectedBillKey }) {
+                // Keep existing selection if valid
+            } else {
+                selectedBillKey = preferredBillKey(for: activePeriod)
+            }
             state = .loaded(loaded)
             lastLoadedAt = Date()
             lastCacheKey = cacheKey
@@ -215,16 +229,18 @@ public final class CreditCardsViewModel {
     }
 
     private func loadCategories(force: Bool) async {
+        var pluggyCats: [TransactionCategory] = []
         if let transactions {
-            let cats = (try? await transactions.fetchCategories(force: force)) ?? []
-            if !cats.isEmpty {
-                categoryOptions = LineItemCategoryOption.pluggyOptions(cats)
-            }
+            pluggyCats = (try? await transactions.fetchCategories(force: force)) ?? []
         }
         if let purchaseCategoriesRepository,
            let cats = try? await purchaseCategoriesRepository.fetchCategories(force: force) {
             purchaseCategories = PurchaseCategoryCatalog.resolved(cats)
         }
+        categoryOptions = LineItemCategoryOption.recategorizationOptions(
+            pluggyCategories: pluggyCats,
+            purchaseCategories: purchaseCategories
+        )
     }
 
     public func canCreateReceivable(for line: CreditBillLine) -> Bool {
@@ -267,7 +283,7 @@ public final class CreditCardsViewModel {
     public func selectCard(_ id: String) {
         selectedCardId = id
         searchText = ""
-        selectedBillKey = preferredBillKey(for: period)
+        selectedBillKey = preferredBillKey(for: screen?.period(for: id) ?? period)
     }
 
     public func selectBill(_ key: String) {
@@ -275,34 +291,20 @@ public final class CreditCardsViewModel {
         searchText = ""
     }
 
-    public func selectCurrentMonthBill() {
-        guard let key = currentMonthBillKey else { return }
+    public func selectCurrentBill() {
+        guard let key = currentBillKey else { return }
         selectBill(key)
     }
 
-    /// Prefer calendar-month bill; else the closest due month in the strip.
-    private func preferredBillKey(for period: CreditBillPeriod? = nil) -> String? {
-        preferredBillKey(matching: YearMonth(from: Date()).key, in: period ?? self.period)
+    /// Backwards-compatibility alias for `selectCurrentBill`.
+    public func selectCurrentMonthBill() {
+        selectCurrentBill()
     }
 
-    private func preferredBillKey(matching calendarKey: String, in period: CreditBillPeriod? = nil) -> String? {
+    /// Prefer the next open or closed unpaid bill matching the web app logic.
+    public func preferredBillKey(for period: CreditBillPeriod? = nil) -> String? {
         let period = period ?? self.period
-        let bills = period.bills
-        guard !bills.isEmpty else { return nil }
-        if bills.contains(where: { $0.dueMonth == calendarKey }) {
-            return calendarKey
-        }
-        // Closest month to calendar (avoids jumping to the list tail when Sept is missing).
-        return bills.min(by: {
-            monthDistance($0.dueMonth, calendarKey) < monthDistance($1.dueMonth, calendarKey)
-        })?.dueMonth
-    }
-
-    private func monthDistance(_ a: String, _ b: String) -> Int {
-        guard let left = YearMonth(key: a), let right = YearMonth(key: b) else {
-            return Int.max
-        }
-        return abs((left.year * 12 + left.month) - (right.year * 12 + right.month))
+        return period.resolvedCurrentDueKey()
     }
 
     public func addPurchase() async {
@@ -377,7 +379,7 @@ public final class CreditCardsViewModel {
 func translatedCategory(_ category: String?) -> String {
     guard let category, !category.isEmpty else { return "Geral" }
     switch category {
-    case "Groceries": return "Alimentação"
+    case "Groceries": return "Supermercados"
     case "Eating out": return "Restaurantes"
     case "Food delivery": return "Delivery"
     case "Cinema, theater and concerts": return "Cinema & Shows"

@@ -3,6 +3,7 @@ import MeuFluxDesignSystem
 import MeuFluxDomain
 
 public struct AgendaView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var viewModel: AgendaViewModel
     @State private var selectedDetail: LineItemDetail?
 
@@ -22,18 +23,26 @@ public struct AgendaView: View {
             switch viewModel.state {
             case .idle, .loading:
                 PageLoadingSkeleton(style: .summaryList)
+                    .transition(.opacity.combined(with: .scale(scale: 0.98)))
             case .empty:
                 EmptyState(
                     title: "Agenda vazia",
                     message: "Vencimentos de faturas, empréstimos e despesas do mês.",
                     systemImage: "calendar"
                 )
+                .transition(.opacity)
             case .failed(let message):
                 ErrorState(message: message) { Task { await viewModel.retry() } }
+                    .transition(.opacity)
             case .loaded:
                 content
+                    .transition(reduceMotion ? .opacity : .asymmetric(
+                        insertion: .opacity.combined(with: .move(edge: .bottom).combined(with: .scale(scale: 0.98))),
+                        removal: .opacity
+                    ))
             }
         }
+        .animation(MotionTokens.stateTransition, value: viewModel.state.stage)
         .meuFluxPageTitle("Agenda")
         .refreshable { await viewModel.load(force: true) }
         .task(id: viewModel.selectedMonth.key) { await viewModel.load() }
@@ -64,7 +73,9 @@ public struct AgendaView: View {
                 }
                 .pickerStyle(.segmented)
             }
-            ForEach(viewModel.filtered) { item in
+            .cardEntrance(index: 0)
+
+            ForEach(Array(viewModel.filtered.enumerated()), id: \.element.id) { index, item in
                 Button {
                     selectedDetail = LineItemDetail.from(agenda: item)
                 } label: {
@@ -87,6 +98,7 @@ public struct AgendaView: View {
                     }
                 }
                 .buttonStyle(.plain)
+                .cardEntrance(index: index + 1)
             }
         }
     }

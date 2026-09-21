@@ -3,6 +3,7 @@ import MeuFluxDesignSystem
 import MeuFluxDomain
 
 public struct InvestmentsView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var viewModel: InvestmentsViewModel
 
     public init(
@@ -26,18 +27,23 @@ public struct InvestmentsView: View {
             switch viewModel.state {
             case .idle, .loading:
                 PageLoadingSkeleton(style: .summaryList)
+                    .transition(.opacity.combined(with: .scale(scale: 0.98)))
             case .empty:
                 EmptyState(
                     title: "Sem investimentos",
                     message: "Posições aparecerão depois de conectar um banco com investimentos.",
                     systemImage: "chart.line.uptrend.xyaxis"
                 )
+                .transition(.opacity)
             case .failed(let message):
                 ErrorState(message: message) { Task { await viewModel.retry() } }
+                    .transition(.opacity)
             case .loaded:
                 content
+                    .transition(.opacity)
             }
         }
+        .animation(reduceMotion ? nil : MotionTokens.stateTransition, value: viewModel.state.stage)
         .meuFluxPageTitle("Investimentos")
         .refreshable { await viewModel.load(force: true) }
         .task(id: viewModel.scope) { await viewModel.load() }
@@ -62,6 +68,7 @@ public struct InvestmentsView: View {
                 LabeledContent("Total da carteira", value: viewModel.total.formatted())
                     .font(.headline)
             }
+            .cardEntrance(index: 0)
             if !viewModel.allocation.isEmpty {
                 Section("Alocação") {
                     ForEach(viewModel.allocation, id: \.type) { row in

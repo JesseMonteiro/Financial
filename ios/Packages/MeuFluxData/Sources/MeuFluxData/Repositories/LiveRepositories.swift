@@ -68,11 +68,17 @@ public struct LiveTransactionsRepository: TransactionsRepository {
 
     public func fetchCategories(force: Bool) async throws -> [TransactionCategory] {
         try await bff.getCategories(force: force).map {
-            TransactionCategory(
+            let label: String
+            if $0.description == "Food and drinks" || $0.description == "Food" || $0.descriptionTranslated == "Comida e bebidas" {
+                label = "Alimentação"
+            } else if let trans = $0.descriptionTranslated, !trans.isEmpty {
+                label = trans
+            } else {
+                label = LineItemDetail.translatedCategory($0.description)
+            }
+            return TransactionCategory(
                 id: $0.id,
-                label: $0.descriptionTranslated?.isEmpty == false
-                    ? $0.descriptionTranslated!
-                    : LineItemDetail.translatedCategory($0.description),
+                label: label,
                 parentId: $0.parentId
             )
         }

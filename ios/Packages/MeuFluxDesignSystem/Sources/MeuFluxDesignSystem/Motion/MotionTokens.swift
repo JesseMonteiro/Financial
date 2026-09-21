@@ -12,6 +12,22 @@ public enum MotionTokens {
     public static var easeOutFast: Animation {
         .easeOut(duration: fast)
     }
+
+    /// Fluid spring tuned specifically for card & component arrivals.
+    public static var cardEntrance: Animation {
+        .spring(response: 0.50, dampingFraction: 0.82)
+    }
+
+    /// Smooth crossfade/morph timing between loading skeleton and loaded content.
+    public static var stateTransition: Animation {
+        .easeInOut(duration: 0.28)
+    }
+
+    /// Stagger delay between consecutive cards in a cascade (50ms).
+    public static let staggerDelay: Double = 0.05
+
+    /// Maximum stagger delay ceiling to avoid long delays on lists.
+    public static let maxStaggerDelay: Double = 0.35
 }
 
 /// Applies Liquid Glass on chrome when available; opaque material fallback otherwise.
