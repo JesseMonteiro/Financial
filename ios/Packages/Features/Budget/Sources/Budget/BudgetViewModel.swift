@@ -223,6 +223,13 @@ public final class BudgetViewModel {
                 bills: bills
             )
             
+            // Debug: Log transactions with credit card metadata
+            let txsWithMeta = txs.filter { $0.creditCardMetadata != nil || $0.billId != nil }
+            print("🔍 [Budget] Transactions with credit metadata: \(txsWithMeta.count)/\(txs.count)")
+            print("🔍 [Budget] Bills fetched: \(bills.count)")
+            print("🔍 [Budget] Forecast to due offset: \(forecastToDueOffset)")
+            print("🔍 [Budget] Credit account IDs: \(creditAccountIds)")
+            
             for tx in txs {
                 // Use due month logic instead of calendar month
                 guard let txMonth = Self.txDueMonth(
@@ -231,6 +238,13 @@ public final class BudgetViewModel {
                     creditAccountIds: creditAccountIds,
                     forecastToDueOffset: forecastToDueOffset
                 ) else { continue }
+                
+                // Debug: Log first few transactions with due month calculation
+                if map.values.flatMap({ $0 }).count < 5 {
+                    let calendarMonth = Self.ymFromIso(tx.date.isoString)
+                    let isCard = creditAccountIds.contains(tx.accountId)
+                    print("🔍 [Budget] TX: \(tx.description.prefix(30)) | Calendar: \(calendarMonth ?? "nil") | Due: \(txMonth) | IsCard: \(isCard) | Selected: \(selectedMonth.key)")
+                }
                 
                 guard txMonth == selectedMonth.key else { continue }
                 guard tx.kind == .debit else { continue }
