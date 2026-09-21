@@ -68,6 +68,62 @@ function dueMonthLabel(ym) {
   return `${MONTHS_PT[parseInt(m, 10) - 1]}/${y}`;
 }
 
+/**
+ * Groups transactions by budget period (daily, weekly, biweekly, monthly).
+ * Returns array of period groups with label, transactions, and total.
+ */
+function groupTransactionsByPeriod(transactions, period, selectedMonth) {
+  if (!transactions || transactions.length === 0) return [];
+  
+  const groups = {};
+  
+  transactions.forEach(tx => {
+    const [y, m, d] = (tx.date || '').split('-').map(Number);
+    if (!y || !m || !d) return;
+    
+    let periodKey = '';
+    let periodLabel = '';
+    
+    if (period === 'daily') {
+      periodKey = tx.date;
+      periodLabel = `${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}`;
+    } else if (period === 'weekly') {
+      const weekNum = Math.ceil(d / 7);
+      periodKey = `week-${weekNum}`;
+      periodLabel = `Semana ${weekNum}`;
+    } else if (period === 'biweekly') {
+      const half = d <= 15 ? 1 : 2;
+      periodKey = `half-${half}`;
+      periodLabel = half === 1 ? '1ª Quinzena' : '2ª Quinzena';
+    } else {
+      // monthly - single group
+      periodKey = 'month';
+      periodLabel = 'Mês completo';
+    }
+    
+    if (!groups[periodKey]) {
+      groups[periodKey] = {
+        key: periodKey,
+        label: periodLabel,
+        transactions: [],
+        total: 0,
+        sortDate: tx.date,
+      };
+    }
+    
+    groups[periodKey].transactions.push(tx);
+    groups[periodKey].total += tx.amount;
+  });
+  
+  // Sort groups by date and sort transactions within each group
+  const sorted = Object.values(groups).sort((a, b) => (b.sortDate || '').localeCompare(a.sortDate || ''));
+  sorted.forEach(g => {
+    g.transactions.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  });
+  
+  return sorted;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // COMPONENT
 // ─────────────────────────────────────────────────────────────────────────────
@@ -685,63 +741,118 @@ export function Budget() {
                   )}
 
                   {/* Expanded transactions list */}
-                  {expandedCat === row.category && (
-                    <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border-color)' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                        <span style={{ fontSize: 'var(--font-size-xs)', fontWeight: 600, color: 'var(--text-muted)' }}>
-                          TRANSAÇÕES ({(transactionsByCategory[row.category] || []).length})
-                        </span>
-                      </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '300px', overflowY: 'auto' }}>
-                        {(transactionsByCategory[row.category] || []).map((tx, idx) => {
-                          // Parse YYYY-MM-DD safely without timezone shift
-                          const [ty, tm, td] = (tx.date || '').split('-');
-                          const dateLabel = ty
-                            ? `${td}/${tm}/${ty}`
-                            : '—';
-                          return (
-                            <div
-                              key={`${tx.id || idx}-${tx.date}`}
-                              style={{
-                                display: 'flex',
-                                justifyContent: 'space-between',
-                                alignItems: 'center',
-                                padding: '0.5rem',
-                                backgroundColor: 'var(--bg-secondary)',
-                                borderRadius: 'var(--radius-sm)',
-                                gap: '0.5rem',
-                              }}
-                            >
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ fontSize: 'var(--font-size-xs)', fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                  {tx.description}
-                                </div>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', marginTop: '2px', flexWrap: 'wrap' }}>
-                                  <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{dateLabel}</span>
-                                  {tx.accountName && (
-                                    <span style={{ fontSize: '9px', fontWeight: 600, color: 'var(--text-muted)', backgroundColor: 'var(--bg-tertiary)', borderRadius: '3px', padding: '0 4px', border: '1px solid var(--border-color)' }}>
-                                      {tx.accountName}
-                                    </span>
-                                  )}
-                                  {tx.isMeal && (
-                                    <span style={{ fontSize: '9px', fontWeight: 700, color: 'var(--info)', backgroundColor: 'rgba(99,179,237,0.15)', borderRadius: '3px', padding: '0 4px' }}>VA/VR</span>
-                                  )}
-                                </div>
-                              </div>
-                              <div style={{ fontSize: 'var(--font-size-xs)', fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
-                                {formatCurrency(tx.amount)}
-                              </div>
+                  {expandedCat === row.category && (() => {
+                    const allTxs = transactionsByCategory[row.category] || [];
+                    const periodGroups = groupTransactionsByPeriod(allTxs, row.period, selectedMonth);
+                    const showPeriodGroups = row.period !== 'monthly' && periodGroups.length > 1;
+                    
+                    return (
+                      <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border-color)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                          <span style={{ fontSize: 'var(--font-size-xs)', fontWeight: 600, color: 'var(--text-muted)' }}>
+                            TRANSAÇÕES ({allTxs.length})
+                          </span>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxHeight: '400px', overflowY: 'auto' }}>
+                          {allTxs.length === 0 ? (
+                            <div style={{ padding: '1rem', textAlign: 'center', fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>
+                              Nenhuma transação encontrada
                             </div>
-                          );
-                        })}
-                        {(transactionsByCategory[row.category] || []).length === 0 && (
-                          <div style={{ padding: '1rem', textAlign: 'center', fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>
-                            Nenhuma transação encontrada
-                          </div>
-                        )}
+                          ) : showPeriodGroups ? (
+                            periodGroups.map((group, gIdx) => (
+                              <div key={group.key} style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '0.25rem', borderBottom: '1px solid var(--border-color)' }}>
+                                  <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                                    {group.label}
+                                  </span>
+                                  <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                                    {formatCurrency(group.total)}
+                                  </span>
+                                </div>
+                                {group.transactions.map((tx, idx) => {
+                                  const [ty, tm, td] = (tx.date || '').split('-');
+                                  const dateLabel = ty ? `${td}/${tm}/${ty}` : '—';
+                                  return (
+                                    <div
+                                      key={`${tx.id || idx}-${tx.date}`}
+                                      style={{
+                                        display: 'flex',
+                                        justifyContent: 'space-between',
+                                        alignItems: 'center',
+                                        padding: '0.5rem',
+                                        backgroundColor: 'var(--bg-secondary)',
+                                        borderRadius: 'var(--radius-sm)',
+                                        gap: '0.5rem',
+                                      }}
+                                    >
+                                      <div style={{ flex: 1, minWidth: 0 }}>
+                                        <div style={{ fontSize: 'var(--font-size-xs)', fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                          {tx.description}
+                                        </div>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', marginTop: '2px', flexWrap: 'wrap' }}>
+                                          <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{dateLabel}</span>
+                                          {tx.accountName && (
+                                            <span style={{ fontSize: '9px', fontWeight: 600, color: 'var(--text-muted)', backgroundColor: 'var(--bg-tertiary)', borderRadius: '3px', padding: '0 4px', border: '1px solid var(--border-color)' }}>
+                                              {tx.accountName}
+                                            </span>
+                                          )}
+                                          {tx.isMeal && (
+                                            <span style={{ fontSize: '9px', fontWeight: 700, color: 'var(--info)', backgroundColor: 'rgba(99,179,237,0.15)', borderRadius: '3px', padding: '0 4px' }}>VA/VR</span>
+                                          )}
+                                        </div>
+                                      </div>
+                                      <div style={{ fontSize: 'var(--font-size-xs)', fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
+                                        {formatCurrency(tx.amount)}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            ))
+                          ) : (
+                            allTxs.map((tx, idx) => {
+                              const [ty, tm, td] = (tx.date || '').split('-');
+                              const dateLabel = ty ? `${td}/${tm}/${ty}` : '—';
+                              return (
+                                <div
+                                  key={`${tx.id || idx}-${tx.date}`}
+                                  style={{
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center',
+                                    padding: '0.5rem',
+                                    backgroundColor: 'var(--bg-secondary)',
+                                    borderRadius: 'var(--radius-sm)',
+                                    gap: '0.5rem',
+                                  }}
+                                >
+                                  <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div style={{ fontSize: 'var(--font-size-xs)', fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                      {tx.description}
+                                    </div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', marginTop: '2px', flexWrap: 'wrap' }}>
+                                      <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{dateLabel}</span>
+                                      {tx.accountName && (
+                                        <span style={{ fontSize: '9px', fontWeight: 600, color: 'var(--text-muted)', backgroundColor: 'var(--bg-tertiary)', borderRadius: '3px', padding: '0 4px', border: '1px solid var(--border-color)' }}>
+                                          {tx.accountName}
+                                        </span>
+                                      )}
+                                      {tx.isMeal && (
+                                        <span style={{ fontSize: '9px', fontWeight: 700, color: 'var(--info)', backgroundColor: 'rgba(99,179,237,0.15)', borderRadius: '3px', padding: '0 4px' }}>VA/VR</span>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <div style={{ fontSize: 'var(--font-size-xs)', fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
+                                    {formatCurrency(tx.amount)}
+                                  </div>
+                                </div>
+                              );
+                            })
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    );
+                  })()}
                 </div>
               );
             })}

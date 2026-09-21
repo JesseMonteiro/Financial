@@ -13,6 +13,21 @@ public struct BudgetTransactionItem: Sendable, Identifiable, Hashable {
     public let accountName: String
 }
 
+/// Groups transactions by budget period (daily, weekly, biweekly, monthly).
+public struct BudgetPeriodGroup: Sendable, Identifiable, Hashable {
+    public let id: String
+    public let label: String
+    public let transactions: [BudgetTransactionItem]
+    public let total: Money
+    
+    public init(id: String, label: String, transactions: [BudgetTransactionItem], total: Money) {
+        self.id = id
+        self.label = label
+        self.transactions = transactions
+        self.total = total
+    }
+}
+
 @Observable
 @MainActor
 public final class BudgetViewModel {
@@ -133,6 +148,53 @@ public final class BudgetViewModel {
     }
 
     public var isEditing: Bool { editingCategory != nil }
+    
+    /// Groups transactions by budget period for display with period headers and totals.
+    public func groupedTransactions(for category: String, period: BudgetPeriod) -> [BudgetPeriodGroup] {
+        let items = transactionsByCategory[category] ?? []
+        if items.isEmpty { return [] }
+        
+        var groups: [String: (label: String, items: [BudgetTransactionItem], sortDate: InstantDate)] = [:]
+        
+        for item in items {
+            let key: String
+            let label: String
+            
+            switch period {
+            case .daily:
+                key = item.date.isoString
+                label = String(format: "%02d/%02d", item.date.day, item.date.month)
+            case .weekly:
+                let weekNum = (item.date.day - 1) / 7 + 1
+                key = "week-\(weekNum)"
+                label = "Semana \(weekNum)"
+            case .biweekly:
+                let half = item.date.day <= 15 ? 1 : 2
+                key = "half-\(half)"
+                label = half == 1 ? "1ª Quinzena" : "2ª Quinzena"
+            case .monthly:
+                key = "month"
+                label = "Mês completo"
+            }
+            
+            if groups[key] == nil {
+                groups[key] = (label: label, items: [], sortDate: item.date)
+            }
+            groups[key]?.items.append(item)
+        }
+        
+        let sorted = groups.map { key, value in
+            let total = value.items.reduce(Money.zero) { $0.adding($1.amount) }
+            return BudgetPeriodGroup(
+                id: key,
+                label: value.label,
+                transactions: value.items.sorted { $0.date > $1.date },
+                total: total
+            )
+        }.sorted { $0.transactions.first?.date ?? InstantDate(year: 1970, month: 1, day: 1) > $1.transactions.first?.date ?? InstantDate(year: 1970, month: 1, day: 1) }
+        
+        return sorted
+    }
 
     public var categoryPickerLabels: [String] {
         var labels = Set(BudgetCategoryCatalog.labels)

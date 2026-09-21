@@ -342,6 +342,9 @@ public struct BudgetView: View {
                         .padding(.vertical, 4)
 
                     let items = viewModel.transactionsByCategory[limit.category] ?? []
+                    let periodGroups = viewModel.groupedTransactions(for: limit.category, period: limit.period)
+                    let showPeriodGroups = limit.period != .monthly && periodGroups.count > 1
+                    
                     VStack(alignment: .leading, spacing: 8) {
                         Text("TRANSAÇÕES (\(items.count))")
                             .font(.caption2.weight(.semibold))
@@ -353,6 +356,33 @@ public struct BudgetView: View {
                                 .foregroundStyle(MeuFluxColors.textMuted)
                                 .padding(.vertical, 8)
                                 .frame(maxWidth: .infinity, alignment: .center)
+                        } else if showPeriodGroups {
+                            VStack(alignment: .leading, spacing: 12) {
+                                ForEach(periodGroups) { group in
+                                    VStack(alignment: .leading, spacing: 6) {
+                                        HStack {
+                                            Text(group.label)
+                                                .font(.system(size: 11, weight: .bold))
+                                                .foregroundStyle(MeuFluxColors.textPrimary)
+                                            Spacer()
+                                            Text(group.total.formatted())
+                                                .font(.system(size: 11, weight: .bold))
+                                                .foregroundStyle(MeuFluxColors.textPrimary)
+                                        }
+                                        .padding(.bottom, 2)
+                                        .overlay(
+                                            Rectangle()
+                                                .frame(height: 1)
+                                                .foregroundStyle(MeuFluxColors.border),
+                                            alignment: .bottom
+                                        )
+                                        
+                                        ForEach(group.transactions) { item in
+                                            transactionRow(item)
+                                        }
+                                    }
+                                }
+                            }
                         } else {
                             VStack(alignment: .leading, spacing: 6) {
                                 ForEach(items) { item in
