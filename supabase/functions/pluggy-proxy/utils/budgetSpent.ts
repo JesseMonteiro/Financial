@@ -6,6 +6,7 @@ import {
   getDueMonthKey,
   inferForecastToDueOffset,
   isBillPayment,
+  signedTxAmount,
 } from "../creditBillPeriod.ts";
 import { translateCategory } from "./dashboardAnalytics.ts";
 import { asOfForBudgetMonth, mergeBudgetRows, type BudgetInput } from "./budgetPeriod.ts";
@@ -44,11 +45,12 @@ export function spendingByCategoryForMonth(
   const map: Record<string, number> = {};
   transactions.forEach((tx) => {
     if (isBillPayment(tx)) return;
-    if (Number(tx.amount) > 0) return;
+    const signed = signedTxAmount(tx);
+    if (signed <= 0) return;
     const txMonth = txDueMonth(tx, officialBills, creditAccountIds);
     if (txMonth !== ym) return;
     const label = translateCategory(tx.category);
-    map[label] = (map[label] || 0) + Math.abs(Number(tx.amount) || 0);
+    map[label] = (map[label] || 0) + signed;
   });
   return map;
 }

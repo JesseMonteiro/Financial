@@ -31,6 +31,7 @@ import {
   getDueMonthKey,
   inferForecastToDueOffset,
   isBillPayment,
+  signedTxAmount,
   MONTHS_PT,
 } from '../utils/creditBillPeriod';
 import { isInitialEmpty } from '../utils/loading';
@@ -159,13 +160,14 @@ export function Budget() {
     const map = {};
     allTransactions.forEach(tx => {
       if (isBillPayment(tx)) return;
-      if (tx.amount > 0) return;
+      const signed = signedTxAmount(tx);
+      if (signed <= 0) return;
 
       const txMonth = txDueMonth(tx);
       if (txMonth !== selectedMonth) return;
 
       const label = translateCategory(tx.category);
-      map[label] = (map[label] || 0) + Math.abs(tx.amount);
+      map[label] = (map[label] || 0) + signed;
     });
     return map;
   }, [allTransactions, officialBills, selectedMonth, forecastOffset]);
@@ -178,7 +180,8 @@ export function Budget() {
 
     allTransactions.forEach(tx => {
       if (isBillPayment(tx)) return;
-      if ((tx.amount ?? 0) > 0) return;
+      const signed = signedTxAmount(tx);
+      if (signed <= 0) return;
       const txCalendarMonth = String(tx.date || '').slice(0, 7);
       if (txCalendarMonth !== selectedMonth) return;
       const label = translateCategory(tx.category);
@@ -188,7 +191,7 @@ export function Budget() {
         id: tx.id,
         description: tx.description || tx.descriptionTranslated || tx.descriptionRaw || 'Sem descrição',
         date: String(tx.date || '').slice(0, 10),
-        amount: Math.abs(tx.amount),
+        amount: signed,
         isMeal: false,
       });
     });
@@ -283,10 +286,11 @@ export function Budget() {
     const last6 = availableMonths.slice(-6);
     return last6.map(m => {
       const monthTxs = allTransactions.filter(tx => {
-        if (isBillPayment(tx) || tx.amount > 0) return false;
+        if (isBillPayment(tx)) return false;
+        if (signedTxAmount(tx) <= 0) return false;
         return txDueMonth(tx) === m;
       });
-      const total = monthTxs.reduce((s, t) => s + Math.abs(t.amount), 0);
+      const total = monthTxs.reduce((s, t) => s + signedTxAmount(t), 0);
       const [, mo] = m.split('-');
       return { label: MONTHS_PT[parseInt(mo, 10) - 1].slice(0, 3), total, month: m };
     });
