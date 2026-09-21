@@ -86,8 +86,18 @@ public final class BudgetViewModel {
     }
 
     /// Builds the per-category transaction list shown when a budget row is expanded.
-    /// Uses calendar date (tx.date) rather than card due-month so purchases appear
-    /// under the month they happened in, matching web's transactionsByCategory.
+    ///
+    /// ⚠️ KNOWN LIMITATION: This list uses calendar date filtering (tx.date.yearMonth)
+    /// but budget totals use due-month logic (credit card purchases grouped by bill month).
+    /// This causes a mismatch between the displayed total and transaction count for
+    /// credit card categories. The web version correctly uses due-month for both.
+    ///
+    /// To fix properly, we would need to:
+    /// 1. Fetch bills data to calculate due month offsets
+    /// 2. Identify credit card accounts vs bank accounts
+    /// 3. Apply txDueMonth logic (see supabase/.../budgetSpent.ts)
+    ///
+    /// For now, use the web version for accurate transaction lists matching budget totals.
     ///
     /// Fetches with `month: nil` (unbounded, like `TransactionsViewModel`) and filters
     /// by calendar date client-side — passing `month:` here triggers server-side

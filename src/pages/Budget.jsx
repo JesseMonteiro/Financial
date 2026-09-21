@@ -229,8 +229,8 @@ export function Budget() {
   }, [allTransactions, officialBills, selectedMonth, forecastOffset]);
 
   // ── Map transactions by category for expanded view ─────────────────────────
-  // Uses allTransactions (same source as spendingByCategory) with CALENDAR DATE
-  // so credit card purchases appear in their transaction month, not the bill due month.
+  // Uses allTransactions (same source as spendingByCategory) with DUE MONTH
+  // so the list matches the budget totals (credit card txs grouped by bill due month).
   const transactionsByCategory = useMemo(() => {
     const map = {};
 
@@ -238,8 +238,8 @@ export function Budget() {
       if (isBillPayment(tx)) return;
       const signed = signedTxAmount(tx);
       if (signed <= 0) return;
-      const txCalendarMonth = String(tx.date || '').slice(0, 7);
-      if (txCalendarMonth !== selectedMonth) return;
+      const txMonth = txDueMonth(tx);
+      if (txMonth !== selectedMonth) return;
       const label = translateCategory(tx.category);
       if (!label) return;
       if (!map[label]) map[label] = [];
@@ -277,7 +277,7 @@ export function Budget() {
       map[cat].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
     });
     return map;
-  }, [allTransactions, selectedMonth, mealBenefits, mealPurchases, accounts]);
+  }, [allTransactions, selectedMonth, mealBenefits, mealPurchases, accounts, officialBills, forecastOffset]);
 
   const mealSpendMap = useMemo(
     () => mealSpendByCategory(mealBenefits, mealPurchases, selectedMonth),
