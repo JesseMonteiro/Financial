@@ -216,7 +216,7 @@ public final class BudgetViewModel {
         
         // Process meal purchases
         for purchase in mealPurchases {
-            let calendarMonth = Self.ymFromIso(purchase.date.isoString)
+            let calendarMonth = Self.ymFromIso(purchase.purchasedAt.isoString)
             guard calendarMonth == selectedMonth.key else { continue }
             
             let benefit = mealBenefits.first { $0.id == purchase.benefitId }
