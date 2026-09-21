@@ -4,7 +4,7 @@ import MeuFluxCore
 
 /// Registers for remote push notifications (APNs). Wiring to token upload is stubbed.
 @MainActor
-public final class PushRegistration: NSObject, UNUserNotificationCenterDelegate {
+public final class PushRegistration: NSObject {
     private let logger: AppLogger
 
     public init(logger: AppLogger = AppLogger()) {
@@ -15,7 +15,6 @@ public final class PushRegistration: NSObject, UNUserNotificationCenterDelegate 
     public func requestAuthorization() async -> Bool {
         do {
             let center = UNUserNotificationCenter.current()
-            center.delegate = self
             let granted = try await center.requestAuthorization(options: [.alert, .badge, .sound])
             logger.info("Push authorization: \(granted)", category: .general)
             return granted

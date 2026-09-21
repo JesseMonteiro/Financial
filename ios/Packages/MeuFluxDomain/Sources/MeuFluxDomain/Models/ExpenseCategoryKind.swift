@@ -170,7 +170,7 @@ public struct RuleBasedPurchaseCategorizer: PurchaseCategorizing {
         switch source {
         case .wallet, .alelo, .vr, .ticket, .pluxee, .caju, .flash, .swile, .ifoodBeneficios:
             return .food
-        case .generic:
+        case .nubank, .itau, .bradesco, .c6, .inter, .picpay, .btg, .mercadoPago, .generic:
             return .other
         }
     }

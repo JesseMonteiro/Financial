@@ -230,6 +230,29 @@ public struct PluggyCreditDataDTO: Decodable, Sendable {
     }
 }
 
+public struct CreditCardMetadataDTO: Decodable, Sendable {
+    public let billId: String?
+    public let billForecastDate: String?
+    public let installmentNumber: Int?
+    public let totalInstallments: Int?
+    public let purchaseDate: String?
+    public let purchaseId: String?
+    
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        billId = try c.decodeIfPresent(String.self, forKey: .billId)
+        billForecastDate = try c.decodeIfPresent(String.self, forKey: .billForecastDate)
+        installmentNumber = try c.decodeIfPresent(Int.self, forKey: .installmentNumber)
+        totalInstallments = try c.decodeIfPresent(Int.self, forKey: .totalInstallments)
+        purchaseDate = try c.decodeIfPresent(String.self, forKey: .purchaseDate)
+        purchaseId = try c.decodeIfPresent(String.self, forKey: .purchaseId)
+    }
+    
+    private enum CodingKeys: String, CodingKey {
+        case billId, billForecastDate, installmentNumber, totalInstallments, purchaseDate, purchaseId
+    }
+}
+
 public struct PluggyTransactionDTO: Decodable, Sendable {
     public let id: String
     public let accountId: String
@@ -241,6 +264,9 @@ public struct PluggyTransactionDTO: Decodable, Sendable {
     public let categoryId: String?
     public let status: String?
     public let currencyCode: String?
+    public let creditCardMetadata: CreditCardMetadataDTO?
+    public let billId: String?
+    public let billForecastDate: String?
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -253,6 +279,9 @@ public struct PluggyTransactionDTO: Decodable, Sendable {
         categoryId = try c.decodeIfPresent(String.self, forKey: .categoryId)
         status = try c.decodeIfPresent(String.self, forKey: .status)
         currencyCode = try c.decodeIfPresent(String.self, forKey: .currencyCode)
+        creditCardMetadata = try c.decodeIfPresent(CreditCardMetadataDTO.self, forKey: .creditCardMetadata)
+        billId = try c.decodeIfPresent(String.self, forKey: .billId)
+        billForecastDate = try c.decodeIfPresent(String.self, forKey: .billForecastDate)
         if let d = try? c.decode(Decimal.self, forKey: .amount) {
             amount = d
         } else if let d = try? c.decode(Double.self, forKey: .amount) {
@@ -266,6 +295,7 @@ public struct PluggyTransactionDTO: Decodable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case id, accountId, description, amount, date, type, category, categoryId, status, currencyCode
+        case creditCardMetadata, billId, billForecastDate
     }
 }
 

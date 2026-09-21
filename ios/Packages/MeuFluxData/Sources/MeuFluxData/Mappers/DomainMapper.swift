@@ -119,6 +119,19 @@ public enum DomainMapper {
         default: kind = dto.amount >= 0 ? .credit : .debit
         }
         let currency = dto.currencyCode ?? "BRL"
+        
+        // Map creditCardMetadata if present
+        let metadata: CreditCardMetadata? = dto.creditCardMetadata.map { ccm in
+            CreditCardMetadata(
+                billId: ccm.billId,
+                billForecastDate: ccm.billForecastDate
+            )
+        }
+        
+        // Use nested billId/billForecastDate from creditCardMetadata, fallback to top-level
+        let billId = dto.creditCardMetadata?.billId ?? dto.billId
+        let billForecastDate = dto.creditCardMetadata?.billForecastDate ?? dto.billForecastDate
+        
         return Transaction(
             id: dto.id,
             accountId: dto.accountId,
@@ -128,7 +141,10 @@ public enum DomainMapper {
             category: dto.category,
             categoryId: dto.categoryId,
             kind: kind,
-            isPending: (dto.status ?? "").uppercased() == "PENDING"
+            isPending: (dto.status ?? "").uppercased() == "PENDING",
+            creditCardMetadata: metadata,
+            billId: billId,
+            billForecastDate: billForecastDate
         )
     }
 

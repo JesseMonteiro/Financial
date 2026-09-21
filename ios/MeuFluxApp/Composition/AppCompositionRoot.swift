@@ -184,7 +184,8 @@ final class AppCompositionRoot {
             authSession: authSession,
             logger: logger,
             categorizer: PurchaseCategorizer(),
-            parseAssistant: NotificationParseAssistant()
+            parseAssistant: NotificationParseAssistant(),
+            bankChecker: LiveConnectedBankChecker(bankConnections: bankConnectionsRepository)
         )
 
         self.loadDashboard = IntelligencePublishingDashboard(

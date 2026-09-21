@@ -11,6 +11,14 @@ public enum NotificationImportSource: String, Sendable, Codable, CaseIterable, I
     case flash
     case swile
     case ifoodBeneficios
+    case nubank
+    case itau
+    case bradesco
+    case c6
+    case inter
+    case picpay
+    case btg
+    case mercadoPago
     case generic
 
     public var id: String { rawValue }
@@ -26,16 +34,70 @@ public enum NotificationImportSource: String, Sendable, Codable, CaseIterable, I
         case .flash: return "Flash"
         case .swile: return "Swile"
         case .ifoodBeneficios: return "iFood Benefícios"
+        case .nubank: return "Nubank"
+        case .itau: return "Itaú"
+        case .bradesco: return "Bradesco"
+        case .c6: return "C6 Bank"
+        case .inter: return "Banco Inter"
+        case .picpay: return "PicPay"
+        case .btg: return "BTG Pactual"
+        case .mercadoPago: return "Mercado Pago"
         case .generic: return "Outro app"
         }
     }
 
     public var systemImage: String {
         switch self {
-        case .wallet: return "wallet.pass"
+        case .wallet:
+            return "wallet.pass"
         case .alelo, .vr, .ticket, .pluxee, .caju, .flash, .swile, .ifoodBeneficios:
             return "fork.knife"
-        case .generic: return "app.badge"
+        case .nubank, .itau, .bradesco, .c6, .inter, .picpay, .btg, .mercadoPago:
+            return "creditcard"
+        case .generic:
+            return "app.badge"
+        }
+    }
+
+    public var isBankSource: Bool {
+        switch self {
+        case .nubank, .itau, .bradesco, .c6, .inter, .picpay, .btg, .mercadoPago:
+            return true
+        default:
+            return false
+        }
+    }
+
+    public var isMealBenefitSource: Bool {
+        switch self {
+        case .alelo, .vr, .ticket, .pluxee, .caju, .flash, .swile, .ifoodBeneficios:
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// Institution name tokens as they appear in Pluggy (Open Finance)
+    public var openFinanceInstitutionNames: [String] {
+        switch self {
+        case .nubank:
+            return ["nu pagamentos", "nubank", "nu "]
+        case .itau:
+            return ["itau", "itaú"]
+        case .bradesco:
+            return ["bradesco", "next"]
+        case .c6:
+            return ["c6", "c6 bank", "banco c6"]
+        case .inter:
+            return ["inter", "banco inter"]
+        case .picpay:
+            return ["picpay", "banco picpay", "original"]
+        case .btg:
+            return ["btg", "btg pactual"]
+        case .mercadoPago:
+            return ["mercado pago", "mercadopago"]
+        default:
+            return []
         }
     }
 
@@ -51,6 +113,14 @@ public enum NotificationImportSource: String, Sendable, Codable, CaseIterable, I
         case .flash: return ["Flash"]
         case .swile: return ["Swile"]
         case .ifoodBeneficios: return ["iFood Benefícios", "iFood"]
+        case .nubank: return ["Nubank", "Nu"]
+        case .itau: return ["Itaú", "Itau", "Itaú Cartões", "íon"]
+        case .bradesco: return ["Bradesco", "Bradesco Cartões"]
+        case .c6: return ["C6 Bank", "C6"]
+        case .inter: return ["Inter", "Banco Inter"]
+        case .picpay: return ["PicPay"]
+        case .btg: return ["BTG Pactual", "BTG Banking"]
+        case .mercadoPago: return ["Mercado Pago"]
         case .generic: return []
         }
     }
@@ -70,6 +140,14 @@ public enum NotificationImportSource: String, Sendable, Codable, CaseIterable, I
         if n.contains("flash") { return .flash }
         if n.contains("swile") { return .swile }
         if n.contains("ifood") { return .ifoodBeneficios }
+        if n.contains("nubank") || n == "nu" { return .nubank }
+        if n.contains("itau") || n.contains("itaú") { return .itau }
+        if n.contains("bradesco") { return .bradesco }
+        if n.contains("c6") { return .c6 }
+        if n.contains("inter") && !n.contains("internet") { return .inter }
+        if n.contains("picpay") { return .picpay }
+        if n.contains("btg") { return .btg }
+        if n.contains("mercado pago") || n.contains("mercadopago") { return .mercadoPago }
         return .generic
     }
 }
@@ -166,6 +244,7 @@ public enum NotificationImportStatus: String, Sendable, Codable, Hashable {
     case needsDestination
     case needsReview
     case queued
+    case skippedOpenFinance
 }
 
 public enum NotificationImportEntityKind: String, Sendable, Codable, Hashable {
@@ -312,6 +391,7 @@ public enum NotificationImportOutcome: Sendable, Equatable {
     case needsDestination(NotificationImportRecord)
     case needsReview(NotificationImportRecord)
     case queued(NotificationImportRecord)
+    case skippedOpenFinance(NotificationImportRecord)
     case undone(NotificationImportRecord)
     case failed(String)
 
@@ -323,6 +403,7 @@ public enum NotificationImportOutcome: Sendable, Equatable {
              .needsDestination(let record),
              .needsReview(let record),
              .queued(let record),
+             .skippedOpenFinance(let record),
              .undone(let record):
             return record
         case .failed:
@@ -346,6 +427,8 @@ public enum NotificationImportOutcome: Sendable, Equatable {
             return "Não entendi esta compra. Toque para revisar o texto."
         case .queued:
             return "Compra guardada. Entraremos quando você abrir o app."
+        case .skippedOpenFinance:
+            return "Compra não importada: este cartão está conectado via Open Finance e a transação será sincronizada automaticamente."
         case .undone:
             return "Lançamento desfeito."
         case .failed(let message):
@@ -357,7 +440,7 @@ public enum NotificationImportOutcome: Sendable, Equatable {
         switch self {
         case .imported, .needsDestination, .needsReview, .queued, .failed:
             return true
-        case .duplicate, .ignored, .undone:
+        case .duplicate, .ignored, .undone, .skippedOpenFinance:
             return false
         }
     }
@@ -370,6 +453,12 @@ public protocol NotificationImporting: Sendable {
         body: String,
         sourceApp: String,
         now: Date
+    ) async -> NotificationImportOutcome
+    func importDirectTransaction(
+        amount: Decimal,
+        merchant: String,
+        cardName: String,
+        date: Date
     ) async -> NotificationImportOutcome
     func processQueued(now: Date) async -> [NotificationImportOutcome]
     func undo(recordId: String) async -> NotificationImportOutcome
@@ -387,6 +476,23 @@ public protocol NotificationImporting: Sendable {
     func saveRules(_ rules: [NotificationImportRule]) async
 }
 
+public extension NotificationImporting {
+    func importDirectTransaction(
+        amount: Decimal,
+        merchant: String,
+        cardName: String,
+        date: Date = Date()
+    ) async -> NotificationImportOutcome {
+        await importFromNotification(
+            title: cardName.isEmpty ? "Carteira" : cardName,
+            subtitle: "",
+            body: "\(amount) em \(merchant)",
+            sourceApp: cardName.isEmpty ? "Carteira" : cardName,
+            now: date
+        )
+    }
+}
+
 public protocol NotificationImportStoring: Sendable {
     func loadRules() async -> [NotificationImportRule]
     func saveRules(_ rules: [NotificationImportRule]) async
@@ -396,6 +502,10 @@ public protocol NotificationImportStoring: Sendable {
     func findDuplicate(fingerprint: String, now: Date, window: TimeInterval) async -> NotificationImportRecord?
     func enqueuePending(_ payload: NotificationImportPendingPayload) async
     func drainPending() async -> [NotificationImportPendingPayload]
+}
+
+public protocol ConnectedBankChecking: Sendable {
+    func isConnectedViaOpenFinance(source: NotificationImportSource) async -> Bool
 }
 
 public extension String {

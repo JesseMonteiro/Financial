@@ -298,4 +298,178 @@ final class NotificationPurchaseParserTests: XCTestCase {
         XCTAssertFalse(rule.matches(source: .wallet, title: "Nubank"))
         XCTAssertFalse(rule.matches(source: .alelo, title: "Alelo Refeição"))
     }
+
+    // MARK: - Brazilian Banks Tests
+
+    func testNubankDebitPurchase() {
+        let result = NotificationPurchaseParser.parse(
+            title: "Nubank",
+            body: "Compra no débito - UBER *UBER *TRIP - R$ 24,90",
+            sourceApp: "Nubank",
+            now: now
+        )
+        guard case .purchase(let parsed) = result else {
+            return XCTFail("expected purchase, got \(result)")
+        }
+        XCTAssertEqual(parsed.amount.amount, Decimal(string: "24.90"))
+        XCTAssertEqual(parsed.merchant, "UBER *UBER *TRIP")
+        XCTAssertEqual(parsed.source, .nubank)
+    }
+
+    func testNubankCreditPurchase() {
+        let result = NotificationPurchaseParser.parse(
+            title: "Nubank",
+            body: "Compra de R$ 45,00 no crédito aprovada em IFOOD",
+            sourceApp: "Nubank",
+            now: now
+        )
+        guard case .purchase(let parsed) = result else {
+            return XCTFail("expected purchase, got \(result)")
+        }
+        XCTAssertEqual(parsed.amount.amount, Decimal(string: "45.00"))
+        XCTAssertEqual(parsed.merchant, "IFOOD")
+        XCTAssertEqual(parsed.source, .nubank)
+    }
+
+    func testItauCreditCard() {
+        let result = NotificationPurchaseParser.parse(
+            title: "Itaú",
+            body: "Compra de R$ 45,00 com Cartão de Crédito final 1234 em IFOOD",
+            sourceApp: "Itaú",
+            now: now
+        )
+        guard case .purchase(let parsed) = result else {
+            return XCTFail("expected purchase, got \(result)")
+        }
+        XCTAssertEqual(parsed.amount.amount, Decimal(string: "45.00"))
+        XCTAssertEqual(parsed.merchant, "IFOOD")
+        XCTAssertEqual(parsed.source, .itau)
+    }
+
+    func testC6Approved() {
+        let result = NotificationPurchaseParser.parse(
+            title: "C6 Bank",
+            body: "Sua compra de R$ 32,00 no cartão foi aprovada em RESTAURANTE",
+            sourceApp: "C6 Bank",
+            now: now
+        )
+        guard case .purchase(let parsed) = result else {
+            return XCTFail("expected purchase, got \(result)")
+        }
+        XCTAssertEqual(parsed.amount.amount, Decimal(string: "32.00"))
+        XCTAssertEqual(parsed.merchant, "RESTAURANTE")
+        XCTAssertEqual(parsed.source, .c6)
+    }
+
+    func testInterPixDebit() {
+        let result = NotificationPurchaseParser.parse(
+            title: "Banco Inter",
+            body: "Débito de R$ 15,90 - PIX realizado para MERCADO",
+            sourceApp: "Banco Inter",
+            now: now
+        )
+        guard case .purchase(let parsed) = result else {
+            return XCTFail("expected purchase, got \(result)")
+        }
+        XCTAssertEqual(parsed.amount.amount, Decimal(string: "15.90"))
+        XCTAssertEqual(parsed.merchant, "MERCADO")
+        XCTAssertEqual(parsed.source, .inter)
+    }
+
+    func testBradescoTransaction() {
+        let result = NotificationPurchaseParser.parse(
+            title: "Bradesco",
+            body: "Transação de R$ 80,00 realizada em FARMACIA com cartão final 9876",
+            sourceApp: "Bradesco",
+            now: now
+        )
+        guard case .purchase(let parsed) = result else {
+            return XCTFail("expected purchase, got \(result)")
+        }
+        XCTAssertEqual(parsed.amount.amount, Decimal(string: "80.00"))
+        XCTAssertEqual(parsed.merchant, "FARMACIA")
+        XCTAssertEqual(parsed.source, .bradesco)
+    }
+
+    func testPicPayPurchase() {
+        let result = NotificationPurchaseParser.parse(
+            title: "PicPay",
+            body: "Pagamento de R$ 25,00 aprovado em LOJA XYZ",
+            sourceApp: "PicPay",
+            now: now
+        )
+        guard case .purchase(let parsed) = result else {
+            return XCTFail("expected purchase, got \(result)")
+        }
+        XCTAssertEqual(parsed.amount.amount, Decimal(string: "25.00"))
+        XCTAssertEqual(parsed.merchant, "LOJA XYZ")
+        XCTAssertEqual(parsed.source, .picpay)
+    }
+
+    func testBTGPurchase() {
+        let result = NotificationPurchaseParser.parse(
+            title: "BTG Pactual",
+            body: "Compra aprovada: R$ 120,00 em AMAZON",
+            sourceApp: "BTG Pactual",
+            now: now
+        )
+        guard case .purchase(let parsed) = result else {
+            return XCTFail("expected purchase, got \(result)")
+        }
+        XCTAssertEqual(parsed.amount.amount, Decimal(string: "120.00"))
+        XCTAssertEqual(parsed.merchant, "AMAZON")
+        XCTAssertEqual(parsed.source, .btg)
+    }
+
+    func testMercadoPagoPurchase() {
+        let result = NotificationPurchaseParser.parse(
+            title: "Mercado Pago",
+            body: "Pagamento de R$ 55,00 realizado em MERCADO LIVRE",
+            sourceApp: "Mercado Pago",
+            now: now
+        )
+        guard case .purchase(let parsed) = result else {
+            return XCTFail("expected purchase, got \(result)")
+        }
+        XCTAssertEqual(parsed.amount.amount, Decimal(string: "55.00"))
+        XCTAssertEqual(parsed.merchant, "MERCADO LIVRE")
+        XCTAssertEqual(parsed.source, .mercadoPago)
+    }
+
+    func testSourceMatchingBanks() {
+        XCTAssertEqual(NotificationImportSource.matching(appName: "Nubank"), .nubank)
+        XCTAssertEqual(NotificationImportSource.matching(appName: "Itaú Cartões"), .itau)
+        XCTAssertEqual(NotificationImportSource.matching(appName: "Bradesco"), .bradesco)
+        XCTAssertEqual(NotificationImportSource.matching(appName: "C6 Bank"), .c6)
+        XCTAssertEqual(NotificationImportSource.matching(appName: "Inter"), .inter)
+        XCTAssertEqual(NotificationImportSource.matching(appName: "PicPay"), .picpay)
+        XCTAssertEqual(NotificationImportSource.matching(appName: "BTG Pactual"), .btg)
+        XCTAssertEqual(NotificationImportSource.matching(appName: "Mercado Pago"), .mercadoPago)
+    }
+
+    func testIgnoreInvestmentAlert() {
+        let result = NotificationPurchaseParser.parse(
+            title: "Nubank",
+            body: "Seu rendimento de R$ 10,00 no CDB foi creditado",
+            sourceApp: "Nubank",
+            now: now
+        )
+        guard case .ignored(let reason) = result else {
+            return XCTFail("expected ignored, got \(result)")
+        }
+        XCTAssertTrue(reason.lowercased().contains("investimento"))
+    }
+
+    func testIgnoreLimitAlert() {
+        let result = NotificationPurchaseParser.parse(
+            title: "Itaú",
+            body: "Seu limite disponível aumentou para R$ 10.000,00",
+            sourceApp: "Itaú",
+            now: now
+        )
+        guard case .ignored(let reason) = result else {
+            return XCTFail("expected ignored, got \(result)")
+        }
+        XCTAssertTrue(reason.lowercased().contains("limite"))
+    }
 }

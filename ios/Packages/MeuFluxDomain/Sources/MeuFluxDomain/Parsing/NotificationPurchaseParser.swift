@@ -65,8 +65,11 @@ public enum NotificationPurchaseParser {
             (["codigo de", "seu codigo", "otp", "token de", "senha"], "Código de verificação ignorado."),
             (["novo acesso", "tentativa de acesso", "login na sua"], "Alerta de acesso ignorado."),
             (["seu saldo", "saldo disponivel", "saldo atual"], "Aviso de saldo ignorado."),
-            (["fatura fechou", "fatura fechada", "fatura disponivel"], "Aviso de fatura ignorado."),
+            (["fatura fechou", "fatura fechada", "fatura disponivel", "fatura paga"], "Aviso de fatura ignorado."),
             (["pix recebido", "transferencia recebida", "voce recebeu"], "Crédito recebido ignorado."),
+            (["rendimento", "rende mais", "cdb", "investimento rendeu"], "Alerta de investimento ignorado."),
+            (["limite disponivel", "limite do cartao", "seu limite aumentou"], "Aviso de limite ignorado."),
+            (["boleto agendado"], "Aviso de agendamento ignorado."),
         ]
         let hasPurchase = containsPurchaseSignal(folded)
         for group in negatives where group.needles.contains(where: { folded.contains($0) }) {
@@ -82,9 +85,11 @@ public enum NotificationPurchaseParser {
 
     private static func containsPurchaseSignal(_ folded: String) -> Bool {
         let signals = [
-            "compra", "aprovada", "aprovado", "debitada", "debito",
-            "pagou", "pagamento", "gastou", "transacao", "voce gastou",
-            "realizada em", "purchase", "paid",
+            "compra", "aprovada", "aprovado", "debitada", "debito", "debito",
+            "pagou", "pagamento", "gastou", "transacao", "transacao", "voce gastou",
+            "realizada em", "realizada", "purchase", "paid",
+            "credito", "credito", "cartao", "cartao", "no valor",
+            "pix realizado", "transferencia enviada", "transferencia enviada"
         ]
         return signals.contains(where: { folded.contains($0) })
     }
@@ -139,6 +144,56 @@ public enum NotificationPurchaseParser {
                 #"(?i)em\s+(.+)$"#,
                 #"(?i)aprovad[oa]\s+em\s+(.+)"#,
             ]
+        case .nubank:
+            patterns = [
+                #"(?i)(?:compra|pagamento)\s+(?:no\s+)?(?:d[ée]bito|cr[ée]dito)\s*[-:]?\s*(.+?)\s*-\s*R\$"#,
+                #"(?i)em\s+(.+?)(?:\s+-\s+R\$|\s+com\s|\s+no\s+valor|\s*$)"#,
+                #"(?i)para\s+(.+?)(?:\s+-\s+R\$|\s+no\s+valor|\s*$)"#,
+                #"(?i)compra\s+aprovada\s+em\s+(.+)"#,
+                #"(?i)transfer[êe]ncia\s+enviada.*?para\s+(.+)"#,
+            ]
+        case .itau:
+            patterns = [
+                #"(?i)(?:em|no)\s+(.+?)(?:\s+no\s+valor|\s+com\s+Cart[aã]o|\s+aprovad|\s*$)"#,
+                #"(?i)realizada\s+em\s+(.+?)(?:\s+no\s+valor|\s+com\s+Cart[aã]o|\s*$)"#,
+                #"(?i)aprovada(?:[^R\n]*R\$[^\n]*?)?\s+em\s+(.+)"#,
+                #"(?i)em\s+(.+)$"#,
+            ]
+        case .c6:
+            patterns = [
+                #"(?i)aprovada\s+em\s+(.+)"#,
+                #"(?i)em\s+(.+?)(?:\s+no\s+valor|\s+foi|\s*$)"#,
+            ]
+        case .inter:
+            patterns = [
+                #"(?i)para\s+(.+?)(?:\s+no\s+valor|\s*-\s*R\$|\s*$)"#,
+                #"(?i)em\s+(.+?)(?:\s+no\s+valor|\s*-\s*R\$|\s*$)"#,
+                #"(?i)aprovad[oa]\s+em\s+(.+)"#,
+            ]
+        case .bradesco:
+            patterns = [
+                #"(?i)realizada\s+em\s+(.+?)(?:\s+com\s+cart|\s+no\s+valor|\s*$)"#,
+                #"(?i)aprovada:\s*R\$[^\n]+?\s+em\s+(.+)"#,
+                #"(?i)em\s+(.+)$"#,
+            ]
+        case .picpay:
+            patterns = [
+                #"(?i)aprovado\s+em\s+(.+)"#,
+                #"(?i)para\s+(.+?)(?:\s+no\s+valor|\s*$)"#,
+                #"(?i)em\s+(.+)$"#,
+            ]
+        case .btg:
+            patterns = [
+                #"(?i)aprovada:\s*R\$[^\n]+?\s+em\s+(.+)"#,
+                #"(?i)aprovada\s+em\s+(.+)"#,
+                #"(?i)em\s+(.+)$"#,
+            ]
+        case .mercadoPago:
+            patterns = [
+                #"(?i)realizado\s+em\s+(.+)"#,
+                #"(?i)aprovado\s+em\s+(.+)"#,
+                #"(?i)em\s+(.+)$"#,
+            ]
         case .alelo, .ticket, .pluxee, .ifoodBeneficios, .generic:
             patterns = [
                 #"(?i)no estabelecimento\s+(.+)"#,
@@ -164,7 +219,12 @@ public enum NotificationPurchaseParser {
         guard var value = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else {
             return nil
         }
-        let cutTokens = [" com seu", " no cartao", " no cartão", " usando", " com o cartao", " — ", " - R$"]
+        let cutTokens = [
+            " com seu", " no cartao", " no cartão", " usando", " com o cartao", " com o cartão",
+            " com cartao", " com cartão", " final ", " cartao final", " cartão final",
+            " no valor", " — ", " - R$", " de R$", " de r$", " aprovada", " aprovado",
+            " realizada", " realizado", " foi aprovada", " foi aprovado"
+        ]
         let folded = value.notificationImportFolded
         for token in cutTokens {
             if let range = folded.range(of: token.notificationImportFolded) {

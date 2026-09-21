@@ -82,12 +82,59 @@ struct ImportPurchaseFromNotificationIntent: AppIntent {
 
     func perform() async throws -> some IntentResult & ProvidesDialog {
         let service = await NotificationImportRuntime.shared.resolve()
+        let effectiveSource = sourceApp.isEmpty ? (title.isEmpty ? "Carteira" : title) : sourceApp
         let outcome = await service.importFromNotification(
             title: title,
             subtitle: subtitle,
             body: body,
-            sourceApp: sourceApp.isEmpty ? title : sourceApp,
+            sourceApp: effectiveSource,
             now: Date()
+        )
+        await ImportLocalNotifications.post(outcome: outcome)
+        return .result(dialog: IntentDialog("\(outcome.dialogText)"))
+    }
+}
+
+struct ImportWalletTransactionIntent: AppIntent {
+    static let title: LocalizedStringResource = "Importar transação do Apple Pay / Carteira"
+    static let description = IntentDescription(
+        "Lança uma compra direto da variável Transação do Apple Pay na Carteira no MeuFlux."
+    )
+    static let supportedModes: IntentModes = [.background, .foreground(.dynamic)]
+
+    @Parameter(title: "Valor")
+    var amount: Double
+
+    @Parameter(title: "Estabelecimento", default: "")
+    var merchant: String
+
+    @Parameter(title: "Nome do Cartão", default: "")
+    var cardName: String
+
+    @Parameter(title: "Data", default: nil)
+    var date: Date?
+
+    init() {
+        self.amount = 0
+        self.merchant = ""
+        self.cardName = ""
+        self.date = nil
+    }
+
+    init(amount: Double, merchant: String = "", cardName: String = "", date: Date? = nil) {
+        self.amount = amount
+        self.merchant = merchant
+        self.cardName = cardName
+        self.date = date
+    }
+
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        let service = await NotificationImportRuntime.shared.resolve()
+        let outcome = await service.importDirectTransaction(
+            amount: Decimal(amount),
+            merchant: merchant,
+            cardName: cardName,
+            date: date ?? Date()
         )
         await ImportLocalNotifications.post(outcome: outcome)
         return .result(dialog: IntentDialog("\(outcome.dialogText)"))

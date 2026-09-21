@@ -62,12 +62,17 @@ enum ImportLocalNotifications {
         }
         let identifier = outcome.record?.id ?? UUID().uuidString
         let request = UNNotificationRequest(identifier: identifier, content: content, trigger: nil)
-        try? await UNUserNotificationCenter.current().add(request)
+        do {
+            try await UNUserNotificationCenter.current().add(request)
+        } catch {
+            AppLogger().error("Falha ao agendar notificação local: \(error.localizedDescription)", category: .sync)
+        }
     }
 }
 
 final class ImportNotificationCenter: NSObject, UNUserNotificationCenterDelegate, @unchecked Sendable {
     static let shared = ImportNotificationCenter()
+    private let logger = AppLogger()
 
     @MainActor var onOpenReview: ((String) -> Void)?
     @MainActor var undoHandler: ((String) async -> Void)?
@@ -75,6 +80,7 @@ final class ImportNotificationCenter: NSObject, UNUserNotificationCenterDelegate
     func configure() {
         ImportLocalNotifications.registerCategories()
         UNUserNotificationCenter.current().delegate = self
+        logger.info("ImportNotificationCenter configurado como delegate principal de notificações", category: .general)
     }
 
     nonisolated func userNotificationCenter(
@@ -94,8 +100,10 @@ final class ImportNotificationCenter: NSObject, UNUserNotificationCenterDelegate
         await MainActor.run {
             switch action {
             case ImportLocalNotifications.undoActionId:
+                self.logger.info("Ação de desfazer acionada para record \(recordId)", category: .sync)
                 Task { await undoHandler?(recordId) }
             case ImportLocalNotifications.editActionId, UNNotificationDefaultActionIdentifier:
+                self.logger.info("Ação de abrir revisão acionada para record \(recordId)", category: .sync)
                 onOpenReview?(recordId)
             default:
                 break

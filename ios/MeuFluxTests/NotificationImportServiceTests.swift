@@ -62,6 +62,22 @@ private final class MockManuals: ManualExpensesRepository, @unchecked Sendable {
     }
 }
 
+private struct MockConnectedBankChecker: ConnectedBankChecking, Sendable {
+    var connectedSources: Set<NotificationImportSource>
+
+    func isConnectedViaOpenFinance(source: NotificationImportSource) async -> Bool {
+        guard source.isBankSource else { return false }
+        return connectedSources.contains(source)
+    }
+}
+
+private final class MockBankConnections: BankConnectionsRepository, @unchecked Sendable {
+    var items: [BankConnectionItem] = []
+
+    func fetchItems(force: Bool) async throws -> [BankConnectionItem] { items }
+    func syncItem(id: String) async throws {}
+}
+
 final class NotificationImportServiceTests: XCTestCase {
     private let now = InstantDate(year: 2026, month: 9, day: 14).date()!
 
@@ -224,5 +240,175 @@ final class NotificationImportServiceTests: XCTestCase {
         let undone = await service.undo(recordId: record.id)
         guard case .undone = undone else { return XCTFail("expected undone, got \(undone)") }
         XCTAssertTrue(meals.purchases.isEmpty)
+    }
+
+    // MARK: - Open Finance Anti-Duplicity Tests
+
+    func testSkipsImportWhenBankConnectedViaOpenFinance() async {
+        let store = InMemoryNotificationImportStore()
+        let meals = MockMealBenefits()
+        let manuals = MockManuals()
+        let checker = MockConnectedBankChecker(connectedSources: [.nubank])
+        let service = NotificationImportService(
+            store: store,
+            mealBenefits: meals,
+            manuals: manuals,
+            authSession: MockAuthSession(),
+            bankChecker: checker
+        )
+
+        let outcome = await service.importFromNotification(
+            title: "Nubank",
+            body: "Compra de R$ 45,00 no crédito aprovada em IFOOD",
+            sourceApp: "Nubank",
+            now: now
+        )
+
+        guard case .skippedOpenFinance(let record) = outcome else {
+            return XCTFail("expected skippedOpenFinance, got \(outcome)")
+        }
+        XCTAssertEqual(record.status, .skippedOpenFinance)
+        XCTAssertTrue(manuals.expenses.isEmpty, "Nenhuma despesa manual deve ser criada quando banco está conectado")
+    }
+
+    func testImportsBankWhenNotConnectedViaOpenFinance() async {
+        let store = InMemoryNotificationImportStore()
+        let meals = MockMealBenefits()
+        let manuals = MockManuals()
+        let checker = MockConnectedBankChecker(connectedSources: [.itau]) // C6 NÃO está conectado
+        await store.saveRules([
+            NotificationImportRule(source: .c6, destination: .manualAccount(id: "c6-account"))
+        ])
+        let service = NotificationImportService(
+            store: store,
+            mealBenefits: meals,
+            manuals: manuals,
+            authSession: MockAuthSession(),
+            bankChecker: checker
+        )
+
+        let outcome = await service.importFromNotification(
+            title: "C6 Bank",
+            body: "Sua compra de R$ 32,00 no cartão foi aprovada em RESTAURANTE",
+            sourceApp: "C6 Bank",
+            now: now
+        )
+
+        guard case .imported(let record) = outcome else {
+            return XCTFail("expected imported, got \(outcome)")
+        }
+        XCTAssertEqual(record.createdEntityKind, .manualExpense)
+        XCTAssertEqual(manuals.expenses.count, 1)
+        XCTAssertEqual(manuals.expenses.first?.accountId, "c6-account")
+        XCTAssertEqual(manuals.expenses.first?.amount.amount, Decimal(string: "32.00"))
+    }
+
+    func testVAVRNeverBlockedByOpenFinanceCheck() async {
+        let store = InMemoryNotificationImportStore()
+        let meals = MockMealBenefits()
+        let manuals = MockManuals()
+        // Mesmo se o checker tiver fontes bancárias, fontes de benefícios não devem ser bloqueadas
+        let checker = MockConnectedBankChecker(connectedSources: [.nubank, .itau])
+        await store.saveRules([
+            NotificationImportRule(source: .alelo, destination: .mealBenefit(id: "va-1"))
+        ])
+        let service = NotificationImportService(
+            store: store,
+            mealBenefits: meals,
+            manuals: manuals,
+            authSession: MockAuthSession(),
+            bankChecker: checker
+        )
+
+        let outcome = await service.importFromNotification(
+            title: "Alelo",
+            body: "Compra aprovada: R$ 32,50 em RESTAURANTE XYZ",
+            sourceApp: "Alelo",
+            now: now
+        )
+
+        guard case .imported(let record) = outcome else {
+            return XCTFail("expected imported, got \(outcome)")
+        }
+        XCTAssertEqual(record.createdEntityKind, .mealPurchase)
+        XCTAssertEqual(meals.purchases.count, 1)
+    }
+
+    func testLiveConnectedBankCheckerMatching() async {
+        let bankConnections = MockBankConnections()
+        bankConnections.items = [
+            BankConnectionItem(id: "conn-1", institutionName: "Nu Pagamentos S.A.", status: "UPDATED"),
+            BankConnectionItem(id: "conn-2", institutionName: "Banco Itaú S.A.", status: "LOGIN_ERROR") // Com erro não deve contar como ativo
+        ]
+        let checker = LiveConnectedBankChecker(bankConnections: bankConnections)
+
+        let isNubankConnected = await checker.isConnectedViaOpenFinance(source: .nubank)
+        XCTAssertTrue(isNubankConnected, "Nubank deve ser reconhecido por 'Nu Pagamentos'")
+
+        let isItauConnected = await checker.isConnectedViaOpenFinance(source: .itau)
+        XCTAssertFalse(isItauConnected, "Itaú com LOGIN_ERROR não deve ser considerado ativo")
+
+        let isC6Connected = await checker.isConnectedViaOpenFinance(source: .c6)
+        XCTAssertFalse(isC6Connected, "C6 não está na lista de conexões")
+
+        let isAleloBlocked = await checker.isConnectedViaOpenFinance(source: .alelo)
+        XCTAssertFalse(isAleloBlocked, "Alelo não é banco e nunca deve ser bloqueado")
+    }
+
+    // MARK: - Direct Transaction (Apple Pay / Wallet) Tests
+
+    func testImportDirectTransactionApplePayManualAccount() async {
+        let store = InMemoryNotificationImportStore()
+        let manuals = MockManuals()
+        await store.saveRules([
+            NotificationImportRule(source: .wallet, destination: .manualAccount(id: "card-1"))
+        ])
+        let service = NotificationImportService(
+            store: store,
+            mealBenefits: MockMealBenefits(),
+            manuals: manuals,
+            authSession: MockAuthSession()
+        )
+
+        let outcome = await service.importDirectTransaction(
+            amount: Decimal(string: "78.50")!,
+            merchant: "Supermercado Pão de Açúcar",
+            cardName: "Cartão C6",
+            date: now
+        )
+
+        guard case .imported(let record) = outcome else {
+            return XCTFail("expected imported, got \(outcome)")
+        }
+        XCTAssertEqual(manuals.expenses.count, 1)
+        XCTAssertEqual(manuals.expenses.first?.amount.amount, Decimal(string: "78.50"))
+        XCTAssertEqual(manuals.expenses.first?.description, "Supermercado Pão de Açúcar")
+        XCTAssertEqual(record.createdEntityKind, .manualExpense)
+    }
+
+    func testImportDirectTransactionApplePaySkippedIfOpenFinanceConnected() async {
+        let store = InMemoryNotificationImportStore()
+        let manuals = MockManuals()
+        let checker = MockConnectedBankChecker(connectedSources: [.nubank])
+        let service = NotificationImportService(
+            store: store,
+            mealBenefits: MockMealBenefits(),
+            manuals: manuals,
+            authSession: MockAuthSession(),
+            bankChecker: checker
+        )
+
+        let outcome = await service.importDirectTransaction(
+            amount: Decimal(string: "120.00")!,
+            merchant: "Amazon",
+            cardName: "Nubank Ultravioleta",
+            date: now
+        )
+
+        guard case .skippedOpenFinance(let record) = outcome else {
+            return XCTFail("expected skippedOpenFinance, got \(outcome)")
+        }
+        XCTAssertEqual(record.status, .skippedOpenFinance)
+        XCTAssertTrue(manuals.expenses.isEmpty, "Não deve criar despesa manual para cartão Nubank conectado ao Open Finance")
     }
 }

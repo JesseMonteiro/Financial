@@ -7,7 +7,7 @@ public actor LiveNotificationImportStore: NotificationImportStoring {
     private let rulesKey = "notificationImport.rules"
     private let recordsKey = "notificationImport.records"
     private let pendingKey = "notificationImport.pending"
-    private let maxRecords = 100
+    private let maxRecords = 500
 
     public init(defaults: UserDefaults = AppGroup.userDefaults) {
         self.defaults = defaults

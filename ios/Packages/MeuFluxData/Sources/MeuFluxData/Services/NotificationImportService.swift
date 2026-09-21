@@ -10,6 +10,7 @@ public struct NotificationImportService: NotificationImporting, Sendable {
     private let logger: AppLogger
     private let categorizer: any PurchaseCategorizing
     private let parseAssistant: (any PurchaseParsingAssisting)?
+    private let bankChecker: (any ConnectedBankChecking)?
 
     public init(
         store: any NotificationImportStoring,
@@ -18,7 +19,8 @@ public struct NotificationImportService: NotificationImporting, Sendable {
         authSession: any AuthSessionActor,
         logger: AppLogger = AppLogger(),
         categorizer: (any PurchaseCategorizing)? = nil,
-        parseAssistant: (any PurchaseParsingAssisting)? = nil
+        parseAssistant: (any PurchaseParsingAssisting)? = nil,
+        bankChecker: (any ConnectedBankChecking)? = nil
     ) {
         self.store = store
         self.mealBenefits = mealBenefits
@@ -27,11 +29,13 @@ public struct NotificationImportService: NotificationImporting, Sendable {
         self.logger = logger
         self.categorizer = categorizer ?? RuleBasedPurchaseCategorizer()
         self.parseAssistant = parseAssistant
+        self.bankChecker = bankChecker
     }
 
     public static func standalone(
         env: EnvConfig = .fromBundle(),
-        store: (any NotificationImportStoring)? = nil
+        store: (any NotificationImportStoring)? = nil,
+        bankChecker: (any ConnectedBankChecking)? = nil
     ) -> NotificationImportService {
         let logger = AppLogger(enabled: env.featureFlags.debugLogging)
         let authSession = KeychainAuthSession()
@@ -44,12 +48,16 @@ public struct NotificationImportService: NotificationImporting, Sendable {
             supabaseAnonKey: env.supabaseAnonKey
         )
         let bff = BFFClient(api: api, cache: CacheActor())
+        let resolvedChecker = bankChecker ?? LiveConnectedBankChecker(
+            bankConnections: LiveBankConnectionsRepository(bff: bff)
+        )
         return NotificationImportService(
             store: store ?? LiveNotificationImportStore(),
             mealBenefits: LiveMealBenefitsRepository(bff: bff),
             manuals: LiveManualExpensesRepository(bff: bff),
             authSession: authSession,
-            logger: logger
+            logger: logger,
+            bankChecker: resolvedChecker
         )
     }
 
@@ -107,8 +115,100 @@ public struct NotificationImportService: NotificationImporting, Sendable {
                 enriched.merchant = merchant
             }
             enriched.suggestedCategory = suggestion.kind.rawValue
+
+            if enriched.source.isBankSource,
+               let bankChecker,
+               await bankChecker.isConnectedViaOpenFinance(source: enriched.source) {
+                let fingerprint = NotificationImportFingerprint.make(
+                    source: enriched.source,
+                    amount: enriched.amount.amount,
+                    merchant: enriched.merchant,
+                    day: enriched.purchasedAt,
+                    body: enriched.combinedText
+                )
+                logger.info("Notificação de \(enriched.source.displayName) ignorada: banco já conectado via Open Finance", category: .sync)
+                let record = NotificationImportRecord(
+                    fingerprint: fingerprint,
+                    status: .skippedOpenFinance,
+                    parsed: enriched,
+                    createdAt: now
+                )
+                await store.upsertRecord(record)
+                return .skippedOpenFinance(record)
+            }
+
             return await importParsed(enriched, now: now)
         }
+    }
+
+    public func importDirectTransaction(
+        amount: Decimal,
+        merchant: String,
+        cardName: String,
+        date: Date = Date()
+    ) async -> NotificationImportOutcome {
+        guard amount > 0 else {
+            return .failed("Valor da transação inválido.")
+        }
+        let cleanMerchant = merchant.trimmingCharacters(in: .whitespacesAndNewlines)
+        let displayMerchant = cleanMerchant.isEmpty ? "Compra no Apple Pay" : cleanMerchant
+        let detectedSource = cardName.isEmpty ? NotificationImportSource.wallet : NotificationImportSource.matching(appName: cardName)
+        let resolvedSource = (detectedSource == .generic) ? NotificationImportSource.wallet : detectedSource
+
+        if resolvedSource.isBankSource,
+           let bankChecker,
+           await bankChecker.isConnectedViaOpenFinance(source: resolvedSource) {
+            let fingerprint = NotificationImportFingerprint.make(
+                source: resolvedSource,
+                amount: amount,
+                merchant: displayMerchant,
+                day: InstantDate(from: date),
+                body: "\(amount) em \(displayMerchant) (\(cardName))"
+            )
+            logger.info("Transação do Apple Pay (\(cardName)) ignorada: banco conectado via Open Finance", category: .sync)
+            let record = NotificationImportRecord(
+                fingerprint: fingerprint,
+                status: .skippedOpenFinance,
+                parsed: ParsedPurchase(
+                    amount: Money(amount: amount),
+                    merchant: displayMerchant,
+                    purchasedAt: InstantDate(from: date),
+                    rawTitle: cardName.isEmpty ? "Carteira" : cardName,
+                    rawSubtitle: "",
+                    rawBody: "\(amount) em \(displayMerchant)",
+                    source: resolvedSource,
+                    sourceAppName: cardName.isEmpty ? "Carteira" : cardName,
+                    confidence: 1.0
+                ),
+                createdAt: date
+            )
+            await store.upsertRecord(record)
+            return .skippedOpenFinance(record)
+        }
+
+        var parsed = ParsedPurchase(
+            amount: Money(amount: amount),
+            merchant: displayMerchant,
+            purchasedAt: InstantDate(from: date),
+            rawTitle: cardName.isEmpty ? "Carteira" : cardName,
+            rawSubtitle: "",
+            rawBody: "\(amount) em \(displayMerchant)",
+            source: resolvedSource,
+            sourceAppName: cardName.isEmpty ? "Carteira" : cardName,
+            confidence: 1.0
+        )
+
+        let suggestion = await categorizer.suggest(
+            merchant: parsed.merchant,
+            source: parsed.source,
+            combinedText: parsed.combinedText
+        )
+        if let suggestedMerchant = suggestion.merchant {
+            parsed.merchant = suggestedMerchant
+        }
+        parsed.suggestedCategory = suggestion.kind.rawValue
+
+        return await importParsed(parsed, now: date)
     }
 
     public func processQueued(now: Date = Date()) async -> [NotificationImportOutcome] {
@@ -283,7 +383,7 @@ public struct NotificationImportService: NotificationImporting, Sendable {
 
         let rules = await store.loadRules()
         let rule = rules.first { $0.matches(source: parsed.source, title: parsed.rawTitle) }
-            ?? rules.first { $0.enabled && $0.source == .generic && parsed.source == .generic }
+            ?? rules.first { $0.enabled && $0.source == .generic }
 
         guard let destination = rule?.destination else {
             let record = NotificationImportRecord(
@@ -306,6 +406,7 @@ public struct NotificationImportService: NotificationImporting, Sendable {
         do {
             try await persist(parsed: parsed, destination: destination, onto: &record)
             await store.upsertRecord(record)
+            logger.info("Compra importada: \(parsed.amount.formatted()) em \(parsed.displayMerchant) (\(parsed.source.displayName))", category: .sync)
             return .imported(record)
         } catch {
             logger.error("Import persist failed: \(error.localizedDescription)", category: .sync)

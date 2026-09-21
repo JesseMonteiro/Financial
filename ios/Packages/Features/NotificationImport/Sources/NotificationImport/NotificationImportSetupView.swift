@@ -5,17 +5,26 @@ import MeuFluxDomain
 public struct NotificationImportSetupView: View {
     @State private var viewModel: NotificationImportSetupViewModel
     @Environment(\.openURL) private var openURL
+    @State private var tutorialMode: TutorialMode = .applePay
+
+    private enum TutorialMode: String, CaseIterable, Identifiable {
+        case applePay = "Apple Pay (Transação)"
+        case notification = "Notificação de Banco"
+        var id: String { rawValue }
+    }
 
     public init(
         importer: any NotificationImporting,
         mealBenefits: any MealBenefitsRepository,
-        accounts: any AccountsRepository
+        accounts: any AccountsRepository,
+        bankConnections: (any BankConnectionsRepository)? = nil
     ) {
         _viewModel = State(
             initialValue: NotificationImportSetupViewModel(
                 importer: importer,
                 mealBenefits: mealBenefits,
-                accounts: accounts
+                accounts: accounts,
+                bankConnections: bankConnections
             )
         )
     }
@@ -67,42 +76,112 @@ public struct NotificationImportSetupView: View {
                 }
             }
 
-            Section("Origens") {
-                if viewModel.destinationOptions.isEmpty {
+            if viewModel.destinationOptions.isEmpty {
+                Section {
                     Text("Cadastre um VA/VR ou uma conta manual antes de ligar o leitor.")
                         .font(.caption)
                         .foregroundStyle(MeuFluxColors.textSecondary)
                 }
-                ForEach(NotificationImportSource.allCases) { source in
+            }
+
+            Section("Benefícios (VA / VR)") {
+                ForEach(benefitSources) { source in
                     sourceRow(source)
                 }
             }
 
-            Section("Automação no Atalhos") {
-                if hasNotificationTrigger {
-                    numberedStep(1, "Atalhos → Automação → + → Criar Automação Pessoal.")
-                    numberedStep(2, "Na lista, toque em Notificação (não aparece como “Quando eu receber…”).")
-                    numberedStep(3, "Escolha o app (Alelo, Carteira, VR…) e, se quiser, filtre por “compra” ou “R$”.")
-                    numberedStep(4, "Adicione a ação “Importar compra da notificação” do MeuFlux.")
-                    numberedStep(5, "Mapeie Título, Subtítulo, Corpo e App de origem a partir da notificação.")
-                    numberedStep(6, "Marque Executar imediatamente e desligue “Perguntar ao executar”.")
-                } else {
-                    Text("O gatilho de notificação chegou no iOS 27. Neste iPhone ele não aparece na lista de automações.")
-                        .font(.subheadline)
-                        .foregroundStyle(MeuFluxColors.textSecondary)
-                    numberedStep(1, "Atualize para o iOS 27: Atalhos → Automação → + → Notificação (seção de Apps).")
-                    numberedStep(2, "Enquanto isso, cole o texto da notificação do banco na seção abaixo.")
-                    numberedStep(3, "Se o cartão estiver na Carteira, existe “Transação” / “Quando eu aproximar”, mas isso só dispara o atalho — não manda valor nem loja.")
+            Section {
+                ForEach(bankSources) { source in
+                    sourceRow(source)
                 }
-                Button("Abrir Atalhos") {
+            } header: {
+                Text("Bancos e Cartões")
+            } footer: {
+                Text("Bancos conectados via Open Finance são sincronizados automaticamente para evitar compras duplicadas.")
+                    .font(.caption)
+                    .foregroundStyle(MeuFluxColors.textMuted)
+            }
+
+            Section("Carteira e Outros") {
+                ForEach(otherSources) { source in
+                    sourceRow(source)
+                }
+            }
+
+            Section("Como configurar no Atalhos") {
+                Picker("Tipo de Automação", selection: $tutorialMode) {
+                    ForEach(TutorialMode.allCases) { mode in
+                        Text(mode.rawValue).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+
+                if tutorialMode == .applePay {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Label("Recomendado para Apple Pay e Apple Watch", systemImage: "sparkles")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(MeuFluxColors.primary)
+                        Text("Sempre que você aproximar o iPhone ou Apple Watch, a compra é importada automaticamente com valor e loja exatos.")
+                            .font(.caption)
+                            .foregroundStyle(MeuFluxColors.textSecondary)
+                    }
+                    .padding(.vertical, 4)
+
+                    numberedStep(1, "Abra o app Atalhos → aba Automação → toque no botão + (canto superior direito).")
+                    numberedStep(2, "Escolha o gatilho Transação (com o ícone da Carteira).")
+                    numberedStep(3, "Em Cartão, escolha seu cartão (ou Qualquer Cartão). Marque Executar Imediatamente e desative Perguntar ao Executar. Toque em Avançar.")
+                    numberedStep(4, "Toque em Nova Automação Vazia → Adicionar Ação → busque por “MeuFlux”.")
+                    numberedStep(5, "Escolha a ação: “Importar transação do Apple Pay / Carteira”.")
+                    
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Como preencher a variável Transação:")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(MeuFluxColors.textPrimary)
+                        Text("• Campo Valor: toque nele, selecione a variável azul Transação, toque nela novamente e escolha Valor.")
+                            .font(.caption)
+                            .foregroundStyle(MeuFluxColors.textSecondary)
+                        Text("• Campo Estabelecimento: toque nele, selecione Transação e escolha Comerciante.")
+                            .font(.caption)
+                            .foregroundStyle(MeuFluxColors.textSecondary)
+                        Text("• Campo Nome do Cartão: toque nele, selecione Transação e escolha Cartão.")
+                            .font(.caption)
+                            .foregroundStyle(MeuFluxColors.textSecondary)
+                    }
+                    .padding(10)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(MeuFluxColors.primary.opacity(0.08)))
+
+                } else {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Label("Para compras fora do Apple Pay", systemImage: "bell.badge")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(MeuFluxColors.primary)
+                        Text("Lê as notificações push emitidas pelo app do seu banco (ex.: Nubank, Itaú, Alelo).")
+                            .font(.caption)
+                            .foregroundStyle(MeuFluxColors.textSecondary)
+                    }
+                    .padding(.vertical, 4)
+
+                    numberedStep(1, "No app Atalhos → Automação → + → escolha o gatilho Notificação.")
+                    numberedStep(2, "Escolha o App do seu banco (ex: Nubank, Itaú, Alelo).")
+                    numberedStep(3, "No campo “A notificação contém”, digite “compra” ou “R$”.")
+                    numberedStep(4, "Marque Executar Imediatamente e avance.")
+                    numberedStep(5, "Adicione a ação do MeuFlux: “Importar compra da notificação”.")
+                    numberedStep(6, "No campo Corpo, selecione a variável Texto da notificação da entrada do atalho.")
+                }
+
+                Button {
                     if let url = URL(string: "shortcuts://") {
                         openURL(url)
                     }
+                } label: {
+                    Label("Abrir o App Atalhos", systemImage: "arrow.up.forward.app")
+                        .font(.subheadline.weight(.semibold))
                 }
             }
 
             Section("Colar uma notificação") {
-                TextField("App de origem (ex.: Alelo)", text: $viewModel.pasteSourceApp)
+                TextField("App de origem (ex.: Nubank, Alelo)", text: $viewModel.pasteSourceApp)
                 TextEditor(text: $viewModel.pasteText)
                     .frame(minHeight: 88)
                 Button("Importar texto") {
@@ -125,23 +204,46 @@ public struct NotificationImportSetupView: View {
         }
     }
 
+    private var benefitSources: [NotificationImportSource] {
+        NotificationImportSource.allCases.filter(\.isMealBenefitSource)
+    }
+
+    private var bankSources: [NotificationImportSource] {
+        NotificationImportSource.allCases.filter(\.isBankSource)
+    }
+
+    private var otherSources: [NotificationImportSource] {
+        NotificationImportSource.allCases.filter { !$0.isMealBenefitSource && !$0.isBankSource }
+    }
+
     private func sourceRow(_ source: NotificationImportSource) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        let isOpenFinanceConnected = viewModel.isConnectedViaOpenFinance(source)
+
+        return VStack(alignment: .leading, spacing: 6) {
             Toggle(isOn: Binding(
-                get: { viewModel.isEnabled(source) },
+                get: {
+                    if isOpenFinanceConnected { return false }
+                    return viewModel.isEnabled(source)
+                },
                 set: { enabled in
                     Task { await viewModel.setEnabled(source, enabled: enabled) }
                 }
             )) {
                 Label(source.displayName, systemImage: source.systemImage)
             }
-            .disabled(viewModel.destinationOptions.isEmpty)
+            .disabled(viewModel.destinationOptions.isEmpty || isOpenFinanceConnected)
 
-            Button(viewModel.destinationLabel(for: source)) {
-                viewModel.configuringSource = source
+            if isOpenFinanceConnected {
+                Label("Open Finance ativo · importação automática", systemImage: "antenna.radiowaves.left.and.right")
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(MeuFluxColors.success)
+            } else {
+                Button(viewModel.destinationLabel(for: source)) {
+                    viewModel.configuringSource = source
+                }
+                .font(.caption)
+                .disabled(viewModel.destinationOptions.isEmpty)
             }
-            .font(.caption)
-            .disabled(viewModel.destinationOptions.isEmpty)
         }
     }
 
@@ -171,6 +273,7 @@ public struct NotificationImportSetupView: View {
         case .needsDestination: return "Escolher conta"
         case .needsReview: return "Revisar"
         case .queued: return "Na fila"
+        case .skippedOpenFinance: return "Open Finance (sem duplicidade)"
         }
     }
 

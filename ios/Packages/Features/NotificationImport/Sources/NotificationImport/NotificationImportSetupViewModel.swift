@@ -14,6 +14,7 @@ public final class NotificationImportSetupViewModel {
     public private(set) var history: [NotificationImportRecord] = []
     public private(set) var benefits: [MealBenefit] = []
     public private(set) var manualAccounts: [Account] = []
+    public private(set) var connectedOpenFinanceSources: Set<NotificationImportSource> = []
     public private(set) var notificationsGranted = false
     public var errorMessage: String?
     public var pasteText = ""
@@ -24,15 +25,18 @@ public final class NotificationImportSetupViewModel {
     private let importer: (any NotificationImporting)?
     private let mealBenefits: (any MealBenefitsRepository)?
     private let accounts: (any AccountsRepository)?
+    private let bankConnections: (any BankConnectionsRepository)?
 
     public init(
         importer: (any NotificationImporting)? = nil,
         mealBenefits: (any MealBenefitsRepository)? = nil,
-        accounts: (any AccountsRepository)? = nil
+        accounts: (any AccountsRepository)? = nil,
+        bankConnections: (any BankConnectionsRepository)? = nil
     ) {
         self.importer = importer
         self.mealBenefits = mealBenefits
         self.accounts = accounts
+        self.bankConnections = bankConnections
     }
 
     public var destinationOptions: [NotificationImportDestinationOption] {
@@ -53,6 +57,10 @@ public final class NotificationImportSetupViewModel {
         return mealOptions + accountOptions
     }
 
+    public func isConnectedViaOpenFinance(_ source: NotificationImportSource) -> Bool {
+        connectedOpenFinanceSources.contains(source)
+    }
+
     public func load() async {
         state.beginLoad(silentIfPossible: true)
         errorMessage = nil
@@ -70,6 +78,25 @@ public final class NotificationImportSetupViewModel {
             if let accounts {
                 let all = try await accounts.fetchAccounts(force: false)
                 manualAccounts = all.filter(\.isManual)
+            }
+            if let bankConnections {
+                let items = (try? await bankConnections.fetchItems(force: false)) ?? []
+                let active = items.filter { item in
+                    let s = item.status.uppercased()
+                    return s != "LOGIN_ERROR" && s != "OUTDATED"
+                }
+                var connected = Set<NotificationImportSource>()
+                for source in NotificationImportSource.allCases where source.isBankSource {
+                    let targets = source.openFinanceInstitutionNames
+                    let isConn = active.contains { item in
+                        let n = item.institutionName.notificationImportFolded
+                        return targets.contains { n.contains($0.notificationImportFolded) }
+                    }
+                    if isConn {
+                        connected.insert(source)
+                    }
+                }
+                connectedOpenFinanceSources = connected
             }
             rules = await loadedRules
             history = await loadedHistory
