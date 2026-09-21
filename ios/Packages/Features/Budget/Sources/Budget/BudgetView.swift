@@ -358,29 +358,48 @@ public struct BudgetView: View {
                                 .frame(maxWidth: .infinity, alignment: .center)
                         } else if showPeriodGroups {
                             VStack(alignment: .leading, spacing: 12) {
-                                ForEach(periodGroups) { group in
+                                ForEach(Array(periodGroups.enumerated()), id: \.element.id) { index, group in
                                     VStack(alignment: .leading, spacing: 6) {
                                         HStack {
                                             Text(group.label)
-                                                .font(.system(size: 11, weight: .bold))
+                                                .font(.system(size: 12, weight: .bold))
                                                 .foregroundStyle(MeuFluxColors.textPrimary)
+                                                .textCase(.uppercase)
+                                                .tracking(0.5)
                                             Spacer()
                                             Text(group.total.formatted())
-                                                .font(.system(size: 11, weight: .bold))
-                                                .foregroundStyle(MeuFluxColors.textPrimary)
+                                                .font(.system(size: 13, weight: .heavy))
+                                                .foregroundStyle(index % 2 == 0 ? Color.blue : Color.green)
                                         }
-                                        .padding(.bottom, 2)
+                                        .padding(.bottom, 4)
                                         .overlay(
                                             Rectangle()
-                                                .frame(height: 1)
+                                                .frame(height: 2)
                                                 .foregroundStyle(MeuFluxColors.border),
                                             alignment: .bottom
                                         )
+                                        .padding(.bottom, 2)
                                         
                                         ForEach(group.transactions) { item in
-                                            transactionRow(item)
+                                            transactionRow(item, isGrouped: true)
                                         }
                                     }
+                                    .padding(12)
+                                    .background(
+                                        index % 2 == 0
+                                            ? Color.blue.opacity(0.03)
+                                            : Color.green.opacity(0.03)
+                                    )
+                                    .cornerRadius(12)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 12)
+                                            .stroke(
+                                                index % 2 == 0
+                                                    ? Color.blue.opacity(0.1)
+                                                    : Color.green.opacity(0.1),
+                                                lineWidth: 1
+                                            )
+                                    )
                                 }
                             }
                         } else {
@@ -431,7 +450,7 @@ public struct BudgetView: View {
     }
 
     @ViewBuilder
-    private func transactionRow(_ item: BudgetTransactionItem) -> some View {
+    private func transactionRow(_ item: BudgetTransactionItem, isGrouped: Bool = false) -> some View {
         let d = item.date
         let dateLabel = String(format: "%02d/%02d/%04d", d.day, d.month, d.year)
         HStack(alignment: .center, spacing: 8) {
@@ -466,7 +485,14 @@ public struct BudgetView: View {
                 .foregroundStyle(MeuFluxColors.textPrimary)
         }
         .padding(8)
-        .background(MeuFluxColors.bgSecondary, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .background(
+            isGrouped ? MeuFluxColors.bgPrimary : MeuFluxColors.bgSecondary,
+            in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(isGrouped ? MeuFluxColors.border : Color.clear, lineWidth: 1)
+        )
     }
 
     private func openCreate() {

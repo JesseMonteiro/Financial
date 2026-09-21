@@ -760,12 +760,23 @@ export function Budget() {
                             </div>
                           ) : showPeriodGroups ? (
                             periodGroups.map((group, gIdx) => (
-                              <div key={group.key} style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '0.25rem', borderBottom: '1px solid var(--border-color)' }}>
-                                  <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                              <div 
+                                key={group.key} 
+                                style={{ 
+                                  display: 'flex', 
+                                  flexDirection: 'column', 
+                                  gap: '0.5rem',
+                                  padding: '0.75rem',
+                                  backgroundColor: gIdx % 2 === 0 ? 'rgba(var(--primary-rgb, 99, 102, 241), 0.03)' : 'rgba(var(--success-rgb, 34, 197, 94), 0.03)',
+                                  borderRadius: 'var(--radius-md)',
+                                  border: `1px solid ${gIdx % 2 === 0 ? 'rgba(var(--primary-rgb, 99, 102, 241), 0.1)' : 'rgba(var(--success-rgb, 34, 197, 94), 0.1)'}`,
+                                }}
+                              >
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '0.5rem', borderBottom: '2px solid var(--border-color)', marginBottom: '0.25rem' }}>
+                                  <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                                     {group.label}
                                   </span>
-                                  <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                                  <span style={{ fontSize: '13px', fontWeight: 800, color: gIdx % 2 === 0 ? 'var(--primary)' : 'var(--success)' }}>
                                     {formatCurrency(group.total)}
                                   </span>
                                 </div>
@@ -780,9 +791,10 @@ export function Budget() {
                                         justifyContent: 'space-between',
                                         alignItems: 'center',
                                         padding: '0.5rem',
-                                        backgroundColor: 'var(--bg-secondary)',
+                                        backgroundColor: 'var(--bg-primary)',
                                         borderRadius: 'var(--radius-sm)',
                                         gap: '0.5rem',
+                                        border: '1px solid var(--border-color)',
                                       }}
                                     >
                                       <div style={{ flex: 1, minWidth: 0 }}>
