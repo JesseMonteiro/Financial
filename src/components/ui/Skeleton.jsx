@@ -143,13 +143,13 @@ export function PageLoadingSkeleton({
       </span>
 
       {showKpis && (
-        <div className={kpiCount === 2 ? 'dashboard-summary-row' : 'dashboard-grid'}>
+        <div className={kpiCount === 4 ? 'dashboard-top-grid' : kpiCount === 2 ? 'dashboard-summary-row' : 'dashboard-grid'}>
           {Array.from({ length: kpiCount }).map((_, i) => (
             <SkeletonCard
               key={i}
-              className={kpiCount === 2 ? undefined : kpiCount <= 3 ? 'col-4' : 'col-3'}
-              lines={kpiCount === 2 ? 5 : 3}
-              style={kpiCount === 2 ? { aspectRatio: '1', maxHeight: '17rem' } : undefined}
+              className={kpiCount === 4 || kpiCount === 2 ? undefined : kpiCount <= 3 ? 'col-4' : 'col-3'}
+              lines={kpiCount === 4 || kpiCount === 2 ? 4 : 3}
+              style={kpiCount === 4 ? { minHeight: '180px' } : kpiCount === 2 ? { minHeight: '180px' } : undefined}
             />
           ))}
         </div>

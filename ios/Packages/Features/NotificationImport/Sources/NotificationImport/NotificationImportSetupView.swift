@@ -146,7 +146,7 @@ public struct NotificationImportSetupView: View {
                     numberedStep(2, "Escolha o gatilho Transação (com o ícone da Carteira).")
                     numberedStep(3, "Em Cartão, escolha seu cartão (ou Qualquer Cartão). Marque Executar Imediatamente e desative Perguntar ao Executar. Toque em Avançar.")
                     numberedStep(4, "Toque em Nova Automação Vazia → Adicionar Ação → busque por “MeuFlux”.")
-                    numberedStep(5, "Escolha a ação: “Importar transação do Apple Pay / Carteira”.")
+                    numberedStep(5, "Escolha a ação: “Importar transação da Carteira”.")
                     
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Como preencher a variável Transação:")

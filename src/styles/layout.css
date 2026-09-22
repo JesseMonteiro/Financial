@@ -51,7 +51,7 @@ body {
   min-width: 0;
 }
 
-/* Insights + KPI carousels: always side-by-side, capped size */
+/* Insights + KPI carousels row */
 .dashboard-summary-row {
   display: flex;
   flex-wrap: nowrap;
@@ -63,7 +63,7 @@ body {
 .dashboard-summary-row > * {
   flex: 1 1 0;
   min-width: 0;
-  max-width: 17rem; /* ~272px — avoids huge squares on wide layouts */
+  max-width: 20rem;
 }
 
 .col-12 { grid-column: span 12; }

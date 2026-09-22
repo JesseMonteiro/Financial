@@ -1,7 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  TrendingUp,
-  CreditCard,
   Plus,
   Info,
 } from 'lucide-react';
@@ -13,7 +11,11 @@ import { Stagger, StaggerItem } from '../components/motion/Stagger';
 import { BalanceChart } from '../components/charts/BalanceChart';
 import { ExpenseByCategoryChart } from '../components/charts/ExpenseByCategoryChart';
 import { IncomeVsExpenseChart } from '../components/charts/IncomeVsExpenseChart';
-import { InsightsCarousel, KpiCarousel, CreditPurchasesCarousel } from '../components/DashboardCarousels';
+import {
+  InsightsCarousel,
+  KpiCarousel,
+  CreditPurchasesCarousel,
+} from '../components/DashboardCarousels';
 import { CategoryIcon } from '../components/CategoryIcon';
 import { useAccountStore } from '../stores/accountStore';
 import { useTransactionStore } from '../stores/transactionStore';
@@ -374,34 +376,6 @@ export function Dashboard() {
         </Card>
       )}
 
-      <div className="dashboard-grid">
-        <Card className="col-6">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <div>
-              <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)', fontWeight: 600 }}>INVESTIMENTOS</span>
-              <h3 style={{ fontSize: 'var(--font-size-xl)', fontWeight: 700, margin: '0.35rem 0' }}>{formatCurrency(totalInvestments)}</h3>
-              <Link to="/investments" style={{ fontSize: 'var(--font-size-xs)', color: 'var(--primary)', fontWeight: 600, textDecoration: 'none' }}>
-                Ver carteira →
-              </Link>
-            </div>
-            <TrendingUp size={20} style={{ color: 'var(--info)' }} />
-          </div>
-        </Card>
-        <Card className="col-6">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <div>
-              <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)', fontWeight: 600 }}>SALDO DEVEDOR</span>
-              <h3 style={{ fontSize: 'var(--font-size-xl)', fontWeight: 700, margin: '0.35rem 0', color: 'var(--danger)' }}>
-                {formatCurrency(summary.creditDebt)}
-              </h3>
-              <Link to="/credit-cards" style={{ fontSize: 'var(--font-size-xs)', color: 'var(--primary)', fontWeight: 600, textDecoration: 'none' }}>
-                Ver cartões →
-              </Link>
-            </div>
-            <CreditCard size={20} style={{ color: 'var(--danger)' }} />
-          </div>
-        </Card>
-      </div>
       {showAllInsights && (
         <div className="modal-overlay" onClick={() => setShowAllInsights(false)} role="presentation">
           <div

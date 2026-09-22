@@ -215,8 +215,6 @@ public struct DashboardView: View {
             budgetSection(snap)
                 .cardEntrance(index: 8)
         }
-        footerLinks(snap)
-            .cardEntrance(index: 9)
     }
 
     private func homeHero(displayName: String) -> some View {
@@ -531,6 +529,14 @@ public struct DashboardView: View {
                 .frame(height: 32)
                 .clipped()
         }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            switch slide.id {
+            case "investments": onInvestments?()
+            case "credit-debt": onCreditCards?()
+            default: break
+            }
+        }
     }
 
     private struct InsightTypography {
@@ -711,6 +717,26 @@ public struct DashboardView: View {
                 valueColor: snap.monthOverMonth.expenseDeltaPct > 0 ? MeuFluxColors.danger : MeuFluxColors.success,
                 icon: "chart.bar.fill",
                 iconTint: snap.monthOverMonth.expenseDeltaPct > 0 ? MeuFluxColors.danger : MeuFluxColors.success,
+                sparkline: snap.incomeExpenseSeries.map(\.despesa)
+            ),
+            KPISlide(
+                id: "investments",
+                title: "Investimentos",
+                value: snap.summary.investmentTotal.formatted(),
+                subtitle: "Carteira consolidada aplicada",
+                valueColor: MeuFluxColors.textPrimary,
+                icon: "chart.line.uptrend.xyaxis",
+                iconTint: MeuFluxColors.info,
+                sparkline: snap.netWorthSeries.map(\.value)
+            ),
+            KPISlide(
+                id: "credit-debt",
+                title: "Saldo Devedor",
+                value: snap.summary.creditDebt.formatted(),
+                subtitle: "Faturas e compromissos abertos",
+                valueColor: MeuFluxColors.danger,
+                icon: "creditcard.fill",
+                iconTint: MeuFluxColors.danger,
                 sparkline: snap.incomeExpenseSeries.map(\.despesa)
             )
         ]
@@ -1049,90 +1075,6 @@ public struct DashboardView: View {
                     .padding(10)
                     .background(MeuFluxColors.bgTertiary.opacity(0.7))
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                }
-            }
-        }
-    }
-
-    private func footerLinks(_ snap: DashboardSnapshot) -> some View {
-        LazyVGrid(
-            columns: [
-                GridItem(.flexible(minimum: 0), spacing: 12),
-                GridItem(.flexible(minimum: 0), spacing: 12)
-            ],
-            spacing: 12
-        ) {
-            GlassCard {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text("INVESTIMENTOS")
-                            .font(.system(size: 11, weight: .bold))
-                            .tracking(0.5)
-                            .foregroundStyle(MeuFluxColors.textMuted)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.8)
-                        Spacer()
-                        Image(systemName: "chart.line.uptrend.xyaxis")
-                            .foregroundStyle(MeuFluxColors.info)
-                    }
-                    Text(snap.summary.investmentTotal.formatted())
-                        .font(.title3.weight(.bold).monospacedDigit())
-                        .foregroundStyle(MeuFluxColors.textPrimary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.65)
-                        .allowsTightening(true)
-                    if onInvestments != nil {
-                        Button {
-                            onInvestments?()
-                        } label: {
-                            Text("Ver carteira →")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(MeuFluxColors.primary)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-            }
-
-            GlassCard {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text("SALDO DEVEDOR")
-                            .font(.system(size: 11, weight: .bold))
-                            .tracking(0.5)
-                            .foregroundStyle(MeuFluxColors.textMuted)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.8)
-                        Spacer()
-                        Image(systemName: "creditcard.fill")
-                            .foregroundStyle(MeuFluxColors.danger)
-                    }
-                    Text(snap.summary.creditDebt.formatted())
-                        .font(.title3.weight(.bold).monospacedDigit())
-                        .foregroundStyle(MeuFluxColors.danger)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.65)
-                        .allowsTightening(true)
-                    if onCreditCards != nil {
-                        Button {
-                            onCreditCards?()
-                        } label: {
-                            Text("Ver cartões →")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(MeuFluxColors.primary)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    if onAgenda != nil {
-                        Button {
-                            onAgenda?()
-                        } label: {
-                            Text("Ver agenda →")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(MeuFluxColors.primary)
-                        }
-                        .buttonStyle(.plain)
-                    }
                 }
             }
         }

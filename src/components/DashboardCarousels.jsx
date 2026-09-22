@@ -1,5 +1,16 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Wallet, Sparkles, Percent, PiggyBank, Smartphone, TrendingDown, ShoppingCart } from 'lucide-react';
+import {
+  Wallet,
+  Sparkles,
+  Percent,
+  PiggyBank,
+  Smartphone,
+  TrendingDown,
+  TrendingUp,
+  ShoppingCart,
+  CreditCard,
+} from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { Sparkline } from './charts/Sparkline';
 import { CategoryIcon } from './CategoryIcon';
 import { usePrefersReducedMotion } from '../hooks/usePrefersReducedMotion';
@@ -34,6 +45,23 @@ function highlightPercents(text, accent) {
       <React.Fragment key={i}>{part}</React.Fragment>
     )
   );
+}
+
+function optimalInsightTypography(text) {
+  const count = (text || '').length;
+  if (count < 45) {
+    return { fontSize: '1.05rem', lineHeight: 1.38, maxLines: 4 };
+  }
+  if (count < 75) {
+    return { fontSize: '0.95rem', lineHeight: 1.32, maxLines: 4 };
+  }
+  if (count < 110) {
+    return { fontSize: '0.85rem', lineHeight: 1.28, maxLines: 5 };
+  }
+  if (count < 150) {
+    return { fontSize: '0.78rem', lineHeight: 1.22, maxLines: 6 };
+  }
+  return { fontSize: '0.74rem', lineHeight: 1.18, maxLines: 6 };
 }
 
 function useSnapCarousel(length, attr, { autoPlay = true } = {}) {
@@ -121,12 +149,14 @@ export function InsightsCarousel({ insights = [], onShowAll }) {
           return (
             <div key={insight.id} className="dash-carousel__slide" data-insight-slide={i}>
               <div className="dash-carousel__header">
-                <span className="dash-carousel__eyebrow">Insights</span>
+                <span className="dash-carousel__eyebrow">INSIGHTS</span>
               </div>
-              <h3 className="dash-carousel__title">Ainda sem insights</h3>
-              <p className="dash-carousel__body dash-carousel__body--muted">
-                Conecte contas e sincronize para ver o que mudou nas suas finanças.
-              </p>
+              <div className="dash-carousel__main">
+                <h3 className="dash-carousel__title">Ainda sem insights</h3>
+                <p className="dash-carousel__body dash-carousel__body--muted">
+                  Conecte contas e sincronize para ver o que mudou nas suas finanças.
+                </p>
+              </div>
             </div>
           );
         }
@@ -134,6 +164,7 @@ export function InsightsCarousel({ insights = [], onShowAll }) {
         const accent = insightAccent(insight.type);
         const footer = insightFooter(insight);
         const FooterIcon = footer.icon;
+        const typo = optimalInsightTypography(insight.text);
 
         return (
           <div
@@ -144,7 +175,7 @@ export function InsightsCarousel({ insights = [], onShowAll }) {
           >
             <div className="dash-carousel__header">
               <span className="dash-carousel__eyebrow" style={{ color: accent }}>
-                Insights
+                INSIGHTS
               </span>
               {onShowAll && (
                 <button type="button" className="dash-carousel__all" style={{ color: accent }} onClick={onShowAll}>
@@ -152,7 +183,16 @@ export function InsightsCarousel({ insights = [], onShowAll }) {
                 </button>
               )}
             </div>
-            <p className="dash-carousel__body dash-carousel__body--insight">{highlightPercents(insight.text, accent)}</p>
+            <p
+              className="dash-carousel__body dash-carousel__body--insight"
+              style={{
+                fontSize: typo.fontSize,
+                lineHeight: typo.lineHeight,
+                WebkitLineClamp: typo.maxLines,
+              }}
+            >
+              {highlightPercents(insight.text, accent)}
+            </p>
             <div className="dash-carousel__footer">
               <FooterIcon size={14} />
               <span>{footer.label}</span>
@@ -173,6 +213,8 @@ export function KpiCarousel({
   netWorthSeries,
   incomeExpenseSeries,
 }) {
+  const navigate = useNavigate();
+
   const slides = useMemo(
     () => [
       {
@@ -223,6 +265,30 @@ export function KpiCarousel({
         iconColor: 'var(--danger)',
         sparkline: { data: incomeExpenseSeries, dataKey: 'despesa', color: 'var(--danger)' },
       },
+      {
+        id: 'investments',
+        title: 'Investimentos',
+        value: totalInvestments,
+        valueColor: 'var(--text-primary)',
+        subtitle: 'Carteira consolidada aplicada',
+        icon: TrendingUp,
+        iconBg: 'rgba(59, 130, 246, 0.12)',
+        iconColor: 'var(--info)',
+        sparkline: { data: netWorthSeries, dataKey: 'patrimônio', color: 'var(--info)' },
+        link: '/investments',
+      },
+      {
+        id: 'credit-debt',
+        title: 'Saldo Devedor',
+        value: summary.creditDebt,
+        valueColor: 'var(--danger)',
+        subtitle: 'Faturas e parcelas abertas',
+        icon: CreditCard,
+        iconBg: 'rgba(239, 68, 68, 0.12)',
+        iconColor: 'var(--danger)',
+        sparkline: { data: incomeExpenseSeries, dataKey: 'despesa', color: 'var(--danger)' },
+        link: '/credit-cards',
+      },
     ],
     [summary, totalInvestments, bankCount, cashflow, mom, netWorthSeries, incomeExpenseSeries]
   );
@@ -234,19 +300,26 @@ export function KpiCarousel({
       {slides.map((slide, i) => {
         const Icon = slide.icon;
         return (
-          <div key={slide.id} className="dash-carousel__slide" data-kpi-slide={i}>
+          <div
+            key={slide.id}
+            className={`dash-carousel__slide ${slide.link ? 'cursor-pointer' : ''}`}
+            data-kpi-slide={i}
+            onClick={slide.link ? () => navigate(slide.link) : undefined}
+          >
             <div className="dash-carousel__header">
               <span className="dash-carousel__eyebrow dash-carousel__eyebrow--muted">{slide.title}</span>
               <div className="dash-carousel__icon" style={{ background: slide.iconBg, color: slide.iconColor }}>
                 <Icon size={18} />
               </div>
             </div>
-            <h2 className="dash-carousel__value" style={{ color: slide.valueColor }}>
-              {slide.valueLabel ?? formatCurrency(slide.value)}
-            </h2>
-            <p className="dash-carousel__subtitle">{slide.subtitle}</p>
+            <div className="dash-carousel__main">
+              <h2 className="dash-carousel__value" style={{ color: slide.valueColor }}>
+                {slide.valueLabel ?? formatCurrency(slide.value)}
+              </h2>
+              <p className="dash-carousel__subtitle">{slide.subtitle}</p>
+            </div>
             <div className="dash-carousel__spark">
-              <Sparkline data={slide.sparkline.data} dataKey={slide.sparkline.dataKey} color={slide.sparkline.color} />
+              <Sparkline data={slide.sparkline.data} dataKey={slide.sparkline.dataKey} color={slide.sparkline.color} height={32} />
             </div>
           </div>
         );

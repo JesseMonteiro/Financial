@@ -96,9 +96,10 @@ struct ImportPurchaseFromNotificationIntent: AppIntent {
 }
 
 struct ImportWalletTransactionIntent: AppIntent {
-    static let title: LocalizedStringResource = "Importar transação do Apple Pay / Carteira"
+    // Title/description must not contain "Apple" (App Store Connect error 90626).
+    static let title: LocalizedStringResource = "Importar transação da Carteira"
     static let description = IntentDescription(
-        "Lança uma compra direto da variável Transação do Apple Pay na Carteira no MeuFlux."
+        "Lança uma compra a partir da variável Transação da Carteira no MeuFlux."
     )
     static let supportedModes: IntentModes = [.background, .foreground(.dynamic)]
 
