@@ -16,6 +16,7 @@ import {
   InsightsCarousel,
   KpiCarousel,
   CreditPurchasesCarousel,
+  DesktopSummaryCarousel,
 } from '../components/DashboardCarousels';
 import { CategoryIcon } from '../components/CategoryIcon';
 import { useAccountStore } from '../stores/accountStore';
@@ -245,25 +246,43 @@ export function Dashboard() {
         </p>
       </div>
 
-      <Stagger className="dashboard-summary-row">
-        <StaggerItem>
-          <InsightsCarousel
-            insights={insights}
-            onShowAll={insights.length > 0 ? () => setShowAllInsights(true) : undefined}
-          />
-        </StaggerItem>
-        <StaggerItem>
-          <KpiCarousel
-            summary={summary}
-            totalInvestments={totalInvestments}
-            bankCount={bankCount}
-            cashflow={cashflow}
-            mom={mom}
-            netWorthSeries={netWorthSeries}
-            incomeExpenseSeries={incomeExpenseSeries}
-          />
-        </StaggerItem>
-      </Stagger>
+      {/* Desktop view: Dynamic multi-card carousel that fills whitespace to the right */}
+      <div className="dashboard-summary--desktop">
+        <DesktopSummaryCarousel
+          insights={insights}
+          summary={summary}
+          totalInvestments={totalInvestments}
+          bankCount={bankCount}
+          cashflow={cashflow}
+          mom={mom}
+          netWorthSeries={netWorthSeries}
+          incomeExpenseSeries={incomeExpenseSeries}
+          onShowAll={insights.length > 0 ? () => setShowAllInsights(true) : undefined}
+        />
+      </div>
+
+      {/* Mobile view: Unchanged original 2-carousel row */}
+      <div className="dashboard-summary--mobile">
+        <Stagger className="dashboard-summary-row">
+          <StaggerItem>
+            <InsightsCarousel
+              insights={insights}
+              onShowAll={insights.length > 0 ? () => setShowAllInsights(true) : undefined}
+            />
+          </StaggerItem>
+          <StaggerItem>
+            <KpiCarousel
+              summary={summary}
+              totalInvestments={totalInvestments}
+              bankCount={bankCount}
+              cashflow={cashflow}
+              mom={mom}
+              netWorthSeries={netWorthSeries}
+              incomeExpenseSeries={incomeExpenseSeries}
+            />
+          </StaggerItem>
+        </Stagger>
+      </div>
 
       <CreditPurchasesCarousel
         purchases={recentCreditPurchases}

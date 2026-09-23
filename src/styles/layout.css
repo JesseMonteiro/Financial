@@ -51,7 +51,17 @@ body {
   min-width: 0;
 }
 
-/* Insights + KPI carousels row */
+/* Dashboard summary desktop/mobile visibility */
+.dashboard-summary--desktop {
+  display: block;
+  width: 100%;
+}
+
+.dashboard-summary--mobile {
+  display: none !important;
+}
+
+/* Insights + KPI carousels row (mobile) */
 .dashboard-summary-row {
   display: flex;
   flex-wrap: nowrap;
@@ -1325,6 +1335,15 @@ body {
   .dashboard-header--mobile {
     display: flex !important;
     padding-top: 1rem;
+  }
+
+  .dashboard-summary--desktop {
+    display: none !important;
+  }
+
+  .dashboard-summary--mobile {
+    display: flex !important;
+    width: 100%;
   }
 
   .filter-bar {
