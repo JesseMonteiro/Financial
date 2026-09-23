@@ -1,11 +1,12 @@
 import React, { useEffect } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { LayoutGroup, motion } from 'framer-motion';
-import { LogOut, X, ShieldCheck } from 'lucide-react';
+import { LogOut, X, ShieldCheck, Sun, Moon } from 'lucide-react';
 import { getMobilePrimaryTabs, getMobileTabPaths, getVisibleNavItems } from './navItems';
 import { useScrollDirection } from '../../hooks/useScrollDirection';
 import { useAuthStore } from '../../stores/authStore';
 import { useJointStore } from '../../stores/jointStore';
+import { useSettingsStore } from '../../stores/settingsStore';
 import { usePrefersReducedMotion } from '../../hooks/usePrefersReducedMotion';
 
 function TabPill({ reduce }) {
@@ -85,6 +86,7 @@ export function LiquidGlassTabBar({ moreOpen, onMoreOpen, onMoreClose }) {
 
 function MobileMoreDrawer({ open, onClose }) {
   const { user, signOut } = useAuthStore();
+  const { theme, setTheme } = useSettingsStore();
   const jointLink = useJointStore((s) => s.link);
   const items = getVisibleNavItems(jointLink?.status === 'active');
   const location = useLocation();
@@ -170,6 +172,16 @@ function MobileMoreDrawer({ open, onClose }) {
                 {user?.email}
               </span>
             </div>
+            <button
+              type="button"
+              className="tap-target"
+              onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+              title={theme === 'dark' ? 'Mudar para Tema Claro' : 'Mudar para Tema Escuro'}
+              aria-label="Alternar tema"
+              style={{ color: 'var(--text-primary)', border: 'none', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            >
+              {theme === 'dark' ? <Sun size={18} style={{ color: '#f59e0b' }} /> : <Moon size={18} />}
+            </button>
             <button
               type="button"
               className="tap-target"

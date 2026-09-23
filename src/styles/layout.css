@@ -1240,8 +1240,7 @@ body {
 
 @media (max-width: 768px) {
   .app-container--mobile .content-container {
-    padding: var(--space-4);
-    padding-bottom: calc(5.5rem + env(safe-area-inset-bottom, 0px));
+    padding: calc(var(--space-4) + env(safe-area-inset-top, 0px)) var(--space-4) calc(5.5rem + env(safe-area-inset-bottom, 0px));
   }
 
   .page-header {
@@ -1251,11 +1250,25 @@ body {
 
   .page-header__actions {
     width: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
   }
 
-  .page-header__actions .btn {
+  .page-header__actions > span {
+    width: 100%;
+    text-align: right;
+  }
+
+  .page-header__actions .btn,
+  .page-header__actions a {
     flex: 1;
-    justify-content: center;
+    display: flex;
+  }
+
+  .page-header__actions a .btn {
+    width: 100%;
   }
 
   .filter-bar {

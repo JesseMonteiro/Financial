@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   Plus,
   Info,
+  RefreshCw,
 } from 'lucide-react';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
@@ -43,7 +44,8 @@ import { isInitialEmpty } from '../utils/loading';
 import { Link } from 'react-router-dom';
 import { ItemDetailSheet } from '../components/ItemDetailSheet';
 import { fromTransaction, rowActivateProps, categoryOptionsForItem, applyingCategory } from '../utils/lineItemDetail';
-import { fetchCategories } from '../services/api';
+import { fetchCategories, clearApiCache } from '../services/api';
+import { format } from 'date-fns';
 import { accountById } from '../components/AccountIcon';
 import { asOfForBudgetMonth, mergeBudgetRows } from '../utils/budgetPeriod';
 import { mealSpendByCategory } from '../utils/mealBenefits';
@@ -58,15 +60,40 @@ function insightAccent(type) {
 export function Dashboard() {
   const { loadAccounts, accounts, loans, loading: accLoading, lastUpdated: accAt } = useAccountStore();
   const { loadTransactions, transactions, loading: txLoading, lastUpdated: txAt, updateOpenFinanceCategory } = useTransactionStore();
-  const { loadInvestments, investments, getTotalInvested } = useInvestmentStore();
+  const { loadInvestments, investments, getTotalInvested, loading: invLoading } = useInvestmentStore();
   const { loadBudgets, budgets } = useBudgetStore();
   const { loadMealBenefits, benefits: mealBenefits, purchases: mealPurchases } = useMealBenefitStore();
   const { loadCategories, categories: purchaseCategories } = useCategoryStore();
   const { loadForAccounts, transactionsByAccount } = useCreditDataStore();
+  const clearCreditData = useCreditDataStore((s) => s.clear);
   const user = useAuthStore((s) => s.user);
   const [selectedItem, setSelectedItem] = useState(null);
   const [pluggyCategories, setPluggyCategories] = useState([]);
   const [showAllInsights, setShowAllInsights] = useState(false);
+
+  const isRefreshing = accLoading || txLoading || invLoading;
+  const lastUpdated = accAt || txAt;
+
+  const handleRefresh = async () => {
+    clearApiCache();
+    const accountIds = useAccountStore.getState().accounts.map((a) => a.id);
+    await Promise.all([
+      loadAccounts({ force: true }),
+      loadTransactions({ force: true }),
+      loadInvestments({ force: true }),
+      loadBudgets(),
+      loadMealBenefits(),
+    ]);
+    const ids =
+      accountIds.length > 0
+        ? accountIds
+        : useAccountStore.getState().accounts.map((a) => a.id);
+    if (ids.length) {
+      await useCreditDataStore.getState().loadForAccounts(ids, { force: true });
+    } else {
+      clearCreditData();
+    }
+  };
 
   useEffect(() => {
     loadAccounts();
@@ -179,6 +206,29 @@ export function Dashboard() {
           </p>
         </div>
         <div className="page-header__actions">
+          {lastUpdated && (
+            <span
+              style={{
+                fontSize: 'var(--font-size-xs)',
+                color: 'var(--text-muted)',
+                whiteSpace: 'nowrap',
+                alignSelf: 'center',
+              }}
+            >
+              Atualizado às {format(lastUpdated, 'HH:mm')}
+            </span>
+          )}
+          <Button
+            variant="outline"
+            icon={RefreshCw}
+            disabled={isRefreshing}
+            loading={isRefreshing}
+            onClick={handleRefresh}
+            title="Forçar sincronização (ignora cache de 1h)"
+            aria-label={isRefreshing ? 'Atualizando…' : 'Sincronizar'}
+          >
+            {isRefreshing ? 'Atualizando…' : 'Sincronizar'}
+          </Button>
           <Link to="/connect" style={{ textDecoration: 'none' }}>
             <Button icon={Plus}>Conectar Nova Conta</Button>
           </Link>

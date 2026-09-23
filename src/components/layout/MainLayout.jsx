@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { Sidebar } from './Sidebar';
-import { Header } from './Header';
 import { LiquidGlassTabBar } from './LiquidGlassTabBar';
 import { PageTransition } from '../motion/PageTransition';
 import { useSettingsStore } from '../../stores/settingsStore';
@@ -32,7 +31,6 @@ export function MainLayout() {
         <Sidebar collapsed={collapsed} onToggle={() => setCollapsed(!collapsed)} />
       )}
       <div className="main-wrapper">
-        <Header onOpenMore={() => setMoreOpen(true)} isMobile={isMobile} />
         <main className="content-container">
           <PageTransition />
         </main>

@@ -5,14 +5,18 @@ import {
   ChevronRight,
   ShieldCheck,
   LogOut,
+  Sun,
+  Moon,
 } from 'lucide-react';
 import { useAuthStore } from '../../stores/authStore';
 import { useJointStore } from '../../stores/jointStore';
+import { useSettingsStore } from '../../stores/settingsStore';
 import { getVisibleNavItems } from './navItems';
 import { GlassSurface } from '../ui/GlassSurface';
 
 export function Sidebar({ collapsed, onToggle }) {
   const { user, signOut } = useAuthStore();
+  const { theme, setTheme } = useSettingsStore();
   const jointLink = useJointStore((s) => s.link);
   const hasJoint = jointLink?.status === 'active';
   const items = getVisibleNavItems(hasJoint);
@@ -113,6 +117,16 @@ export function Sidebar({ collapsed, onToggle }) {
             </span>
           </div>
         )}
+
+        <button
+          type="button"
+          onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+          className="header-cluster__btn"
+          title={theme === 'dark' ? 'Mudar para Tema Claro' : 'Mudar para Tema Escuro'}
+          aria-label="Alternar tema"
+        >
+          {theme === 'dark' ? <Sun size={18} style={{ color: '#f59e0b' }} /> : <Moon size={18} />}
+        </button>
 
         <button
           type="button"
