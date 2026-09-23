@@ -120,6 +120,15 @@ body {
   margin: 0;
 }
 
+/* Dashboard header desktop/mobile visibility */
+.dashboard-header--desktop {
+  display: flex;
+}
+
+.dashboard-header--mobile {
+  display: none;
+}
+
 /* Shared page utilities */
 .page-header {
   display: flex;
@@ -1307,6 +1316,14 @@ body {
 
   .dashboard-welcome__title {
     font-size: 1.5rem;
+  }
+
+  .dashboard-header--desktop {
+    display: none !important;
+  }
+
+  .dashboard-header--mobile {
+    display: flex !important;
   }
 
   .filter-bar {

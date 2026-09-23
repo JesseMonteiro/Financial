@@ -196,26 +196,36 @@ export function Dashboard() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
-      <div className="dashboard-welcome">
+      {/* Desktop header: original page-header without extra sync button (top bar already has it) */}
+      <div className="page-header dashboard-header--desktop">
+        <div>
+          <h1 style={{ fontSize: 'var(--font-size-3xl)', fontWeight: 700, color: 'var(--text-primary)' }}>
+            Olá, {displayName}!
+          </h1>
+          <p style={{ color: 'var(--text-muted)', fontSize: 'var(--font-size-sm)' }}>
+            Visão consolidada das suas contas sincronizadas via Open Finance.
+          </p>
+        </div>
+        <div className="page-header__actions">
+          <Link to="/connect" style={{ textDecoration: 'none' }}>
+            <Button icon={Plus}>Conectar Nova Conta</Button>
+          </Link>
+        </div>
+      </div>
+
+      {/* Mobile header: inline row with icon-only buttons on the same line as Olá, {displayName}! */}
+      <div className="dashboard-welcome dashboard-header--mobile">
         <div className="dashboard-welcome__row">
           <h1 className="dashboard-welcome__title">
             Olá, {displayName}!
           </h1>
           <div className="dashboard-welcome__actions">
-            {lastUpdated && (
-              <span
-                className="dashboard-welcome__sync-time hide-mobile"
-                title={`Atualizado às ${format(lastUpdated, 'HH:mm')}`}
-              >
-                Atualizado às {format(lastUpdated, 'HH:mm')}
-              </span>
-            )}
             <button
               type="button"
               className="btn-icon"
               disabled={isRefreshing}
               onClick={handleRefresh}
-              title={isRefreshing ? 'Atualizando…' : `Sincronizar dados${lastUpdated ? ` (Última: ${format(lastUpdated, 'HH:mm')})` : ''}`}
+              title={isRefreshing ? 'Atualizando…' : 'Sincronizar'}
               aria-label="Sincronizar"
             >
               <RefreshCw size={17} className={isRefreshing ? 'spin-slow' : ''} />
