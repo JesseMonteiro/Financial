@@ -1324,7 +1324,7 @@ body {
 
   .dashboard-header--mobile {
     display: flex !important;
-    padding-top: 0.75rem;
+    padding-top: 2.5rem;
   }
 
   .filter-bar {
