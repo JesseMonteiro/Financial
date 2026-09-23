@@ -196,43 +196,43 @@ export function Dashboard() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
-      <div className="page-header">
-        <div>
-          <h1 style={{ fontSize: 'var(--font-size-3xl)', fontWeight: 700, color: 'var(--text-primary)' }}>
+      <div className="dashboard-welcome">
+        <div className="dashboard-welcome__row">
+          <h1 className="dashboard-welcome__title">
             Olá, {displayName}!
           </h1>
-          <p style={{ color: 'var(--text-muted)', fontSize: 'var(--font-size-sm)' }}>
-            Visão consolidada das suas contas sincronizadas via Open Finance.
-          </p>
-        </div>
-        <div className="page-header__actions">
-          {lastUpdated && (
-            <span
-              style={{
-                fontSize: 'var(--font-size-xs)',
-                color: 'var(--text-muted)',
-                whiteSpace: 'nowrap',
-                alignSelf: 'center',
-              }}
+          <div className="dashboard-welcome__actions">
+            {lastUpdated && (
+              <span
+                className="dashboard-welcome__sync-time hide-mobile"
+                title={`Atualizado às ${format(lastUpdated, 'HH:mm')}`}
+              >
+                Atualizado às {format(lastUpdated, 'HH:mm')}
+              </span>
+            )}
+            <button
+              type="button"
+              className="btn-icon"
+              disabled={isRefreshing}
+              onClick={handleRefresh}
+              title={isRefreshing ? 'Atualizando…' : `Sincronizar dados${lastUpdated ? ` (Última: ${format(lastUpdated, 'HH:mm')})` : ''}`}
+              aria-label="Sincronizar"
             >
-              Atualizado às {format(lastUpdated, 'HH:mm')}
-            </span>
-          )}
-          <Button
-            variant="outline"
-            icon={RefreshCw}
-            disabled={isRefreshing}
-            loading={isRefreshing}
-            onClick={handleRefresh}
-            title="Forçar sincronização (ignora cache de 1h)"
-            aria-label={isRefreshing ? 'Atualizando…' : 'Sincronizar'}
-          >
-            {isRefreshing ? 'Atualizando…' : 'Sincronizar'}
-          </Button>
-          <Link to="/connect" style={{ textDecoration: 'none' }}>
-            <Button icon={Plus}>Conectar Nova Conta</Button>
-          </Link>
+              <RefreshCw size={17} className={isRefreshing ? 'spin-slow' : ''} />
+            </button>
+            <Link
+              to="/connect"
+              className="btn-icon btn-icon--primary"
+              title="Conectar Nova Conta"
+              aria-label="Conectar Nova Conta"
+            >
+              <Plus size={19} />
+            </Link>
+          </div>
         </div>
+        <p className="dashboard-welcome__subtitle">
+          Visão consolidada das suas contas sincronizadas via Open Finance.
+        </p>
       </div>
 
       <Stagger className="dashboard-summary-row">

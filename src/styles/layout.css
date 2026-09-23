@@ -72,6 +72,54 @@ body {
 .col-4  { grid-column: span 4; }
 .col-3  { grid-column: span 3; }
 
+/* Dashboard Welcome header with inline icon actions */
+.dashboard-welcome {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  width: 100%;
+}
+
+.dashboard-welcome__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  width: 100%;
+}
+
+.dashboard-welcome__title {
+  font-size: var(--font-size-3xl);
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.dashboard-welcome__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.dashboard-welcome__sync-time {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+  margin-right: 0.25rem;
+}
+
+.dashboard-welcome__subtitle {
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  margin: 0;
+}
+
 /* Shared page utilities */
 .page-header {
   display: flex;
@@ -1250,25 +1298,15 @@ body {
 
   .page-header__actions {
     width: 100%;
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.5rem;
   }
 
-  .page-header__actions > span {
-    width: 100%;
-    text-align: right;
-  }
-
-  .page-header__actions .btn,
-  .page-header__actions a {
+  .page-header__actions .btn {
     flex: 1;
-    display: flex;
+    justify-content: center;
   }
 
-  .page-header__actions a .btn {
-    width: 100%;
+  .dashboard-welcome__title {
+    font-size: 1.5rem;
   }
 
   .filter-bar {
