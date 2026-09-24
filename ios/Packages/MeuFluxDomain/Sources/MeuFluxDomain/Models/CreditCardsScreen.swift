@@ -309,7 +309,7 @@ public struct CreditBillBucket: Sendable, Hashable, Identifiable {
         self.dueDateShort = dueDateShort
         self.isPaid = isPaid
         self.hasOfficial = hasOfficial
-        self.items = items
+        self.items = items.sorted(by: CreditBillLine.compareByPurchaseDateNewestFirst)
     }
 
     public var badgeText: String {
@@ -381,6 +381,25 @@ public struct CreditBillLine: Sendable, Hashable, Identifiable {
         if isProjected { return "Parcela projetada" }
         if isPending { return "Pendente" }
         return "Confirmado"
+    }
+
+    /// Compares two credit bill lines by purchase date descending (newest first).
+    /// Items with a purchase date come before items without one.
+    /// Ties are broken deterministically by id, then description.
+    public static func compareByPurchaseDateNewestFirst(_ lhs: CreditBillLine, _ rhs: CreditBillLine) -> Bool {
+        if let dateL = lhs.purchaseDate, let dateR = rhs.purchaseDate {
+            if dateL != dateR {
+                return dateL > dateR
+            }
+        } else if lhs.purchaseDate != nil {
+            return true
+        } else if rhs.purchaseDate != nil {
+            return false
+        }
+        if lhs.id != rhs.id {
+            return lhs.id < rhs.id
+        }
+        return lhs.description < rhs.description
     }
 }
 

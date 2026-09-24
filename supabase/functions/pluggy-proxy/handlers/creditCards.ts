@@ -157,6 +157,14 @@ function serializePeriod(
       if (selectedCardId === "all") return true;
       return !t.accountId || t.accountId === selectedCardId;
     });
+    const serializedItems = items
+      .map((t) => serializeItem(t, cardsById, displayNameById))
+      .sort((a, b) => {
+        const dateA = a.purchaseDate || "";
+        const dateB = b.purchaseDate || "";
+        if (dateA !== dateB) return dateB.localeCompare(dateA);
+        return a.id.localeCompare(b.id);
+      });
     return [{
       dueMonth: key,
       title: formatDueMonthTitle(key),
@@ -166,7 +174,7 @@ function serializePeriod(
       dueDateShort: formatDueMonthShort(key, bill.dueDate),
       isPaid: Boolean(bill.isPaid),
       hasOfficial: Boolean(bill.hasOfficial),
-      items: items.map((t) => serializeItem(t, cardsById, displayNameById)),
+      items: serializedItems,
     }];
   });
   return {

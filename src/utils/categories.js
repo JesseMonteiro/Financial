@@ -1041,6 +1041,101 @@ export const CATEGORY_HIERARCHY = [
   },
 ];
 
+export const PT_LABEL_TO_SUBCATEGORY_KEY = {
+  'Supermercado & Alimentação': 'Groceries',
+  'Supermercados': 'Groceries',
+  'Restaurantes & Bares': 'Eating out',
+  'Restaurantes e bares': 'Eating out',
+  'Delivery de Comida': 'Food delivery',
+  'Delivery de comida': 'Food delivery',
+  'Aluguel': 'Rent',
+  'Utilidades Domésticas': 'Houseware',
+  'Utilidades domésticas': 'Houseware',
+  'Contas de consumo (Água, Luz, Gás)': 'Utilities',
+  'Energia elétrica': 'Electricity',
+  'Água': 'Water',
+  'Gás': 'Gas',
+  'IPTU': 'Urban land and building tax',
+  'Uber / Táxi / Transporte': 'Taxi and ride-hailing',
+  'Táxi e carros de aplicativo': 'Taxi and ride-hailing',
+  'Postos de Combustível': 'Gas stations',
+  'Postos de combustível': 'Gas stations',
+  'Estacionamento': 'Parking',
+  'Transporte público': 'Public transportation',
+  'Transporte Público': 'Public transportation',
+  'Manutenção Veicular': 'Vehicle maintenance',
+  'Manutenção veicular': 'Vehicle maintenance',
+  'Aluguel de Carros': 'Car rental',
+  'Aluguel de carros': 'Car rental',
+  'Pedágios': 'Tolls and in-vehicle payment',
+  'IPVA e taxas de veículo': 'Vehicle ownership taxes and fees',
+  'Multas de trânsito': 'Traffic tickets',
+  'Bicicleta': 'Bicycle',
+  'Telefone & Internet': 'Telecommunications',
+  'Telefone e Internet': 'Telecommunications',
+  'Telecomunicações': 'Telecommunications',
+  'Internet': 'Internet',
+  'Celular / Telefonia': 'Mobile',
+  'TV por assinatura': 'TV',
+  'Academias & Fitness': 'Gyms and fitness centers',
+  'Academias e fitness': 'Gyms and fitness centers',
+  'Bem-estar & Fitness': 'Wellness and fitness',
+  'Bem-estar e fitness': 'Wellness and fitness',
+  'Prática de esportes': 'Sports practice',
+  'Compras online': 'Online shopping',
+  'Compras Online': 'Online shopping',
+  'Vestuário & Roupas': 'Clothing',
+  'Vestuário e roupas': 'Clothing',
+  'Eletrônicos': 'Electronics',
+  'Pets e veterinário': 'Pet supplies and vet',
+  'Crianças e brinquedos': 'Kids and toys',
+  'Livraria': 'Bookstore',
+  'Artigos esportivos': 'Sports goods',
+  'Materiais de escritório': 'Office Supplies',
+  'Farmácia & Drogaria': 'Pharmacy',
+  'Farmácia e drogaria': 'Pharmacy',
+  'Farmácia': 'Pharmacy',
+  'Dentista': 'Dentist',
+  'Odontologia': 'Dentist',
+  'Ótica & Visão': 'Optometry',
+  'Ótica e visão': 'Optometry',
+  'Ótica': 'Optometry',
+  'Hospitais e laboratórios': 'Hospital clinics and labs',
+  'Cinema, Teatro & Shows': 'Cinema, theater and concerts',
+  'Cinema, teatro e shows': 'Cinema, theater and concerts',
+  'Ingressos & Eventos': 'Tickets',
+  'Ingressos e eventos': 'Tickets',
+  'Estádios e arenas': 'Stadiums and arenas',
+  'Monumentos e museus': 'Landmarks and museums',
+  'Streaming de vídeo': 'Video streaming',
+  'Streaming de música': 'Music streaming',
+  'Games & Entretenimento': 'Gaming',
+  'Jogos e entretenimento': 'Gaming',
+  'Cursos online': 'Online Courses',
+  'Universidade': 'University',
+  'Escola': 'School',
+  'Jardim de infância': 'Kindergarten',
+  'Aeroporto e passagens aéreas': 'Airport and airlines',
+  'Hospedagem': 'Accommodation',
+  'Passagens de ônibus': 'Bus tickets',
+  'Programas de milhas': 'Mileage programs',
+  'Seguro de vida': 'Life insurance',
+  'Seguro residencial': 'Home Insurance',
+  'Seguro de saúde': 'Health insurance',
+  'Seguro de veículos': 'Vehicle insurance',
+  'Empréstimos': 'Loans',
+  'Financiamento': 'Financing',
+  'Financiamento imobiliário': 'Real estate financing',
+  'Financiamento de veículos': 'Vehicle Financing',
+  'Empréstimo estudantil': 'Student loan',
+  'Custos de atraso e cheque especial': 'Late payment and overdraft costs',
+  'Juros cobrados': 'Interests charged',
+  'Loteria': 'Lottery',
+  'Aposta online': 'Online bet',
+  'Pensão alimentícia': 'Alimony',
+  'Saldos bloqueados': 'Blocked balances',
+};
+
 /**
  * Returns canonical key for budget target (preserves subcategories).
  */
@@ -1050,15 +1145,21 @@ export function canonicalBudgetCategory(raw) {
   if (!trimmed) return 'Other';
 
   if (SUBCATEGORY_TO_PARENT[trimmed]) return trimmed;
+  if (PT_LABEL_TO_SUBCATEGORY_KEY[trimmed]) return PT_LABEL_TO_SUBCATEGORY_KEY[trimmed];
+
+  const lower = trimmed.toLowerCase();
+  for (const [label, subKey] of Object.entries(PT_LABEL_TO_SUBCATEGORY_KEY)) {
+    if (label.toLowerCase() === lower) return subKey;
+  }
 
   for (const [key] of Object.entries(SUBCATEGORY_TO_PARENT)) {
-    if (key.toLowerCase() === trimmed.toLowerCase()) return key;
-    if (translateCategory(key).toLowerCase() === trimmed.toLowerCase()) return key;
+    if (key.toLowerCase() === lower) return key;
+    if (translateCategory(key).toLowerCase() === lower) return key;
   }
 
   for (const group of CATEGORY_HIERARCHY) {
     for (const sub of group.subcategories) {
-      if (sub.key.toLowerCase() === trimmed.toLowerCase() || sub.label.toLowerCase() === trimmed.toLowerCase()) {
+      if (sub.key.toLowerCase() === lower || sub.label.toLowerCase() === lower) {
         return sub.key;
       }
     }

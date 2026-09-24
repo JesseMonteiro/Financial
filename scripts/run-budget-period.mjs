@@ -76,7 +76,7 @@ const rows = mergeBudgetRows({
   ym,
   asOfDate: '2026-09-14',
 });
-const grocery = rows.find((r) => r.category === 'Supermercado & Alimentação');
+const grocery = rows.find((r) => r.category === 'Groceries' || r.category === 'Supermercado & Alimentação');
 assert.ok(grocery);
 assert.equal(grocery.spentBank, 80);
 assert.equal(grocery.spentMeal, 120);
@@ -86,7 +86,7 @@ assert.equal(grocery.limit, 1000);
 assert.equal(grocery.monthCap, 2000);
 assert.equal(grocery.period, 'weekly');
 
-const resto = rows.find((r) => r.category === 'Restaurantes & Bares');
+const resto = rows.find((r) => r.category === 'Eating out' || r.category === 'Restaurantes & Bares');
 assert.ok(resto);
 assert.equal(resto.spentMeal, 45);
 assert.equal(resto.allowance, 280);

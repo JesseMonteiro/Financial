@@ -618,7 +618,7 @@ public enum DomainMapper {
             dueDateShort: dto.dueDateShort ?? "",
             isPaid: dto.isPaid ?? false,
             hasOfficial: dto.hasOfficial ?? false,
-            items: dto.items.map(creditBillLine)
+            items: dto.items.map(creditBillLine).sorted(by: CreditBillLine.compareByPurchaseDateNewestFirst)
         )
     }
 

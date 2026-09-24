@@ -116,13 +116,26 @@ export function shiftIsoMonths(iso, deltaMonths) {
 }
 
 /**
+ * Shift an ISO date by delta days (UTC calendar).
+ */
+export function shiftIsoDays(iso, deltaDays) {
+  if (!iso || !deltaDays) return iso ? String(iso).slice(0, 10) : null;
+  const s = String(iso).slice(0, 10);
+  const d = new Date(s + 'T12:00:00.000Z');
+  if (Number.isNaN(d.getTime())) return s;
+  d.setUTCDate(d.getUTCDate() + Number(deltaDays));
+  return d.toISOString().slice(0, 10);
+}
+
+/**
  * Best-effort purchase date for sorting/display.
  * Inter PENDING installments use `date` as the parcel's scheduled charge date;
  * `purchaseDate` is often null — walk back (N-1) months from parcel date.
  */
 export function resolvePurchaseDate(tx) {
   const meta = tx?.creditCardMetadata || {};
-  if (meta.purchaseDate) return meta.purchaseDate;
+  const pd = (meta.purchaseDate && String(meta.purchaseDate).trim()) || (tx?.purchaseDate && String(tx.purchaseDate).trim());
+  if (pd) return pd;
   const num = installmentNumberOf(tx);
   const total = installmentTotalOf(tx);
   if (tx?.date && Number(total) > 1 && Number(num) > 1) {
@@ -993,6 +1006,7 @@ export function isBillSettled(bill, opts = {}) {
   if (!bill) return false;
   const status = String(bill.status || '').toUpperCase();
   if (status === 'PAID') return true;
+  if (status === 'OPEN') return false;
 
   const total = Number(bill.totalAmount) || 0;
   const payments = bill.payments || [];
@@ -1003,28 +1017,17 @@ export function isBillSettled(bill, opts = {}) {
   }
 
   const { transactions = [], officialBills = [], forecastToDueOffset = 0 } = opts;
-  if (!transactions.length) return false;
+  if (!total || !transactions.length) return false;
 
-  const billId = bill.id != null ? String(bill.id) : '';
   const billAccountId = String(bill.accountId || bill.account_id || '');
   const scopedTxs = billAccountId
     ? transactions.filter((t) => !t.accountId || String(t.accountId) === billAccountId)
     : transactions;
 
-  // Payment explicitly linked to this official bill
-  if (billId) {
-    for (const t of scopedTxs) {
-      if (!isBillPayment(t)) continue;
-      const tBillId = t.creditCardMetadata?.billId || t.billId;
-      if (tBillId != null && String(tBillId) === billId) return true;
-    }
-  }
-
-  if (!total) return false;
-
   const dueYm = ymFromIso(bill.dueDate);
   if (!dueYm) return false;
   const billDueDate = String(bill.dueDate).slice(0, 10);
+  const earliestPaymentDate = billDueDate ? shiftIsoDays(billDueDate, -12) : null;
   const billMap = billMapFromList(officialBills);
   const nextYm = ymAdd(dueYm, 1);
 
@@ -1032,8 +1035,10 @@ export function isBillSettled(bill, opts = {}) {
     if (!isBillPayment(t)) continue;
     const amt = Math.abs(txBillingAmount(t));
     if (Math.abs(amt - total) > 0.05) continue;
-    const tDue = getDueMonthKey(t, billMap, forecastToDueOffset);
     const tDate = String(t.date || '').slice(0, 10);
+    // Payment occurred well before closing date belongs to an earlier cycle
+    if (tDate && earliestPaymentDate && tDate < earliestPaymentDate) continue;
+    const tDue = getDueMonthKey(t, billMap, forecastToDueOffset);
     const tYm = tDate ? tDate.slice(0, 7) : null;
     // Itaú: "Pagamento PIX" on due date with billForecastDate = due month;
     // with offset 1 that maps to nextYm — still this bill's payment.
@@ -1073,13 +1078,13 @@ export function resolveOpenDueMonthKey({
     .sort();
   const latestOfficialDue = sortedBillDues.at(-1) || null;
 
-  // Rare: unpaid official bill still current (dueDate >= today)
+  // Unpaid official bill still current (status is OPEN or dueDate >= today)
   const unpaidOfficial = officialBills
     .filter(
       (b) =>
         b.dueDate &&
         !isBillSettled(b, settleOpts) &&
-        String(b.dueDate).slice(0, 10) >= todayIso
+        (String(b.status || '').toUpperCase() === 'OPEN' || String(b.dueDate).slice(0, 10) >= todayIso)
     )
     .map((b) => ymFromIso(b.dueDate))
     .filter(Boolean)

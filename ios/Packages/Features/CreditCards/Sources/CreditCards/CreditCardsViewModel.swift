@@ -146,12 +146,17 @@ public final class CreditCardsViewModel {
     public var filteredLines: [CreditBillLine] {
         let items = selectedBill?.items ?? []
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !query.isEmpty else { return items }
-        return items.filter {
-            $0.description.lowercased().contains(query)
-                || translatedCategory($0.category).lowercased().contains(query)
-                || ($0.merchantName?.lowercased().contains(query) ?? false)
+        let matching: [CreditBillLine]
+        if query.isEmpty {
+            matching = items
+        } else {
+            matching = items.filter {
+                $0.description.lowercased().contains(query)
+                    || translatedCategory($0.category).lowercased().contains(query)
+                    || ($0.merchantName?.lowercased().contains(query) ?? false)
+            }
         }
+        return matching.sorted(by: CreditBillLine.compareByPurchaseDateNewestFirst)
     }
 
     public var categoryBreakdown: [(name: String, value: Decimal)] {

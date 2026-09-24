@@ -366,7 +366,7 @@ export function Budget() {
 
   const budgetRows = useMemo(() => mergeBudgetRows({
     spentBankMap: spendingByCategory,
-    spentMealMap,
+    spentMealMap: mealSpendMap,
     budgets,
     ym: selectedMonth,
     asOfDate,
