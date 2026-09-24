@@ -152,42 +152,47 @@ public enum PurchaseCategoryCatalog {
 
         switch trimmed.lowercased() {
         case "food and drinks", "comida e bebidas", "food", "alimentação",
-             "eating out", "restaurantes", "restaurantes e bares", "food delivery", "delivery", "delivery de comida":
+             "eating out", "restaurantes", "restaurantes e bares", "restaurantes & bares",
+             "food delivery", "delivery", "delivery de comida":
             return "Food and drinks"
 
-        case "groceries", "supermercado", "supermercados":
+        case "groceries", "supermercado", "supermercados", "supermercado & alimentação",
+             "supermercado e alimentação", "mercado", "mercearia", "supermercados & alimentação":
             return "Groceries"
 
         case "housing", "habitação", "rent", "aluguel", "aluguel / habitação",
              "houseware", "casa", "utilidades domésticas", "urban land and building tax", "iptu",
-             "utilities", "contas de consumo (água, luz)", "water", "água", "electricity", "energia elétrica", "gas", "gás":
+             "utilities", "contas de consumo (água, luz)", "contas de consumo (água, luz, gás)",
+             "water", "água", "electricity", "energia elétrica", "gas", "gás":
             return "Housing"
 
         case "transportation", "transporte", "transport",
-             "taxi and ride-hailing", "uber / táxi", "táxi e carros de aplicativo",
+             "taxi and ride-hailing", "uber / táxi", "uber / táxi / transporte", "táxi e carros de aplicativo",
              "parking", "estacionamento", "car rental", "aluguel de carros",
              "bicycle", "bicicleta", "public transportation", "transporte público",
-             "automotive", "automóvel", "gas stations", "combustível", "postos de combustível",
+             "automotive", "automóvel", "automotivo", "gas stations", "combustível", "postos de combustível",
              "vehicle maintenance", "manutenção", "manutenção veicular",
              "tolls and in-vehicle payment", "pedágios", "vehicle ownership taxes and fees", "ipva e taxas de veículo",
              "traffic tickets", "multas de trânsito":
             return "Transportation"
 
-        case "services", "serviços", "telecommunications", "telefone & internet", "telecomunicações",
+        case "services", "serviços", "telecommunications", "telefone & internet", "telefone e internet", "telecomunicações",
              "internet", "mobile", "celular / telefonia", "tv", "tv por assinatura",
-             "gyms and fitness centers", "academia", "academias e fitness",
-             "wellness and fitness", "bem-estar e fitness", "wellness", "bem-estar", "sports practice", "prática de esportes":
+             "gyms and fitness centers", "academia", "academias e fitness", "academias & fitness",
+             "wellness and fitness", "bem-estar e fitness", "bem-estar & fitness", "wellness", "bem-estar",
+             "sports practice", "prática de esportes":
             return "Services"
 
-        case "shopping", "compras", "clothing", "vestuário", "vestuário e roupas",
+        case "shopping", "compras", "compras & lojas", "clothing", "vestuário", "vestuário e roupas", "vestuário & roupas",
              "online shopping", "compras online", "electronics", "eletrônicos",
              "pet supplies and vet", "pets e veterinário", "kids and toys", "crianças e brinquedos",
              "bookstore", "livraria", "sports goods", "artigos esportivos",
              "office supplies", "materiais de escritório", "cashback":
             return "Shopping"
 
-        case "healthcare", "saúde", "health",
-             "dentist", "odontologia", "farmácia", "pharmacy", "optometry", "ótica",
+        case "healthcare", "saúde", "saúde & medicina", "saúde e medicina", "health",
+             "dentist", "odontologia", "farmácia", "farmácia & drogaria", "farmácia e drogaria",
+             "pharmacy", "optometry", "ótica", "ótica & visão", "ótica e visão",
              "hospital clinics and labs", "hospitais e laboratórios":
             return "Healthcare"
 
@@ -196,12 +201,12 @@ public enum PurchaseCategoryCatalog {
             return "Education"
 
         case "leisure", "lazer", "lazer / entretenimento", "entertainment",
-             "cinema, theater and concerts", "cinema & shows", "cinema, teatro e shows",
-             "tickets", "ingressos", "stadiums and arenas", "estádios e arenas",
+             "cinema, theater and concerts", "cinema & shows", "cinema, teatro e shows", "cinema, teatro & shows",
+             "tickets", "ingressos", "ingressos & eventos", "stadiums and arenas", "estádios e arenas",
              "landmarks and museums", "monumentos e museus":
             return "Leisure"
 
-        case "digital services", "serviços digitais", "gaming", "games", "jogos",
+        case "digital services", "serviços digitais", "gaming", "games", "games & entretenimento", "games e entretenimento", "jogos",
              "video streaming", "streaming de vídeo", "music streaming", "streaming de música":
             return "Digital services"
 
@@ -210,7 +215,7 @@ public enum PurchaseCategoryCatalog {
              "bus tickets", "passagens de ônibus":
             return "Travel"
 
-        case "income", "renda", "salary", "salário", "retirement", "aposentadoria",
+        case "income", "renda", "salary", "salário", "salário & renda", "salário e renda", "retirement", "aposentadoria",
              "entrepreneurial activities", "atividades empreendedoras",
              "government aid", "auxílio governamental", "non-recurring income", "renda não recorrente":
             return "Income"
@@ -237,14 +242,14 @@ public enum PurchaseCategoryCatalog {
              "same person transfer - cash", "same person transfer - pix", "same person transfer - ted":
             return "Same person transfer"
 
-        case "loans and financing", "empréstimos e financiamentos", "loans", "empréstimos",
-             "financing", "financiamento", "real estate financing", "financiamento imobiliário",
+        case "loans and financing", "empréstimos e financiamentos", "empréstimos & financiamentos",
+             "loans", "empréstimos", "financing", "financiamento", "real estate financing", "financiamento imobiliário",
              "vehicle financing", "financiamento de veículos", "student loan", "empréstimo estudantil",
              "late payment and overdraft costs", "custos de atraso e cheque especial",
              "interests charged", "juros cobrados":
             return "Loans and Financing"
 
-        case "bank fees", "taxas bancárias", "tarifas", "account fees", "tarifas de conta",
+        case "bank fees", "taxas bancárias", "tarifas", "tarifas bancárias", "account fees", "tarifas de conta",
              "wire transfer fees and atm fees", "tarifas de transferência e saques",
              "credit card fees", "tarifas de cartão":
             return "Bank fees"

@@ -1,6 +1,16 @@
 /** Period-aware budget allowance — keep in sync with supabase/.../utils/budgetPeriod.ts */
+import {
+  resolveBudgetCategoryKey,
+  canonicalBudgetCategory,
+  isSubcategory,
+  getParentCategory,
+  translateCategory,
+  BASE_KEY_TO_LABEL,
+  resolveCategoryLabel,
+} from './categories.js';
 
 export const BUDGET_PERIODS = ['daily', 'weekly', 'biweekly', 'monthly'];
+
 
 /** Categories that should be excluded from budget by default (transfers, income, etc.) */
 export const BUDGET_EXCLUDED_CATEGORIES = [
@@ -119,16 +129,23 @@ export function mergeBudgetRows({
   budgets = [],
   ym,
   asOfDate,
+  subSpend = {},
 } = {}) {
   const asOf = asOfDate || asOfForBudgetMonth(ym);
   const rows = {};
 
   const addSpent = (cat, bank, meal) => {
     if (!cat) return;
-    if (!rows[cat]) {
-      rows[cat] = {
-        id: cat,
-        category: cat,
+    const canonical = canonicalBudgetCategory(cat);
+    const isSub = isSubcategory(canonical);
+    if (!rows[canonical]) {
+      const parentGroup = isSub ? getParentCategory(canonical) : null;
+      rows[canonical] = {
+        id: canonical,
+        category: canonical,
+        categoryLabel: isSub ? translateCategory(canonical) : (BASE_KEY_TO_LABEL[canonical] || resolveCategoryLabel(canonical) || canonical),
+        isSubcategory: isSub,
+        parentCategoryLabel: parentGroup ? parentGroup.label : null,
         spentBank: 0,
         spentMeal: 0,
         spent: 0,
@@ -142,33 +159,62 @@ export function mergeBudgetRows({
         periodCount: 1,
       };
     }
-    rows[cat].spentBank += bank;
-    rows[cat].spentMeal += meal;
-    rows[cat].spent = rows[cat].spentBank + rows[cat].spentMeal;
+    rows[canonical].spentBank += bank;
+    rows[canonical].spentMeal += meal;
+    rows[canonical].spent = rows[canonical].spentBank + rows[canonical].spentMeal;
   };
 
   Object.entries(spentBankMap).forEach(([cat, spent]) => addSpent(cat, Number(spent) || 0, 0));
   Object.entries(spentMealMap).forEach(([cat, spent]) => addSpent(cat, 0, Number(spent) || 0));
 
   budgets.forEach((b) => {
-    const cat = String(b.category || '');
-    if (!cat) return;
+    const rawCat = String(b.category || '');
+    if (!rawCat) return;
+    const cat = canonicalBudgetCategory(rawCat) || rawCat;
+    const isSub = isSubcategory(cat);
     const period = normalizeBudgetPeriod(b.period);
     const periodAmount = Number(b.limit) || 0;
     const started = startedPeriods(period, ym, asOf);
     const count = periodCount(period, ym);
     const earned = allowance(periodAmount, period, ym, asOf);
     const cap = monthCap(periodAmount, period, ym);
-    if (!rows[cat]) addSpent(cat, 0, 0);
-    rows[cat].id = String(b.id || cat);
-    rows[cat].period = period;
-    rows[cat].periodAmount = periodAmount;
-    rows[cat].allowance = earned;
-    rows[cat].monthCap = cap;
-    rows[cat].limit = earned;
-    rows[cat].hasLimit = true;
-    rows[cat].periodIndex = started;
-    rows[cat].periodCount = count;
+    const parentGroup = isSub ? getParentCategory(cat) : null;
+
+    if (!rows[cat]) {
+      rows[cat] = {
+        id: String(b.id || cat),
+        category: cat,
+        categoryLabel: isSub ? translateCategory(cat) : (BASE_KEY_TO_LABEL[cat] || resolveCategoryLabel(cat) || cat),
+        isSubcategory: isSub,
+        parentCategoryLabel: parentGroup ? parentGroup.label : null,
+        spentBank: spentBankMap[cat] || 0,
+        spentMeal: spentMealMap[cat] || 0,
+        spent: (spentBankMap[cat] || 0) + (spentMealMap[cat] || 0),
+        period,
+        periodAmount,
+        allowance: earned,
+        monthCap: cap,
+        limit: earned,
+        hasLimit: true,
+        periodIndex: started,
+        periodCount: count,
+      };
+    } else {
+      rows[cat].id = String(b.id || cat);
+      rows[cat].period = period;
+      rows[cat].periodAmount = periodAmount;
+      rows[cat].allowance = earned;
+      rows[cat].monthCap = cap;
+      rows[cat].limit = earned;
+      rows[cat].hasLimit = true;
+      rows[cat].periodIndex = started;
+      rows[cat].periodCount = count;
+      rows[cat].isSubcategory = isSub;
+      rows[cat].parentCategoryLabel = parentGroup ? parentGroup.label : null;
+      if (isSub) {
+        rows[cat].categoryLabel = translateCategory(cat);
+      }
+    }
   });
 
   return Object.values(rows)
@@ -178,8 +224,17 @@ export function mergeBudgetRows({
       const spentBank = Number(row.spentBank.toFixed(2));
       const spentMeal = Number(row.spentMeal.toFixed(2));
       const limit = Number((row.limit || 0).toFixed(2));
+      const categoryLabel = row.categoryLabel || (row.isSubcategory ? translateCategory(row.category) : (BASE_KEY_TO_LABEL[row.category] || resolveCategoryLabel(row.category) || row.category));
+      const subs = !row.isSubcategory ? subSpend[row.category] : null;
+      const subcategories = subs
+        ? Object.entries(subs)
+            .map(([label, s]) => ({ label, spent: Number(s.toFixed(2)) }))
+            .sort((a, b) => b.spent - a.spent)
+        : [];
+
       return {
         ...row,
+        categoryLabel,
         spent,
         spentBank,
         spentMeal,
@@ -188,6 +243,7 @@ export function mergeBudgetRows({
         periodAmount: Number((row.periodAmount || 0).toFixed(2)),
         limit,
         percent: limit > 0 ? Math.min(100, Math.round((spent / limit) * 100)) : 0,
+        subcategories,
       };
     })
     .sort((a, b) => {

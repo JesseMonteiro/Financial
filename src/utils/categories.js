@@ -653,3 +653,486 @@ export function selectedCategoryValue(item, options = []) {
 
   return preferred;
 }
+
+export const BASE_KEY_TO_LABEL = Object.fromEntries(
+  PLUGGY_BASE_CATEGORIES.map((c) => [c.key, c.label])
+);
+
+export const PT_LABEL_TO_BASE_KEY = {
+  'Alimentação': 'Food and drinks',
+  'Supermercados': 'Groceries',
+  'Habitação': 'Housing',
+  'Transporte': 'Transportation',
+  'Serviços': 'Services',
+  'Compras': 'Shopping',
+  'Saúde': 'Healthcare',
+  'Educação': 'Education',
+  'Lazer': 'Leisure',
+  'Serviços digitais': 'Digital services',
+  'Viagens': 'Travel',
+  'Renda': 'Income',
+  'Investimentos': 'Investments',
+  'Transferências': 'Transfers',
+  'Transferência entre mesma pessoa': 'Same person transfer',
+  'Empréstimos e Financiamentos': 'Loans and Financing',
+  'Taxas bancárias': 'Bank fees',
+  'Impostos': 'Taxes',
+  'Seguro': 'Insurance',
+  'Doações': 'Donations',
+  'Jogos de azar': 'Gambling',
+  'Obrigações legais': 'Legal obligations',
+  'Outros': 'Other',
+
+  // Granular translated labels
+  'Restaurantes & Bares': 'Food and drinks',
+  'Restaurantes e bares': 'Food and drinks',
+  'Delivery de Comida': 'Food and drinks',
+  'Delivery de comida': 'Food and drinks',
+  'Supermercado & Alimentação': 'Groceries',
+  'Aluguel': 'Housing',
+  'Utilidades Domésticas': 'Housing',
+  'Utilidades domésticas': 'Housing',
+  'Contas de consumo (Água, Luz, Gás)': 'Housing',
+  'Uber / Táxi / Transporte': 'Transportation',
+  'Postos de Combustível': 'Transportation',
+  'Postos de combustível': 'Transportation',
+  'Estacionamento': 'Transportation',
+  'Manutenção Veicular': 'Transportation',
+  'Manutenção veicular': 'Transportation',
+  'Automóvel': 'Transportation',
+  'Automotivo': 'Transportation',
+  'Aluguel de Carros': 'Transportation',
+  'Aluguel de carros': 'Transportation',
+  'Táxi e carros de aplicativo': 'Transportation',
+  'Transporte público': 'Transportation',
+  'Telefone & Internet': 'Services',
+  'Telecomunicações': 'Services',
+  'Academias & Fitness': 'Services',
+  'Bem-estar & Fitness': 'Services',
+  'Compras & Lojas': 'Shopping',
+  'Vestuário & Roupas': 'Shopping',
+  'Vestuário e roupas': 'Shopping',
+  'Saúde & Medicina': 'Healthcare',
+  'Farmácia & Drogaria': 'Healthcare',
+  'Farmácia': 'Healthcare',
+  'Odontologia': 'Healthcare',
+  'Dentista': 'Healthcare',
+  'Ótica & Visão': 'Healthcare',
+  'Ótica': 'Healthcare',
+  'Hospitais e laboratórios': 'Healthcare',
+  'Cinema, Teatro & Shows': 'Leisure',
+  'Ingressos & Eventos': 'Leisure',
+  'Lazer / Entretenimento': 'Leisure',
+  'Games & Entretenimento': 'Digital services',
+  'Streaming de vídeo': 'Digital services',
+  'Streaming de música': 'Digital services',
+  'Salário & Renda': 'Income',
+  'Tarifas Bancárias': 'Bank fees',
+  'Tarifas de conta': 'Bank fees',
+  'Pagamento de Fatura': 'Transfers',
+};
+
+/**
+ * Resolves any category string (Pluggy subcategory, PT translation, or base key)
+ * to its Level 1 base category key for budget tracking.
+ */
+export function resolveBudgetCategoryKey(raw) {
+  if (!raw) return 'Other';
+  const trimmed = String(raw).trim();
+  if (!trimmed) return 'Other';
+  if (PLUGGY_BASE_KEYS.has(trimmed)) return trimmed;
+  if (PLUGGY_TO_KIND[trimmed]) return PLUGGY_TO_KIND[trimmed];
+  if (PT_LABEL_TO_BASE_KEY[trimmed]) return PT_LABEL_TO_BASE_KEY[trimmed];
+
+  const lower = trimmed.toLowerCase();
+  for (const [key, base] of Object.entries(PLUGGY_TO_KIND)) {
+    if (key.toLowerCase() === lower) return base;
+  }
+  for (const [label, base] of Object.entries(PT_LABEL_TO_BASE_KEY)) {
+    if (label.toLowerCase() === lower) return base;
+  }
+
+  const kind = resolveCategoryKind(trimmed);
+  if (kind) return kind;
+  return trimmed;
+}
+
+export const SUBCATEGORY_TO_PARENT = {
+  // Food and drinks (Alimentação)
+  Groceries: 'Food and drinks',
+  'Eating out': 'Food and drinks',
+  'Food delivery': 'Food and drinks',
+  // Housing (Habitação)
+  Rent: 'Housing',
+  Utilities: 'Housing',
+  Electricity: 'Housing',
+  Water: 'Housing',
+  Gas: 'Housing',
+  Houseware: 'Housing',
+  'Urban land and building tax': 'Housing',
+  // Transportation (Transporte)
+  'Taxi and ride-hailing': 'Transportation',
+  'Gas stations': 'Transportation',
+  Parking: 'Transportation',
+  'Public transportation': 'Transportation',
+  'Vehicle maintenance': 'Transportation',
+  'Car rental': 'Transportation',
+  'Tolls and in-vehicle payment': 'Transportation',
+  'Vehicle ownership taxes and fees': 'Transportation',
+  'Traffic tickets': 'Transportation',
+  Bicycle: 'Transportation',
+  // Services (Serviços)
+  Telecommunications: 'Services',
+  Internet: 'Services',
+  Mobile: 'Services',
+  TV: 'Services',
+  'Gyms and fitness centers': 'Services',
+  'Wellness and fitness': 'Services',
+  'Sports practice': 'Services',
+  // Shopping (Compras)
+  'Online shopping': 'Shopping',
+  Clothing: 'Shopping',
+  Electronics: 'Shopping',
+  'Pet supplies and vet': 'Shopping',
+  'Kids and toys': 'Shopping',
+  Bookstore: 'Shopping',
+  'Sports goods': 'Shopping',
+  'Office Supplies': 'Shopping',
+  // Healthcare (Saúde)
+  Pharmacy: 'Healthcare',
+  'Hospital clinics and labs': 'Healthcare',
+  Dentist: 'Healthcare',
+  Optometry: 'Healthcare',
+  // Leisure (Lazer)
+  'Cinema, theater and concerts': 'Leisure',
+  Tickets: 'Leisure',
+  'Stadiums and arenas': 'Leisure',
+  'Landmarks and museums': 'Leisure',
+  // Digital services (Serviços Digitais)
+  'Video streaming': 'Digital services',
+  'Music streaming': 'Digital services',
+  Gaming: 'Digital services',
+  // Education (Educação)
+  'Online Courses': 'Education',
+  University: 'Education',
+  School: 'Education',
+  Kindergarten: 'Education',
+  // Travel (Viagens)
+  'Airport and airlines': 'Travel',
+  Accommodation: 'Travel',
+  'Bus tickets': 'Travel',
+  'Mileage programs': 'Travel',
+  // Insurance (Seguro)
+  'Life insurance': 'Insurance',
+  'Home Insurance': 'Insurance',
+  'Health insurance': 'Insurance',
+  'Vehicle insurance': 'Insurance',
+  // Loans and Financing (Empréstimos e Financiamentos)
+  Loans: 'Loans and Financing',
+  Financing: 'Loans and Financing',
+  'Real estate financing': 'Loans and Financing',
+  'Vehicle Financing': 'Loans and Financing',
+  'Student loan': 'Loans and Financing',
+  'Late payment and overdraft costs': 'Loans and Financing',
+  'Interests charged': 'Loans and Financing',
+  // Gambling (Jogos de Azar)
+  Lottery: 'Gambling',
+  'Online bet': 'Gambling',
+  // Legal obligations (Obrigações Legais)
+  Alimony: 'Legal obligations',
+  'Blocked balances': 'Legal obligations',
+};
+
+export const CATEGORY_HIERARCHY = [
+  {
+    key: 'Food and drinks',
+    label: 'Alimentação',
+    icon: 'utensils',
+    color: '#f97316',
+    subcategories: [
+      { key: 'Groceries', label: 'Supermercados', icon: 'cart' },
+      { key: 'Eating out', label: 'Restaurantes e bares', icon: 'utensils' },
+      { key: 'Food delivery', label: 'Delivery de comida', icon: 'takeout' },
+    ],
+  },
+  {
+    key: 'Housing',
+    label: 'Habitação',
+    icon: 'home',
+    color: '#a855f7',
+    subcategories: [
+      { key: 'Rent', label: 'Aluguel', icon: 'home' },
+      { key: 'Utilities', label: 'Contas de consumo (Água, Luz, Gás)', icon: 'bolt' },
+      { key: 'Electricity', label: 'Energia elétrica', icon: 'bolt' },
+      { key: 'Water', label: 'Água', icon: 'drop' },
+      { key: 'Gas', label: 'Gás', icon: 'flame' },
+      { key: 'Houseware', label: 'Utilidades domésticas', icon: 'sofa' },
+      { key: 'Urban land and building tax', label: 'IPTU', icon: 'doc' },
+    ],
+  },
+  {
+    key: 'Transportation',
+    label: 'Transporte',
+    icon: 'car',
+    color: '#0ea5e9',
+    subcategories: [
+      { key: 'Taxi and ride-hailing', label: 'Uber / Táxi / Transporte', icon: 'car' },
+      { key: 'Gas stations', label: 'Postos de combustível', icon: 'fuelpump' },
+      { key: 'Parking', label: 'Estacionamento', icon: 'car' },
+      { key: 'Public transportation', label: 'Transporte público', icon: 'bus' },
+      { key: 'Vehicle maintenance', label: 'Manutenção veicular', icon: 'wrench' },
+      { key: 'Car rental', label: 'Aluguel de carros', icon: 'car' },
+      { key: 'Tolls and in-vehicle payment', label: 'Pedágios', icon: 'car' },
+      { key: 'Vehicle ownership taxes and fees', label: 'IPVA e taxas de veículo', icon: 'doc' },
+      { key: 'Traffic tickets', label: 'Multas de trânsito', icon: 'doc' },
+      { key: 'Bicycle', label: 'Bicicleta', icon: 'bicycle' },
+    ],
+  },
+  {
+    key: 'Services',
+    label: 'Serviços',
+    icon: 'wrench',
+    color: '#0284c7',
+    subcategories: [
+      { key: 'Telecommunications', label: 'Telefone e Internet', icon: 'wifi' },
+      { key: 'Internet', label: 'Internet', icon: 'wifi' },
+      { key: 'Mobile', label: 'Celular / Telefonia', icon: 'phone' },
+      { key: 'TV', label: 'TV por assinatura', icon: 'tv' },
+      { key: 'Gyms and fitness centers', label: 'Academias e fitness', icon: 'figure' },
+      { key: 'Wellness and fitness', label: 'Bem-estar e fitness', icon: 'figure' },
+      { key: 'Sports practice', label: 'Prática de esportes', icon: 'figure' },
+    ],
+  },
+  {
+    key: 'Shopping',
+    label: 'Compras',
+    icon: 'bag',
+    color: '#ec4899',
+    subcategories: [
+      { key: 'Online shopping', label: 'Compras online', icon: 'cartbadge' },
+      { key: 'Clothing', label: 'Vestuário e roupas', icon: 'tshirt' },
+      { key: 'Electronics', label: 'Eletrônicos', icon: 'tv' },
+      { key: 'Pet supplies and vet', label: 'Pets e veterinário', icon: 'pawprint' },
+      { key: 'Kids and toys', label: 'Crianças e brinquedos', icon: 'baby' },
+      { key: 'Bookstore', label: 'Livraria', icon: 'book' },
+      { key: 'Sports goods', label: 'Artigos esportivos', icon: 'figure' },
+      { key: 'Office Supplies', label: 'Materiais de escritório', icon: 'pencil' },
+    ],
+  },
+  {
+    key: 'Healthcare',
+    label: 'Saúde',
+    icon: 'heart',
+    color: '#10b981',
+    subcategories: [
+      { key: 'Pharmacy', label: 'Farmácia e drogaria', icon: 'crosscase' },
+      { key: 'Hospital clinics and labs', label: 'Hospitais e laboratórios', icon: 'heart' },
+      { key: 'Dentist', label: 'Odontologia', icon: 'heart' },
+      { key: 'Optometry', label: 'Ótica e visão', icon: 'heart' },
+    ],
+  },
+  {
+    key: 'Leisure',
+    label: 'Lazer',
+    icon: 'ticket',
+    color: '#f43f5e',
+    subcategories: [
+      { key: 'Cinema, theater and concerts', label: 'Cinema, teatro e shows', icon: 'film' },
+      { key: 'Tickets', label: 'Ingressos e eventos', icon: 'ticket' },
+      { key: 'Stadiums and arenas', label: 'Estádios e arenas', icon: 'ticket' },
+      { key: 'Landmarks and museums', label: 'Monumentos e museus', icon: 'ticket' },
+    ],
+  },
+  {
+    key: 'Digital services',
+    label: 'Serviços digitais',
+    icon: 'tv',
+    color: '#8b5cf6',
+    subcategories: [
+      { key: 'Video streaming', label: 'Streaming de vídeo', icon: 'tv' },
+      { key: 'Music streaming', label: 'Streaming de música', icon: 'music' },
+      { key: 'Gaming', label: 'Jogos e entretenimento', icon: 'gamecontroller' },
+    ],
+  },
+  {
+    key: 'Education',
+    label: 'Educação',
+    icon: 'graduationcap',
+    color: '#eab308',
+    subcategories: [
+      { key: 'Online Courses', label: 'Cursos online', icon: 'graduationcap' },
+      { key: 'University', label: 'Universidade', icon: 'graduationcap' },
+      { key: 'School', label: 'Escola', icon: 'book' },
+      { key: 'Kindergarten', label: 'Jardim de infância', icon: 'baby' },
+    ],
+  },
+  {
+    key: 'Travel',
+    label: 'Viagens',
+    icon: 'airplane',
+    color: '#06b6d4',
+    subcategories: [
+      { key: 'Airport and airlines', label: 'Aeroporto e passagens aéreas', icon: 'airplane' },
+      { key: 'Accommodation', label: 'Hospedagem', icon: 'bed' },
+      { key: 'Bus tickets', label: 'Passagens de ônibus', icon: 'bus' },
+      { key: 'Mileage programs', label: 'Programas de milhas', icon: 'airplane' },
+    ],
+  },
+  {
+    key: 'Insurance',
+    label: 'Seguro',
+    icon: 'shield',
+    color: '#2563eb',
+    subcategories: [
+      { key: 'Life insurance', label: 'Seguro de vida', icon: 'shield' },
+      { key: 'Home Insurance', label: 'Seguro residencial', icon: 'shield' },
+      { key: 'Health insurance', label: 'Seguro de saúde', icon: 'shield' },
+      { key: 'Vehicle insurance', label: 'Seguro de veículos', icon: 'shield' },
+    ],
+  },
+  {
+    key: 'Loans and Financing',
+    label: 'Empréstimos e Financiamentos',
+    icon: 'percent',
+    color: '#ef4444',
+    subcategories: [
+      { key: 'Loans', label: 'Empréstimos', icon: 'percent' },
+      { key: 'Financing', label: 'Financiamento', icon: 'percent' },
+      { key: 'Real estate financing', label: 'Financiamento imobiliário', icon: 'percent' },
+      { key: 'Vehicle Financing', label: 'Financiamento de veículos', icon: 'percent' },
+      { key: 'Student loan', label: 'Empréstimo estudantil', icon: 'percent' },
+      { key: 'Late payment and overdraft costs', label: 'Custos de atraso e cheque especial', icon: 'percent' },
+      { key: 'Interests charged', label: 'Juros cobrados', icon: 'percent' },
+    ],
+  },
+  {
+    key: 'Donations',
+    label: 'Doações',
+    icon: 'handraised',
+    color: '#14b8a6',
+    subcategories: [],
+  },
+  {
+    key: 'Gambling',
+    label: 'Jogos de azar',
+    icon: 'sparkles',
+    color: '#d946ef',
+    subcategories: [
+      { key: 'Lottery', label: 'Loteria', icon: 'sparkles' },
+      { key: 'Online bet', label: 'Aposta online', icon: 'sparkles' },
+    ],
+  },
+  {
+    key: 'Legal obligations',
+    label: 'Obrigações legais',
+    icon: 'doc',
+    color: '#64748b',
+    subcategories: [
+      { key: 'Alimony', label: 'Pensão alimentícia', icon: 'doc' },
+      { key: 'Blocked balances', label: 'Saldos bloqueados', icon: 'doc' },
+    ],
+  },
+  {
+    key: 'Other',
+    label: 'Outros',
+    icon: 'ellipsis',
+    color: '#64748b',
+    subcategories: [],
+  },
+];
+
+/**
+ * Returns canonical key for budget target (preserves subcategories).
+ */
+export function canonicalBudgetCategory(raw) {
+  if (!raw) return 'Other';
+  const trimmed = String(raw).trim();
+  if (!trimmed) return 'Other';
+
+  if (SUBCATEGORY_TO_PARENT[trimmed]) return trimmed;
+
+  for (const [key] of Object.entries(SUBCATEGORY_TO_PARENT)) {
+    if (key.toLowerCase() === trimmed.toLowerCase()) return key;
+    if (translateCategory(key).toLowerCase() === trimmed.toLowerCase()) return key;
+  }
+
+  for (const group of CATEGORY_HIERARCHY) {
+    for (const sub of group.subcategories) {
+      if (sub.key.toLowerCase() === trimmed.toLowerCase() || sub.label.toLowerCase() === trimmed.toLowerCase()) {
+        return sub.key;
+      }
+    }
+  }
+
+  return resolveBudgetCategoryKey(trimmed);
+}
+
+/**
+ * Returns true if this category key or label is a Level 2/3 subcategory.
+ */
+export function isSubcategory(keyOrLabel) {
+  if (!keyOrLabel) return false;
+  const canonical = canonicalBudgetCategory(keyOrLabel);
+  return Boolean(SUBCATEGORY_TO_PARENT[canonical]);
+}
+
+/**
+ * Returns parent category object for a subcategory (e.g. for Groceries, returns Food and drinks).
+ */
+export function getParentCategory(keyOrLabel) {
+  if (!keyOrLabel) return null;
+  const canonical = canonicalBudgetCategory(keyOrLabel);
+  const parentKey = SUBCATEGORY_TO_PARENT[canonical];
+  if (!parentKey) return null;
+  return CATEGORY_HIERARCHY.find((g) => g.key === parentKey) || null;
+}
+
+/**
+ * Checks whether a transaction belongs to a given budget category (base or subcategory).
+ */
+export function matchesBudgetCategory(txCategory, budgetCategory) {
+  if (!txCategory || !budgetCategory) return false;
+  const trimmedTx = String(txCategory).trim();
+  const trimmedBudget = String(budgetCategory).trim();
+  if (!trimmedTx || !trimmedBudget) return false;
+
+  const canonicalBudget = canonicalBudgetCategory(trimmedBudget);
+  const isSub = isSubcategory(canonicalBudget);
+
+  if (isSub) {
+    const canonicalTx = canonicalBudgetCategory(trimmedTx);
+    if (canonicalTx.toLowerCase() === canonicalBudget.toLowerCase()) return true;
+
+    const txLabel = translateCategory(trimmedTx).toLowerCase();
+    const budgetLabel = (translateCategory(canonicalBudget) || '').toLowerCase();
+    if (txLabel === budgetLabel) return true;
+
+    if (canonicalBudget === 'Groceries') {
+      const lower = trimmedTx.toLowerCase();
+      if (lower.includes('supermercado') || lower.includes('groceries') || lower.includes('mercado')) return true;
+    }
+    if (canonicalBudget === 'Eating out') {
+      const lower = trimmedTx.toLowerCase();
+      if (lower.includes('restaurante') || lower.includes('eating out') || lower.includes('bar')) return true;
+    }
+    if (canonicalBudget === 'Food delivery') {
+      const lower = trimmedTx.toLowerCase();
+      if (lower.includes('delivery') || lower.includes('ifood') || lower.includes('rappi')) return true;
+    }
+    return false;
+  }
+
+  // Base category: matches all transactions whose parent base category matches
+  const txBase = resolveBudgetCategoryKey(trimmedTx);
+  const budgetBase = resolveBudgetCategoryKey(trimmedBudget);
+  if (txBase.toLowerCase() === budgetBase.toLowerCase()) return true;
+
+  if (budgetBase.toLowerCase() === 'food and drinks') {
+    const subParent = SUBCATEGORY_TO_PARENT[canonicalBudgetCategory(trimmedTx)];
+    if (subParent && subParent.toLowerCase() === 'food and drinks') return true;
+  }
+  return false;
+}
+
+
+

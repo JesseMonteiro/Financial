@@ -24,7 +24,19 @@ import { useCreditDataStore } from '../stores/creditDataStore';
 import { useMealBenefitStore } from '../stores/mealBenefitStore';
 import { useTransactionStore } from '../stores/transactionStore';
 import { formatCurrency } from '../utils/formatters';
-import { allTranslations, translateCategory } from '../utils/categories';
+import {
+  allTranslations,
+  translateCategory,
+  resolveBudgetCategoryKey,
+  canonicalBudgetCategory,
+  isSubcategory,
+  getParentCategory,
+  matchesBudgetCategory,
+  CATEGORY_HIERARCHY,
+  BASE_KEY_TO_LABEL,
+  resolveCategoryLabel,
+  PLUGGY_BASE_CATEGORIES,
+} from '../utils/categories';
 import { useCategoryStore } from '../stores/categoryStore';
 import { getCategoryColor } from '../utils/colors';
 import {
@@ -184,9 +196,11 @@ export function Budget() {
   const loadingTx = accountIds.length > 0 && !hasCached && creditLoading;
 
   // ── Compute spending by category for selected CALENDAR month ───────────────
-  // Uses purchase date (calendar month), not billing month (due month)
-  const spendingByCategory = useMemo(() => {
+  // Uses purchase date (calendar month), not billing month (due month).
+  // Spending is aggregated by Level 1 base keys as well as specific canonical subcategories.
+  const { spendingByCategory, subSpend } = useMemo(() => {
     const map = {};
+    const sub = {};
     allTransactions.forEach(tx => {
       if (isBillPayment(tx)) return;
       const signed = signedTxAmount(tx);
@@ -196,16 +210,29 @@ export function Budget() {
       const txCalendarMonth = String(tx.date || '').slice(0, 7);
       if (txCalendarMonth !== selectedMonth) return;
 
-      const label = translateCategory(tx.category);
-      if (!label) return;
-      map[label] = (map[label] || 0) + signed;
+      const raw = String(tx.category || '');
+      const baseKey = resolveBudgetCategoryKey(raw);
+      if (!baseKey) return;
+      map[baseKey] = (map[baseKey] || 0) + signed;
+
+      const canonicalSub = canonicalBudgetCategory(raw);
+      if (isSubcategory(canonicalSub)) {
+        map[canonicalSub] = (map[canonicalSub] || 0) + signed;
+      }
+
+      const subLabel = translateCategory(raw);
+      const baseLabel = BASE_KEY_TO_LABEL[baseKey] || resolveCategoryLabel(baseKey, categories) || baseKey;
+      if (subLabel && subLabel !== baseLabel && subLabel !== baseKey) {
+        if (!sub[baseKey]) sub[baseKey] = {};
+        sub[baseKey][subLabel] = (sub[baseKey][subLabel] || 0) + signed;
+      }
     });
-    return map;
-  }, [allTransactions, selectedMonth]);
+    return { spendingByCategory: map, subSpend: sub };
+  }, [allTransactions, selectedMonth, categories]);
 
   // ── Map transactions by category for expanded view ─────────────────────────
   // Uses allTransactions with CALENDAR MONTH (purchase date) to match spendingByCategory.
-  // Both totals and list show when purchases were made, not when they will be billed.
+  // Grouped by base category key as well as canonical subcategory keys.
   const transactionsByCategory = useMemo(() => {
     const map = {};
 
@@ -216,18 +243,31 @@ export function Budget() {
       // Use calendar month (purchase date) instead of due month
       const txCalendarMonth = String(tx.date || '').slice(0, 7);
       if (txCalendarMonth !== selectedMonth) return;
-      const label = translateCategory(tx.category);
-      if (!label) return;
-      if (!map[label]) map[label] = [];
+      const raw = String(tx.category || '');
+      const baseKey = resolveBudgetCategoryKey(raw);
+      if (!baseKey) return;
+      if (!map[baseKey]) map[baseKey] = [];
       const account = accounts.find(a => a.id === tx.accountId);
-      map[label].push({
+      const subLabel = translateCategory(raw);
+      const canonicalSub = canonicalBudgetCategory(raw);
+      const item = {
         id: tx.id,
         description: tx.description || tx.descriptionTranslated || tx.descriptionRaw || 'Sem descrição',
         date: String(tx.date || '').slice(0, 10),
         amount: signed,
         isMeal: false,
         accountName: account?.name || 'Conta',
-      });
+        subCategoryLabel: subLabel,
+      };
+      map[baseKey].push(item);
+      if (isSubcategory(canonicalSub)) {
+        if (!map[canonicalSub]) map[canonicalSub] = [];
+        map[canonicalSub].push(item);
+      }
+      if (subLabel && subLabel !== baseKey && subLabel !== canonicalSub) {
+        if (!map[subLabel]) map[subLabel] = [];
+        map[subLabel].push(item);
+      }
     });
 
     // Meal purchases (VA/VR)
@@ -236,17 +276,30 @@ export function Budget() {
     mealPurchases.map(normalizeMealPurchase).forEach(p => {
       if (!String(p.purchasedAt || '').startsWith(selectedMonth)) return;
       const benefit = benefitsById[p.benefitId];
-      const category = p.category || defaultMealCategoryForKind(benefit?.kind);
-      if (!category) return;
-      if (!map[category]) map[category] = [];
-      map[category].push({
+      const rawCategory = p.category || defaultMealCategoryForKind(benefit?.kind);
+      const baseKey = resolveBudgetCategoryKey(rawCategory);
+      if (!baseKey) return;
+      if (!map[baseKey]) map[baseKey] = [];
+      const subLabel = translateCategory(rawCategory);
+      const canonicalSub = canonicalBudgetCategory(rawCategory);
+      const item = {
         id: p.id,
         description: p.description || (benefit?.kind === 'VR' ? 'VR — compra' : 'VA — compra'),
         date: String(p.purchasedAt || '').slice(0, 10),
         amount: p.amount,
         isMeal: true,
         accountName: benefit?.label || (benefit?.kind === 'VR' ? 'VR' : 'VA'),
-      });
+        subCategoryLabel: subLabel,
+      };
+      map[baseKey].push(item);
+      if (isSubcategory(canonicalSub)) {
+        if (!map[canonicalSub]) map[canonicalSub] = [];
+        map[canonicalSub].push(item);
+      }
+      if (subLabel && subLabel !== baseKey && subLabel !== canonicalSub) {
+        if (!map[subLabel]) map[subLabel] = [];
+        map[subLabel].push(item);
+      }
     });
 
     Object.keys(map).forEach(cat => {
@@ -255,10 +308,40 @@ export function Budget() {
     return map;
   }, [allTransactions, selectedMonth, mealBenefits, mealPurchases, accounts]);
 
-  const mealSpendMap = useMemo(
-    () => mealSpendByCategory(mealBenefits, mealPurchases, selectedMonth),
-    [mealBenefits, mealPurchases, selectedMonth],
-  );
+  const { mealSpendMap, mealSubSpend } = useMemo(() => {
+    const rawMealMap = mealSpendByCategory(mealBenefits, mealPurchases, selectedMonth);
+    const map = {};
+    const sub = {};
+    Object.entries(rawMealMap).forEach(([cat, amount]) => {
+      const amt = Number(amount || 0);
+      const baseKey = resolveBudgetCategoryKey(cat);
+      map[baseKey] = (map[baseKey] || 0) + amt;
+
+      const canonicalSub = canonicalBudgetCategory(cat);
+      if (isSubcategory(canonicalSub)) {
+        map[canonicalSub] = (map[canonicalSub] || 0) + amt;
+      }
+
+      const subLabel = translateCategory(cat);
+      const baseLabel = BASE_KEY_TO_LABEL[baseKey] || baseKey;
+      if (subLabel && subLabel !== baseLabel && subLabel !== baseKey) {
+        if (!sub[baseKey]) sub[baseKey] = {};
+        sub[baseKey][subLabel] = (sub[baseKey][subLabel] || 0) + amt;
+      }
+    });
+    return { mealSpendMap: map, mealSubSpend: sub };
+  }, [mealBenefits, mealPurchases, selectedMonth]);
+
+  const combinedSubSpend = useMemo(() => {
+    const res = { ...subSpend };
+    Object.entries(mealSubSpend).forEach(([baseKey, subs]) => {
+      if (!res[baseKey]) res[baseKey] = {};
+      Object.entries(subs).forEach(([subLabel, amt]) => {
+        res[baseKey][subLabel] = (res[baseKey][subLabel] || 0) + amt;
+      });
+    });
+    return res;
+  }, [subSpend, mealSubSpend]);
 
   const asOfDate = useMemo(
     () => asOfForBudgetMonth(selectedMonth),
@@ -283,11 +366,12 @@ export function Budget() {
 
   const budgetRows = useMemo(() => mergeBudgetRows({
     spentBankMap: spendingByCategory,
-    spentMealMap: mealSpendMap,
+    spentMealMap,
     budgets,
     ym: selectedMonth,
     asOfDate,
-  }), [spendingByCategory, mealSpendMap, budgets, selectedMonth, asOfDate]);
+    subSpend: combinedSubSpend,
+  }), [spendingByCategory, mealSpendMap, budgets, selectedMonth, asOfDate, combinedSubSpend]);
 
   const totalSpent = useMemo(
     () => budgetRows.reduce((s, r) => s + r.spent, 0),
@@ -363,18 +447,49 @@ export function Budget() {
     }
   };
 
-  const allRealCategories = useMemo(() => {
-    const cats = new Set(Object.keys(spendingByCategory));
-    Object.keys(mealSpendMap).forEach((c) => cats.add(c));
-    budgets.forEach(b => cats.add(b.category));
-    allTransactions.forEach(tx => {
-      if (tx.category) cats.add(translateCategory(tx.category));
-    });
-    Object.values(allTranslations()).forEach((label) => cats.add(label));
-    categories.forEach((c) => { if (c.label) cats.add(c.label); });
-    // Filter out excluded categories
-    return [...cats].filter(c => !BUDGET_EXCLUDED_CATEGORIES.includes(c)).sort();
-  }, [spendingByCategory, mealSpendMap, budgets, allTransactions, categories]);
+  const hierarchicalBudgetGroups = useMemo(() => {
+    const taken = new Set(
+      budgets.map(b => canonicalBudgetCategory(b.category))
+    );
+
+    const groups = CATEGORY_HIERARCHY.map(group => {
+      if (BUDGET_EXCLUDED_CATEGORIES.includes(group.key) || BUDGET_EXCLUDED_CATEGORIES.includes(group.label)) {
+        return null;
+      }
+      const parentAvailable = !taken.has(group.key);
+      const availableSubs = (group.subcategories || []).filter(sub => {
+        return !taken.has(sub.key) &&
+               !BUDGET_EXCLUDED_CATEGORIES.includes(sub.key) &&
+               !BUDGET_EXCLUDED_CATEGORIES.includes(sub.label);
+      });
+      if (!parentAvailable && availableSubs.length === 0) return null;
+      return {
+        key: group.key,
+        label: group.label,
+        color: group.color,
+        parentAvailable,
+        subcategories: availableSubs,
+      };
+    }).filter(Boolean);
+
+    // Custom user categories
+    const customList = categories.filter(c => !c.isBase && c.key && !BUDGET_EXCLUDED_CATEGORIES.includes(c.key) && !BUDGET_EXCLUDED_CATEGORIES.includes(c.label) && !taken.has(c.key));
+    if (customList.length > 0) {
+      groups.push({
+        key: 'custom',
+        label: 'Categorias personalizadas',
+        color: '#64748b',
+        parentAvailable: false,
+        subcategories: customList.map(c => ({
+          key: c.key,
+          label: c.label || c.name || c.key,
+          icon: c.icon,
+        })),
+      });
+    }
+
+    return groups;
+  }, [budgets, categories]);
 
   // Navigation
   const monthIdx = availableMonths.indexOf(selectedMonth);
@@ -524,12 +639,23 @@ export function Budget() {
               value={newCat}
               onChange={e => setNewCat(e.target.value)}
               className="input"
-              style={{ flex: '1 1 180px', padding: '0.4rem 0.6rem', fontSize: 'var(--font-size-xs)' }}
+              style={{ flex: '1 1 240px', padding: '0.4rem 0.6rem', fontSize: 'var(--font-size-xs)' }}
             >
-              <option value="">Selecione a categoria...</option>
-              {allRealCategories
-                .filter(c => !budgets.some(b => b.category === c))
-                .map(c => <option key={c} value={c}>{c}</option>)}
+              <option value="">Selecione a categoria ou subcategoria...</option>
+              {hierarchicalBudgetGroups.map(group => (
+                <optgroup key={group.key} label={group.label}>
+                  {group.parentAvailable && (
+                    <option key={group.key} value={group.key}>
+                      {group.label} (Principal — todas as despesas)
+                    </option>
+                  )}
+                  {group.subcategories.map(sub => (
+                    <option key={sub.key} value={sub.key}>
+                      ↳ {sub.label}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
             </select>
             <select
               value={newPeriod}
@@ -621,14 +747,28 @@ export function Budget() {
                         <ChevronDown size={16} />
                       </button>
                       <div style={{ width: 10, height: 10, borderRadius: '50%', backgroundColor: getCategoryColor(row.category), flexShrink: 0 }} />
-                      <span style={{ fontWeight: 600, fontSize: 'var(--font-size-sm)', truncate: 'ellipsis' }}>
-                        {row.category}
-                      </span>
-                      {isOver && <Badge variant="danger"><AlertTriangle size={10} style={{ marginRight: 3 }} />Estourado</Badge>}
-                      {isNear && !isOver && <Badge variant="warning">Atenção</Badge>}
-                      <Badge variant="neutral">
-                        {formatCurrency(row.periodAmount)}{BUDGET_PERIOD_UNIT[row.period] || ''}
-                      </Badge>
+                      <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                          <span style={{ fontWeight: 600, fontSize: 'var(--font-size-sm)' }}>
+                            {row.categoryLabel || BASE_KEY_TO_LABEL[row.category] || resolveCategoryLabel(row.category, categories) || row.category}
+                          </span>
+                          {row.isSubcategory && (
+                            <Badge variant="neutral" style={{ fontSize: '10px', padding: '1px 5px' }}>
+                              Subcategoria
+                            </Badge>
+                          )}
+                          {isOver && <Badge variant="danger"><AlertTriangle size={10} style={{ marginRight: 3 }} />Estourado</Badge>}
+                          {isNear && !isOver && <Badge variant="warning">Atenção</Badge>}
+                          <Badge variant="neutral">
+                            {formatCurrency(row.periodAmount)}{BUDGET_PERIOD_UNIT[row.period] || ''}
+                          </Badge>
+                        </div>
+                        {row.isSubcategory && row.parentCategoryLabel && (
+                          <span style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '1px' }}>
+                            Subcategoria de {row.parentCategoryLabel}
+                          </span>
+                        )}
+                      </div>
                     </div>
 
                     {/* Spent / Limit + edit controls */}
@@ -715,10 +855,33 @@ export function Budget() {
                       {formatCurrency(row.spentBank)} banco/cartão · {formatCurrency(row.spentMeal)} VA/VR
                     </span>
                   )}
+                  {row.subcategories && row.subcategories.length > 0 && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem', marginTop: '0.35rem' }}>
+                      {row.subcategories.map(sub => (
+                        <span
+                          key={sub.label}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.3rem',
+                            padding: '0.15rem 0.45rem',
+                            borderRadius: 'var(--radius-sm)',
+                            backgroundColor: 'var(--bg-secondary)',
+                            border: '1px solid var(--border-color)',
+                            fontSize: '11px',
+                            color: 'var(--text-secondary)',
+                          }}
+                        >
+                          <span>{sub.label}:</span>
+                          <strong style={{ color: 'var(--text-primary)' }}>{formatCurrency(sub.spent)}</strong>
+                        </span>
+                      ))}
+                    </div>
+                  )}
 
                   {/* Expanded transactions list */}
                   {expandedCat === row.category && (() => {
-                    const allTxs = transactionsByCategory[row.category] || [];
+                    const allTxs = transactionsByCategory[row.category] || transactionsByCategory[row.categoryLabel] || [];
                     const periodGroups = groupTransactionsByPeriod(allTxs, row.period, selectedMonth);
                     const showPeriodGroups = row.period !== 'monthly' && periodGroups.length > 1;
                     
@@ -784,6 +947,11 @@ export function Budget() {
                                               {tx.accountName}
                                             </span>
                                           )}
+                                          {tx.subCategoryLabel && tx.subCategoryLabel !== (row.categoryLabel || BASE_KEY_TO_LABEL[row.category]) && (
+                                            <span style={{ fontSize: '9px', fontWeight: 600, color: 'var(--primary)', backgroundColor: 'rgba(var(--primary-rgb, 99, 102, 241), 0.08)', borderRadius: '3px', padding: '0 4px', border: '1px solid rgba(var(--primary-rgb, 99, 102, 241), 0.2)' }}>
+                                              {tx.subCategoryLabel}
+                                            </span>
+                                          )}
                                           {tx.isMeal && (
                                             <span style={{ fontSize: '9px', fontWeight: 700, color: 'var(--info)', backgroundColor: 'rgba(99,179,237,0.15)', borderRadius: '3px', padding: '0 4px' }}>VA/VR</span>
                                           )}
@@ -823,6 +991,11 @@ export function Budget() {
                                       {tx.accountName && (
                                         <span style={{ fontSize: '9px', fontWeight: 600, color: 'var(--text-muted)', backgroundColor: 'var(--bg-tertiary)', borderRadius: '3px', padding: '0 4px', border: '1px solid var(--border-color)' }}>
                                           {tx.accountName}
+                                        </span>
+                                      )}
+                                      {tx.subCategoryLabel && tx.subCategoryLabel !== (row.categoryLabel || BASE_KEY_TO_LABEL[row.category]) && (
+                                        <span style={{ fontSize: '9px', fontWeight: 600, color: 'var(--primary)', backgroundColor: 'rgba(var(--primary-rgb, 99, 102, 241), 0.08)', borderRadius: '3px', padding: '0 4px', border: '1px solid rgba(var(--primary-rgb, 99, 102, 241), 0.2)' }}>
+                                          {tx.subCategoryLabel}
                                         </span>
                                       )}
                                       {tx.isMeal && (

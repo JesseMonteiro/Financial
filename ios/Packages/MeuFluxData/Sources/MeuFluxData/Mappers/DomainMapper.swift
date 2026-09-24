@@ -367,7 +367,9 @@ public enum DomainMapper {
             spent: spent,
             month: month,
             period: period,
-            periodAmount: money(amount: dto.limit)
+            periodAmount: money(amount: dto.limit),
+            isSubcategory: BudgetCategoryCatalog.isSubcategory(dto.category),
+            parentCategoryLabel: BudgetCategoryCatalog.parentLabel(forSubcategory: dto.category)
         )
     }
 
@@ -912,6 +914,20 @@ public enum DomainMapper {
     static func budgetLimit(_ dto: BudgetScreenRowDTO, month: YearMonth) -> BudgetLimit {
         let period = BudgetPeriod(rawValue: dto.period ?? "monthly") ?? .monthly
         let allowance = money(dto.allowance ?? dto.limit)
+        let subcategories = dto.subcategories?.map {
+            BudgetSubcategorySpend(label: $0.label, spent: money($0.spent))
+        } ?? []
+        let transactions = dto.transactions?.map { tx in
+            BudgetTransactionItem(
+                id: tx.id,
+                description: tx.description,
+                date: InstantDate(isoString: tx.date) ?? InstantDate(year: 1970, month: 1, day: 1),
+                amount: money(tx.amount),
+                isMeal: tx.isMeal,
+                accountName: tx.accountName,
+                subCategoryLabel: tx.subCategoryLabel
+            )
+        } ?? []
         return BudgetLimit(
             id: dto.id ?? dto.category,
             category: dto.category,
@@ -925,7 +941,12 @@ public enum DomainMapper {
             periodCount: dto.periodCount ?? 1,
             spentBank: money(dto.spentBank ?? dto.spent),
             spentMeal: money(dto.spentMeal ?? 0),
-            hasLimit: dto.hasLimit ?? ((dto.periodAmount ?? dto.limit) > 0)
+            hasLimit: dto.hasLimit ?? ((dto.periodAmount ?? dto.limit) > 0),
+            categoryLabel: dto.categoryLabel,
+            subcategories: subcategories,
+            transactions: transactions,
+            isSubcategory: BudgetCategoryCatalog.isSubcategory(dto.category),
+            parentCategoryLabel: BudgetCategoryCatalog.parentLabel(forSubcategory: dto.category)
         )
     }
 

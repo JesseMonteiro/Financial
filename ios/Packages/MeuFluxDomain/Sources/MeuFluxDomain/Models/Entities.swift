@@ -256,9 +256,40 @@ public struct Loan: Sendable, Identifiable, Hashable, Codable {
     }
 }
 
+public struct BudgetTransactionItem: Sendable, Identifiable, Hashable, Codable {
+    public let id: String
+    public let description: String
+    public let date: InstantDate
+    public let amount: Money
+    public let isMeal: Bool
+    public let accountName: String
+    public let subCategoryLabel: String?
+
+    public init(
+        id: String,
+        description: String,
+        date: InstantDate,
+        amount: Money,
+        isMeal: Bool,
+        accountName: String,
+        subCategoryLabel: String? = nil
+    ) {
+        self.id = id
+        self.description = description
+        self.date = date
+        self.amount = amount
+        self.isMeal = isMeal
+        self.accountName = accountName
+        self.subCategoryLabel = subCategoryLabel
+    }
+}
+
 public struct BudgetLimit: Sendable, Identifiable, Hashable, Codable {
     public let id: String
     public var category: String
+    public var categoryLabel: String?
+    public var subcategories: [BudgetSubcategorySpend]
+    public var transactions: [BudgetTransactionItem]
     public var limit: Money
     public var spent: Money
     public var month: YearMonth
@@ -270,6 +301,8 @@ public struct BudgetLimit: Sendable, Identifiable, Hashable, Codable {
     public var spentBank: Money
     public var spentMeal: Money
     public var hasLimit: Bool
+    public var isSubcategory: Bool
+    public var parentCategoryLabel: String?
 
     public init(
         id: String,
@@ -284,10 +317,18 @@ public struct BudgetLimit: Sendable, Identifiable, Hashable, Codable {
         periodCount: Int = 1,
         spentBank: Money? = nil,
         spentMeal: Money = .zero,
-        hasLimit: Bool? = nil
+        hasLimit: Bool? = nil,
+        categoryLabel: String? = nil,
+        subcategories: [BudgetSubcategorySpend] = [],
+        transactions: [BudgetTransactionItem] = [],
+        isSubcategory: Bool = false,
+        parentCategoryLabel: String? = nil
     ) {
         self.id = id
         self.category = category
+        self.categoryLabel = categoryLabel
+        self.subcategories = subcategories
+        self.transactions = transactions
         self.limit = limit
         self.spent = spent
         self.month = month
@@ -299,12 +340,30 @@ public struct BudgetLimit: Sendable, Identifiable, Hashable, Codable {
         self.spentBank = spentBank ?? spent
         self.spentMeal = spentMeal
         self.hasLimit = hasLimit ?? ((periodAmount ?? limit).amount > 0)
+        self.isSubcategory = isSubcategory
+        self.parentCategoryLabel = parentCategoryLabel
     }
 
     public var remaining: Money { limit.subtracting(spent) }
     public var utilization: Decimal {
         guard limit.amount != 0 else { return 0 }
         return spent.amount / limit.amount
+    }
+
+    public var displayLabel: String {
+        if let categoryLabel, !categoryLabel.isEmpty { return categoryLabel }
+        return BudgetCategoryCatalog.label(forCategory: category)
+    }
+}
+
+public struct BudgetSubcategorySpend: Sendable, Identifiable, Hashable, Codable {
+    public var id: String { label }
+    public var label: String
+    public var spent: Money
+
+    public init(label: String, spent: Money) {
+        self.label = label
+        self.spent = spent
     }
 }
 

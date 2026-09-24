@@ -3,16 +3,6 @@ import Observation
 import MeuFluxDomain
 import MeuFluxDesignSystem
 
-/// A single line item shown in a budget category's expanded transaction list.
-public struct BudgetTransactionItem: Sendable, Identifiable, Hashable {
-    public let id: String
-    public let description: String
-    public let date: InstantDate
-    public let amount: Money
-    public let isMeal: Bool
-    public let accountName: String
-}
-
 /// Groups transactions by budget period (daily, weekly, biweekly, monthly).
 public struct BudgetPeriodGroup: Sendable, Identifiable, Hashable {
     public let id: String
@@ -189,58 +179,64 @@ public final class BudgetViewModel {
         return needles.contains { d.contains($0) }
     }
 
-    /// Recalculate budget spending using calendar month (purchase date) instead of due month.
-    /// This ensures the displayed totals match the transaction list.
-    private func recalculateSpendingByCalendarMonth(
-        transactions: [Transaction],
-        mealPurchases: [MealBenefitPurchase],
-        mealBenefits: [MealBenefit]
-    ) {
-        var spendingByCategory: [String: (total: Decimal, bank: Decimal, meal: Decimal)] = [:]
-        
-        // Process regular transactions
-        for tx in transactions {
-            let calendarMonth = Self.ymFromIso(tx.date.isoString)
-            guard calendarMonth == selectedMonth.key else { continue }
-            guard tx.kind == .debit else { continue }
-            guard !Self.isBillPayment(tx.description) else { continue }
-            
-            let category = BudgetCategoryCatalog.translateCategory(tx.category)
-            let amount = tx.amount.amount
-            
-            var entry = spendingByCategory[category] ?? (0, 0, 0)
-            entry.total += amount
-            entry.bank += amount
-            spendingByCategory[category] = entry
-        }
-        
-        // Process meal purchases
-        for purchase in mealPurchases {
-            let calendarMonth = Self.ymFromIso(purchase.purchasedAt.isoString)
-            guard calendarMonth == selectedMonth.key else { continue }
-            
-            let benefit = mealBenefits.first { $0.id == purchase.benefitId }
-            let category = benefit?.kind == .vr ? "Restaurante" : "Supermercado & Alimentação"
-            let amount = purchase.amount.amount
-            
-            var entry = spendingByCategory[category] ?? (0, 0, 0)
-            entry.total += amount
-            entry.meal += amount
-            spendingByCategory[category] = entry
-        }
-        
-        // Update limits with recalculated spending
+    /// Synchronize limits' spent amounts and subcategories directly with transactionsByCategory
+    /// so that card headers and transaction lists are 100% mathematically identical.
+    public func syncLimitsWithTransactions() {
         limits = limits.map { limit in
-            guard let spending = spendingByCategory[limit.category] else { return limit }
-            
+            let items: [BudgetTransactionItem]
+            if BudgetCategoryCatalog.isSubcategory(limit.category) {
+                let canonical = BudgetCategoryCatalog.canonicalBudgetCategoryKey(limit.category)
+                let label = BudgetCategoryCatalog.label(forCategory: limit.category)
+                items = transactionsByCategory[canonical]
+                    ?? transactionsByCategory[limit.category]
+                    ?? transactionsByCategory[label]
+                    ?? transactionsByCategory[limit.displayLabel]
+                    ?? []
+            } else {
+                let baseKey = BudgetCategoryCatalog.resolveBudgetCategoryKey(limit.category)
+                items = transactionsByCategory[limit.category]
+                    ?? transactionsByCategory[limit.displayLabel]
+                    ?? transactionsByCategory[baseKey]
+                    ?? []
+            }
+
             var updated = limit
-            updated.spent = Money(amount: spending.total, currencyCode: "BRL")
-            updated.spentBank = Money(amount: spending.bank, currencyCode: "BRL")
-            updated.spentMeal = Money(amount: spending.meal, currencyCode: "BRL")
+            updated.isSubcategory = BudgetCategoryCatalog.isSubcategory(limit.category)
+            updated.parentCategoryLabel = BudgetCategoryCatalog.parentLabel(forSubcategory: limit.category)
+
+            let totalSpent = items.reduce(Decimal.zero) { $0 + $1.amount.amount }
+            let bankSpent = items.filter { !$0.isMeal }.reduce(Decimal.zero) { $0 + $1.amount.amount }
+            let mealSpent = items.filter { $0.isMeal }.reduce(Decimal.zero) { $0 + $1.amount.amount }
+
+            // If we have items in the transaction list, or if backend reported 0, update with exact sum
+            if !items.isEmpty || updated.spent.amount == 0 {
+                updated.spent = Money(amount: totalSpent, currencyCode: "BRL")
+                updated.spentBank = Money(amount: bankSpent, currencyCode: "BRL")
+                updated.spentMeal = Money(amount: mealSpent, currencyCode: "BRL")
+            }
+
+            // Subcategories breakdown directly from the displayed transactions (only for base/parent categories)
+            if !updated.isSubcategory {
+                var subs: [String: Decimal] = [:]
+                let baseKey = BudgetCategoryCatalog.resolveBudgetCategoryKey(limit.category)
+                let baseLabel = BudgetCategoryCatalog.label(forBaseKey: baseKey)
+                for item in items {
+                    if let sub = item.subCategoryLabel, !sub.isEmpty, sub != baseLabel, sub != baseKey {
+                        subs[sub, default: 0] += item.amount.amount
+                    }
+                }
+                if !subs.isEmpty {
+                    updated.subcategories = subs.map {
+                        BudgetSubcategorySpend(label: $0.key, spent: Money(amount: $0.value, currencyCode: "BRL"))
+                    }.sorted { $0.spent.amount > $1.spent.amount }
+                }
+            } else {
+                updated.subcategories = []
+            }
             return updated
         }
     }
-    
+
     /// Builds the per-category transaction list shown when a budget row is expanded.
     ///
     /// Uses **calendar month** (purchase date) for filtering. Budget totals are also
@@ -261,10 +257,10 @@ public final class BudgetViewModel {
 
         let accounts = (try? await accountsTask) ?? []
         let accountsById = Dictionary(uniqueKeysWithValues: accounts.map { ($0.id, $0) })
-        
+
         // Identify credit card accounts
         let creditAccountIds = Set(accounts.filter { $0.type == .credit }.map(\.id))
-        
+
         // Fetch bills for each credit card account
         var bills: [Bill] = []
         if let billsRepo = billsRepository {
@@ -282,26 +278,26 @@ public final class BudgetViewModel {
         } else {
             print("❌ [Budget] BillsRepository is nil")
         }
-        
+
         if let txs = try? await txTask {
             // Calculate forecastToDueOffset
             let forecastToDueOffset = Self.inferForecastToDueOffset(
                 transactions: txs.filter { $0.creditCardMetadata != nil },
                 bills: bills
             )
-            
+
             // Debug: Log transactions with credit card metadata
             let txsWithMeta = txs.filter { $0.creditCardMetadata != nil || $0.billId != nil }
             print("🔍 [Budget] Transactions with credit metadata: \(txsWithMeta.count)/\(txs.count)")
             print("🔍 [Budget] Bills fetched: \(bills.count)")
             print("🔍 [Budget] Forecast to due offset: \(forecastToDueOffset)")
             print("🔍 [Budget] Credit account IDs: \(creditAccountIds)")
-            
+
             for tx in txs {
                 // Use calendar month for transaction list (not due month)
                 // This shows purchases made in the selected month, regardless of billing month
                 let calendarMonth = Self.ymFromIso(tx.date.isoString)
-                
+
                 // Debug: Log first few transactions
                 if map.values.flatMap({ $0 }).count < 5 {
                     let dueMonth = Self.txDueMonth(
@@ -313,15 +309,30 @@ public final class BudgetViewModel {
                     let isCard = creditAccountIds.contains(tx.accountId)
                     print("🔍 [Budget] TX: \(tx.description.prefix(30)) | Calendar: \(calendarMonth ?? "nil") | Due: \(dueMonth ?? "nil") | IsCard: \(isCard) | Selected: \(selectedMonth.key)")
                 }
-                
+
                 guard calendarMonth == selectedMonth.key else { continue }
                 guard tx.kind == .debit else { continue }
                 guard !Self.isBillPayment(tx.description) else { continue }
-                let label = BudgetCategoryCatalog.translateCategory(tx.category)
+                let baseKey = BudgetCategoryCatalog.resolveBudgetCategoryKey(tx.category)
+                let subLabel = BudgetCategoryCatalog.translateCategory(tx.category)
+                let canonicalSub = BudgetCategoryCatalog.canonicalBudgetCategoryKey(tx.category)
                 let accountName = accountsById[tx.accountId]?.name ?? "Conta"
-                map[label, default: []].append(
-                    BudgetTransactionItem(id: tx.id, description: tx.description, date: tx.date, amount: tx.amount, isMeal: false, accountName: accountName)
+                let item = BudgetTransactionItem(
+                    id: tx.id,
+                    description: tx.description,
+                    date: tx.date,
+                    amount: tx.amount,
+                    isMeal: false,
+                    accountName: accountName,
+                    subCategoryLabel: subLabel
                 )
+                map[baseKey, default: []].append(item)
+                if BudgetCategoryCatalog.isSubcategory(canonicalSub) {
+                    map[canonicalSub, default: []].append(item)
+                }
+                if subLabel != baseKey {
+                    map[subLabel, default: []].append(item)
+                }
             }
         }
 
@@ -329,18 +340,34 @@ public final class BudgetViewModel {
             for benefit in benefits {
                 for purchase in benefit.purchases {
                     guard purchase.purchasedAt.yearMonth == selectedMonth else { continue }
-                    let category = purchase.category.isEmpty
+                    let rawCategory = purchase.category.isEmpty
                         ? benefit.kind.defaultBudgetCategory
                         : purchase.category
+                    let baseKey = BudgetCategoryCatalog.resolveBudgetCategoryKey(rawCategory)
+                    let subLabel = BudgetCategoryCatalog.translateCategory(rawCategory)
+                    let canonicalSub = BudgetCategoryCatalog.canonicalBudgetCategoryKey(rawCategory)
                     let description = purchase.description.isEmpty
                         ? (benefit.kind == .vr ? "VR — compra" : "VA — compra")
                         : purchase.description
                     let accountName = benefit.label.isEmpty
                         ? (benefit.kind == .vr ? "VR" : "VA")
                         : benefit.label
-                    map[category, default: []].append(
-                        BudgetTransactionItem(id: purchase.id, description: description, date: purchase.purchasedAt, amount: purchase.amount, isMeal: true, accountName: accountName)
+                    let item = BudgetTransactionItem(
+                        id: purchase.id,
+                        description: description,
+                        date: purchase.purchasedAt,
+                        amount: purchase.amount,
+                        isMeal: true,
+                        accountName: accountName,
+                        subCategoryLabel: subLabel
                     )
+                    map[baseKey, default: []].append(item)
+                    if BudgetCategoryCatalog.isSubcategory(canonicalSub) {
+                        map[canonicalSub, default: []].append(item)
+                    }
+                    if subLabel != baseKey {
+                        map[subLabel, default: []].append(item)
+                    }
                 }
             }
         }
@@ -348,25 +375,54 @@ public final class BudgetViewModel {
         for key in map.keys {
             map[key]?.sort { $0.date > $1.date }
         }
-        transactionsByCategory = map
-        
-        // Recalculate budget spending using calendar month to match transaction list
-        let allMealPurchases = (try? await benefitsTask)?.flatMap(\.purchases) ?? []
-        let allBenefits = (try? await benefitsTask) ?? []
-        if let txs = try? await txTask {
-            recalculateSpendingByCalendarMonth(
-                transactions: txs,
-                mealPurchases: allMealPurchases,
-                mealBenefits: allBenefits
-            )
+
+        // Alias display labels and category keys so lookup always succeeds
+        for limit in limits {
+            if BudgetCategoryCatalog.isSubcategory(limit.category) {
+                let canonical = BudgetCategoryCatalog.canonicalBudgetCategoryKey(limit.category)
+                let label = BudgetCategoryCatalog.label(forCategory: limit.category)
+                let items = map[canonical] ?? map[limit.category] ?? map[label] ?? map[limit.displayLabel] ?? []
+                if !items.isEmpty {
+                    map[limit.category] = items
+                    map[limit.displayLabel] = items
+                    map[canonical] = items
+                    map[label] = items
+                }
+            } else {
+                let baseKey = BudgetCategoryCatalog.resolveBudgetCategoryKey(limit.category)
+                let items = map[baseKey] ?? map[limit.category] ?? map[limit.displayLabel] ?? []
+                if !items.isEmpty {
+                    map[limit.category] = items
+                    map[limit.displayLabel] = items
+                    map[baseKey] = items
+                }
+            }
         }
+
+        transactionsByCategory = map
+        syncLimitsWithTransactions()
     }
 
     public var isEditing: Bool { editingCategory != nil }
     
     /// Groups transactions by budget period for display with period headers and totals.
     public func groupedTransactions(for category: String, period: BudgetPeriod) -> [BudgetPeriodGroup] {
-        let items = transactionsByCategory[category] ?? []
+        let items: [BudgetTransactionItem]
+        if BudgetCategoryCatalog.isSubcategory(category) {
+            let canonical = BudgetCategoryCatalog.canonicalBudgetCategoryKey(category)
+            let label = BudgetCategoryCatalog.label(forCategory: category)
+            items = transactionsByCategory[canonical]
+                ?? transactionsByCategory[category]
+                ?? transactionsByCategory[label]
+                ?? transactionsByCategory[BudgetCategoryCatalog.label(forCategory: canonical)]
+                ?? []
+        } else {
+            let baseKey = BudgetCategoryCatalog.resolveBudgetCategoryKey(category)
+            items = transactionsByCategory[category]
+                ?? transactionsByCategory[baseKey]
+                ?? transactionsByCategory[BudgetCategoryCatalog.label(forBaseKey: baseKey)]
+                ?? []
+        }
         if items.isEmpty { return [] }
         
         var groups: [String: (label: String, items: [BudgetTransactionItem], sortDate: InstantDate)] = [:]
@@ -411,25 +467,68 @@ public final class BudgetViewModel {
         return sorted
     }
 
+    public var categoryHierarchyGroups: [BudgetCategoryCatalog.CategoryHierarchyGroup] {
+        let taken = Set(limits.filter(\.hasLimit).map {
+            BudgetCategoryCatalog.canonicalBudgetCategoryKey($0.category)
+        })
+        return BudgetCategoryCatalog.hierarchy.compactMap { group in
+            if BudgetCategoryCatalog.excludedCategories.contains(group.parent.key) ||
+               BudgetCategoryCatalog.excludedCategories.contains(group.parent.label) {
+                return nil
+            }
+            let availableSubs = group.subcategories.filter { sub in
+                !taken.contains(sub.key) &&
+                !BudgetCategoryCatalog.excludedCategories.contains(sub.key) &&
+                !BudgetCategoryCatalog.excludedCategories.contains(sub.label)
+            }
+            let isParentAvailable = !taken.contains(group.parent.key)
+            if !isParentAvailable && availableSubs.isEmpty {
+                return nil
+            }
+            return BudgetCategoryCatalog.CategoryHierarchyGroup(
+                parent: group.parent,
+                subcategories: availableSubs
+            )
+        }
+    }
+
+    public func isCategoryTaken(_ key: String) -> Bool {
+        let canonical = BudgetCategoryCatalog.canonicalBudgetCategoryKey(key)
+        return limits.contains { $0.hasLimit && BudgetCategoryCatalog.canonicalBudgetCategoryKey($0.category) == canonical }
+    }
+
     public var categoryPickerLabels: [String] {
-        var labels = Set(BudgetCategoryCatalog.labels)
-        for category in PurchaseCategoryCatalog.resolved(purchaseCategories) {
-            labels.insert(category.label)
+        var labels: [String] = []
+        var seen = Set<String>()
+
+        for group in BudgetCategoryCatalog.hierarchy {
+            if !BudgetCategoryCatalog.excludedCategories.contains(group.parent.key) &&
+               !seen.contains(group.parent.label) {
+                labels.append(group.parent.label)
+                seen.insert(group.parent.label)
+                seen.insert(group.parent.key)
+            }
+            for sub in group.subcategories {
+                if !BudgetCategoryCatalog.excludedCategories.contains(sub.key) &&
+                   !seen.contains(sub.label) {
+                    labels.append(sub.label)
+                    seen.insert(sub.label)
+                    seen.insert(sub.key)
+                }
+            }
         }
-        for limit in limits {
-            labels.insert(limit.category)
-        }
-        // Filter out excluded categories
-        return labels
-            .filter { !BudgetCategoryCatalog.excludedCategories.contains($0) }
-            .sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+
+        return labels.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
     }
 
     /// Categories available when creating a new meta (exclude ones that already have a limit and excluded categories).
     public var availableCategoriesForCreate: [String] {
-        let taken = Set(limits.filter(\.hasLimit).map(\.category))
-        return categoryPickerLabels.filter { 
-            !taken.contains($0) && !BudgetCategoryCatalog.excludedCategories.contains($0)
+        let taken = Set(limits.filter(\.hasLimit).map {
+            BudgetCategoryCatalog.canonicalBudgetCategoryKey($0.category)
+        })
+        return categoryPickerLabels.filter { label in
+            let canonical = BudgetCategoryCatalog.canonicalBudgetCategoryKey(label)
+            return !taken.contains(canonical) && !BudgetCategoryCatalog.excludedCategories.contains(label)
         }
     }
 
@@ -478,10 +577,18 @@ public final class BudgetViewModel {
         editingCategory = nil
         draftPeriod = .monthly
         draftLimit = ""
-        let available = availableCategoriesForCreate
-        draftCategory = available.first
-            ?? categoryPickerLabels.first
-            ?? BudgetCategoryCatalog.labels[0]
+        let availableGroups = categoryHierarchyGroups
+        if let firstGroup = availableGroups.first {
+            if !isCategoryTaken(firstGroup.parent.key) {
+                draftCategory = firstGroup.parent.key
+            } else if let firstSub = firstGroup.subcategories.first {
+                draftCategory = firstSub.key
+            } else {
+                draftCategory = firstGroup.parent.key
+            }
+        } else {
+            draftCategory = "Food and drinks"
+        }
     }
 
     public func beginEdit(_ limit: BudgetLimit) {
@@ -534,9 +641,26 @@ public final class BudgetViewModel {
             if let loaded = try? await categoriesTask {
                 purchaseCategories = PurchaseCategoryCatalog.resolved(loaded)
             }
-            await loadTransactionsByCategory(force: force)
-            if !categoryPickerLabels.contains(draftCategory) {
-                draftCategory = categoryPickerLabels.first ?? BudgetCategoryCatalog.labels[0]
+            
+            // Populate transactionsByCategory directly from limits returned by the BFF
+            var map: [String: [BudgetTransactionItem]] = [:]
+            for limit in limits {
+                if !limit.transactions.isEmpty {
+                    map[limit.category] = limit.transactions
+                    map[limit.displayLabel] = limit.transactions
+                    if BudgetCategoryCatalog.isSubcategory(limit.category) {
+                        let subKey = BudgetCategoryCatalog.canonicalBudgetCategoryKey(limit.category)
+                        map[subKey] = limit.transactions
+                    } else {
+                        let baseKey = BudgetCategoryCatalog.resolveBudgetCategoryKey(limit.category)
+                        map[baseKey] = limit.transactions
+                    }
+                }
+            }
+            if !map.isEmpty {
+                self.transactionsByCategory = map
+            } else {
+                await loadTransactionsByCategory(force: force)
             }
             // Keep loaded UI when there are spend rows without metas (parity with web).
             state = limits.isEmpty ? .empty : .loaded(limits)
@@ -554,13 +678,17 @@ public final class BudgetViewModel {
 
     public func saveDraft() async {
         guard let repository else { return }
-        let category = (editingCategory ?? draftCategory)
+        let rawCategory = (editingCategory ?? draftCategory)
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let amount = Decimal(string: draftLimit.replacingOccurrences(of: ",", with: ".")) ?? 0
-        guard !category.isEmpty, amount > 0 else {
+        guard !rawCategory.isEmpty, amount > 0 else {
             errorMessage = "Informe categoria e valor da meta."
             return
         }
+        let category = BudgetCategoryCatalog.canonicalBudgetCategoryKey(rawCategory)
+        let isSub = BudgetCategoryCatalog.isSubcategory(category)
+        let parentLabel = BudgetCategoryCatalog.parentLabel(forSubcategory: category)
+        let displayLabel = BudgetCategoryCatalog.label(forCategory: category)
         let money = Money(amount: amount)
         let limit = BudgetLimit(
             id: editingCategory ?? category,
@@ -571,7 +699,10 @@ public final class BudgetViewModel {
             period: draftPeriod,
             periodAmount: money,
             monthCap: money,
-            hasLimit: true
+            hasLimit: true,
+            categoryLabel: displayLabel,
+            isSubcategory: isSub,
+            parentCategoryLabel: parentLabel
         )
         do {
             try await repository.saveLimit(limit)

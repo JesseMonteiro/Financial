@@ -86,16 +86,46 @@ public struct BudgetView: View {
         NavigationStack {
             Form {
                 if viewModel.isEditing {
-                    LabeledContent("Categoria", value: viewModel.draftCategory)
+                    LabeledContent("Categoria") {
+                        VStack(alignment: .trailing, spacing: 2) {
+                            Text(BudgetCategoryCatalog.label(forCategory: viewModel.draftCategory))
+                                .font(.body.weight(.medium))
+                            if BudgetCategoryCatalog.isSubcategory(viewModel.draftCategory),
+                               let parent = BudgetCategoryCatalog.parentLabel(forSubcategory: viewModel.draftCategory) {
+                                Text("Subcategoria de \(parent)")
+                                    .font(.caption2)
+                                    .foregroundStyle(MeuFluxColors.textMuted)
+                            }
+                        }
+                    }
                 } else {
                     Picker("Categoria", selection: $viewModel.draftCategory) {
-                        ForEach(
-                            viewModel.availableCategoriesForCreate.isEmpty
-                                ? viewModel.categoryPickerLabels
-                                : viewModel.availableCategoriesForCreate,
-                            id: \.self
-                        ) { label in
-                            Text(label).tag(label)
+                        ForEach(viewModel.categoryHierarchyGroups) { group in
+                            Section(header: Text(group.parent.label)) {
+                                if !viewModel.isCategoryTaken(group.parent.key) {
+                                    HStack {
+                                        Text("\(group.parent.label) (Todas as despesas)")
+                                        Spacer()
+                                        Text("Principal")
+                                            .font(.system(size: 10, weight: .semibold))
+                                            .foregroundStyle(MeuFluxColors.primary)
+                                            .padding(.horizontal, 6)
+                                            .padding(.vertical, 2)
+                                            .background(MeuFluxColors.primary.opacity(0.12), in: Capsule())
+                                    }
+                                    .tag(group.parent.key)
+                                }
+                                ForEach(group.subcategories) { sub in
+                                    HStack {
+                                        Text("  ↳ \(sub.label)")
+                                        Spacer()
+                                        Text("Subcategoria")
+                                            .font(.system(size: 10))
+                                            .foregroundStyle(MeuFluxColors.textMuted)
+                                    }
+                                    .tag(sub.key)
+                                }
+                            }
                         }
                     }
                 }
@@ -305,9 +335,16 @@ public struct BudgetView: View {
 
                     VStack(alignment: .leading, spacing: 6) {
                         HStack(alignment: .firstTextBaseline) {
-                            Text(limit.category)
-                                .font(.subheadline.weight(.semibold))
-                                .lineLimit(2)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(limit.displayLabel)
+                                    .font(.subheadline.weight(.semibold))
+                                    .lineLimit(2)
+                                if limit.isSubcategory, let parent = limit.parentCategoryLabel {
+                                    Text("Subcategoria de \(parent)")
+                                        .font(.system(size: 11))
+                                        .foregroundStyle(MeuFluxColors.textMuted)
+                                }
+                            }
                             Spacer(minLength: 8)
                             HStack(spacing: 2) {
                                 Text(limit.spent.formatted())
@@ -322,6 +359,9 @@ public struct BudgetView: View {
                         }
 
                         WrappingHStack(spacing: 6, lineSpacing: 4) {
+                            if limit.isSubcategory {
+                                StatusBadge("Subcategoria", style: .info)
+                            }
                             if isOver {
                                 StatusBadge("Estourado", style: .danger)
                             } else if isNear {
@@ -348,11 +388,39 @@ public struct BudgetView: View {
                         .foregroundStyle(MeuFluxColors.textMuted)
                 }
 
+                if !limit.subcategories.isEmpty {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 6) {
+                            ForEach(limit.subcategories) { sub in
+                                HStack(spacing: 4) {
+                                    Text("\(sub.label):")
+                                        .font(.system(size: 11))
+                                        .foregroundStyle(MeuFluxColors.textMuted)
+                                    Text(sub.spent.formatted())
+                                        .font(.system(size: 11, weight: .semibold))
+                                        .foregroundStyle(MeuFluxColors.textPrimary)
+                                }
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(MeuFluxColors.bgSecondary)
+                                .cornerRadius(4)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 4)
+                                        .stroke(MeuFluxColors.border, lineWidth: 1)
+                                )
+                            }
+                        }
+                    }
+                }
+
                 if viewModel.expandedCategory == limit.category {
                     Divider()
                         .padding(.vertical, 4)
 
-                    let items = viewModel.transactionsByCategory[limit.category] ?? []
+                    let items = viewModel.transactionsByCategory[limit.category]
+                        ?? viewModel.transactionsByCategory[limit.displayLabel]
+                        ?? viewModel.transactionsByCategory[BudgetCategoryCatalog.resolveBudgetCategoryKey(limit.category)]
+                        ?? []
                     let periodGroups = viewModel.groupedTransactions(for: limit.category, period: limit.period)
                     let showPeriodGroups = limit.period != .monthly && periodGroups.count > 1
                     
@@ -392,7 +460,7 @@ public struct BudgetView: View {
                                         .padding(.bottom, 2)
                                         
                                         ForEach(group.transactions) { item in
-                                            transactionRow(item, isGrouped: true)
+                                            transactionRow(item, limit: limit, isGrouped: true)
                                         }
                                     }
                                     .padding(12)
@@ -416,7 +484,7 @@ public struct BudgetView: View {
                         } else {
                             VStack(alignment: .leading, spacing: 6) {
                                 ForEach(items) { item in
-                                    transactionRow(item)
+                                    transactionRow(item, limit: limit)
                                 }
                             }
                         }
@@ -461,9 +529,28 @@ public struct BudgetView: View {
     }
 
     @ViewBuilder
-    private func transactionRow(_ item: BudgetTransactionItem, isGrouped: Bool = false) -> some View {
+    private func subCategoryBadge(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 9, weight: .semibold))
+            .foregroundStyle(MeuFluxColors.primary)
+            .padding(.horizontal, 4)
+            .padding(.vertical, 1)
+            .background(MeuFluxColors.primary.opacity(0.08))
+            .cornerRadius(3)
+            .overlay(
+                RoundedRectangle(cornerRadius: 3)
+                    .stroke(MeuFluxColors.primary.opacity(0.2), lineWidth: 1)
+            )
+    }
+
+    @ViewBuilder
+    private func transactionRow(_ item: BudgetTransactionItem, limit: BudgetLimit, isGrouped: Bool = false) -> some View {
         let d = item.date
         let dateLabel = String(format: "%02d/%02d/%04d", d.day, d.month, d.year)
+        let showSub = item.subCategoryLabel.map { !$0.isEmpty && $0 != limit.displayLabel } ?? false
+        let bg = isGrouped ? MeuFluxColors.bgPrimary : MeuFluxColors.bgSecondary
+        let strokeColor = isGrouped ? MeuFluxColors.border : Color.clear
+
         HStack(alignment: .center, spacing: 8) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.description)
@@ -485,6 +572,9 @@ public struct BudgetView: View {
                             RoundedRectangle(cornerRadius: 3)
                                 .stroke(MeuFluxColors.border, lineWidth: 1)
                         )
+                    if showSub, let sub = item.subCategoryLabel {
+                        subCategoryBadge(sub)
+                    }
                     if item.isMeal {
                         StatusBadge("VA/VR", style: .info)
                     }
@@ -497,12 +587,12 @@ public struct BudgetView: View {
         }
         .padding(8)
         .background(
-            isGrouped ? MeuFluxColors.bgPrimary : MeuFluxColors.bgSecondary,
+            bg,
             in: RoundedRectangle(cornerRadius: 8, style: .continuous)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(isGrouped ? MeuFluxColors.border : Color.clear, lineWidth: 1)
+                .stroke(strokeColor, lineWidth: 1)
         )
     }
 

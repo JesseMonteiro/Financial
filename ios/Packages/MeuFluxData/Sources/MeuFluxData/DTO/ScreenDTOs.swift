@@ -21,9 +21,25 @@ public struct BudgetScreenDTO: Decodable, Sendable {
     public let calculationVersion: String?
 }
 
+public struct BudgetSubcategoryRowDTO: Decodable, Sendable {
+    public let label: String
+    public let spent: Double
+}
+
+public struct BudgetScreenTransactionDTO: Decodable, Sendable {
+    public let id: String
+    public let description: String
+    public let date: String
+    public let amount: Double
+    public let isMeal: Bool
+    public let accountName: String
+    public let subCategoryLabel: String?
+}
+
 public struct BudgetScreenRowDTO: Decodable, Sendable {
     public let id: String?
     public let category: String
+    public let categoryLabel: String?
     public let spent: Double
     public let limit: Double
     public let hasLimit: Bool?
@@ -36,6 +52,8 @@ public struct BudgetScreenRowDTO: Decodable, Sendable {
     public let periodCount: Int?
     public let spentBank: Double?
     public let spentMeal: Double?
+    public let subcategories: [BudgetSubcategoryRowDTO]?
+    public let transactions: [BudgetScreenTransactionDTO]?
 }
 
 public struct ReportsScreenDTO: Decodable, Sendable {

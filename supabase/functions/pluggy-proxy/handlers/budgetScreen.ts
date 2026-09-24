@@ -63,6 +63,8 @@ export async function handleBudgetScreen(client: PluggyClient, url: URL): Promis
     creditIds,
     mealBenefitsRes.data || [],
     mealPurchasesRes.data || [],
+    undefined,
+    accounts,
   );
   return jsonResponse({ month, categories: rows });
 }
