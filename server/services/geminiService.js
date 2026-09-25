@@ -19,7 +19,7 @@ Tipos de transação suportados: DEBIT (para gastos/despesas), CREDIT (para ganh
 
 Você deve retornar APENAS um JSON no seguinte formato:
 {
-  "intent": "ADD_TRANSACTION" | "GET_BALANCE" | "GET_CREDIT_BILLS" | "GET_TRANSACTIONS" | "GET_WEEKLY_SUMMARY" | "UNKNOWN",
+  "intent": "ADD_TRANSACTION" | "GET_BALANCE" | "GET_CREDIT_BILLS" | "GET_TRANSACTIONS" | "GET_WEEKLY_SUMMARY" | "GET_DAILY_SUMMARY" | "UNKNOWN",
   "data": {
     "amount": number (obrigatório para ADD_TRANSACTION),
     "description": string (obrigatório para ADD_TRANSACTION),
@@ -35,6 +35,7 @@ Regras de intent (importante):
 - GET_CREDIT_BILLS: fatura, dívida ou limite de cartão de crédito. Exemplos: "minhas faturas", "fatura do cartão", "quanto está a fatura", "limite do cartão".
 - GET_TRANSACTIONS: extrato ou últimos lançamentos.
 - GET_WEEKLY_SUMMARY: resumo da semana, quanto gastei esta semana, recap semanal. Exemplos: "resumo da semana", "quanto gastei essa semana", "/resumo".
+- GET_DAILY_SUMMARY: resumo do dia anterior / ontem, quanto gastei ontem, transações de ontem, balanço de ontem. Exemplos: "resumo de ontem", "quanto gastei ontem", "gastos de ontem", "/ontem", "/diario".
 - ADD_TRANSACTION: registrar gasto ou receita.
 
 Exemplos de entrada e saída:
@@ -54,8 +55,12 @@ Exemplos de entrada e saída:
   {"intent": "GET_TRANSACTIONS", "data": {}}
 - "resumo da semana" ->
   {"intent": "GET_WEEKLY_SUMMARY", "data": {}}
+- "resumo de ontem" ->
+  {"intent": "GET_DAILY_SUMMARY", "data": {}}
+- "quanto gastei ontem?" ->
+  {"intent": "GET_DAILY_SUMMARY", "data": {}}
 - "olá, tudo bem?" ->
-  {"intent": "UNKNOWN", "message": "Olá! Eu sou o assistente do MeuFlux. Posso te ajudar com saldo (/saldo), faturas (/faturas), resumo semanal (/resumo) ou cadastrar despesas (ex: 'gastei 50 no mercado'). Como posso ajudar?"}
+  {"intent": "UNKNOWN", "message": "Olá! Eu sou o assistente do MeuFlux. Posso te ajudar com saldo (/saldo), faturas (/faturas), resumo de ontem (/ontem), resumo semanal (/resumo) ou cadastrar despesas (ex: 'gastei 50 no mercado'). Como posso ajudar?"}
 `;
 
 /**

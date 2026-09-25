@@ -3,7 +3,8 @@ import { checkAuth } from '../middleware/auth.js';
 import { getSupabaseClient, getServiceRoleClient } from '../services/supabaseClient.js';
 import { createPluggyClient } from '../services/pluggyClient.js';
 import { parseNaturalLanguageCommand, transcribeAudioCommand } from '../services/geminiService.js';
-import { summarizeCardOpenBill } from '../../src/utils/creditBillPeriod.js';
+import { summarizeCardOpenBill, isBillPayment } from '../../src/utils/creditBillPeriod.js';
+import { translateCategory } from '../../src/utils/categories.js';
 import axios from 'axios';
 
 const router = Router();
@@ -39,12 +40,58 @@ function accountDisplayName(profile, account) {
   return account?.name || 'Conta';
 }
 
-// Helper para enviar mensagens para o Telegram
-async function sendTelegramMessage(chatId, text) {
+/** Escapa caracteres especiais para modo Markdown do Telegram */
+export function escapeTelegramMd(text) {
+  if (!text) return '';
+  return String(text).replace(/([_*\[\]`])/g, '\\$1');
+}
+
+/** Retorna emoji correspondente à categoria */
+export function getCategoryEmoji(category) {
+  const c = String(category || '').toLowerCase().normalize('NFD').replace(/\p{M}/gu, '');
+  if (c.includes('alimenta') || c.includes('comida') || c.includes('restaurante') || c.includes('food') || c.includes('refeic') || c.includes('bar') || c.includes('cafe')) return '🍔';
+  if (c.includes('mercado') || c.includes('supermercado') || c.includes('grocer') || c.includes('feira') || c.includes('hortifruti')) return '🛒';
+  if (c.includes('transporte') || c.includes('uber') || c.includes('99') || c.includes('combustivel') || c.includes('posto') || c.includes('gasolina') || c.includes('onibus') || c.includes('metro') || c.includes('estacionamento') || c.includes('pedagio')) return '🚗';
+  if (c.includes('moradia') || c.includes('habitacao') || c.includes('aluguel') || c.includes('condominio') || c.includes('luz') || c.includes('energia') || c.includes('agua') || c.includes('gas') || c.includes('internet')) return '🏠';
+  if (c.includes('saude') || c.includes('farmacia') || c.includes('droga') || c.includes('medico') || c.includes('hospital') || c.includes('consulta') || c.includes('dentista') || c.includes('exame')) return '💊';
+  if (c.includes('educacao') || c.includes('curso') || c.includes('escola') || c.includes('faculdade') || c.includes('livr') || c.includes('livro')) return '📚';
+  if (c.includes('lazer') || c.includes('cinema') || c.includes('show') || c.includes('viag') || c.includes('hotel') || c.includes('passeio') || c.includes('jogos') || c.includes('game')) return '🎉';
+  if (c.includes('servico') || c.includes('assinatura') || c.includes('streaming') || c.includes('netflix') || c.includes('spotify') || c.includes('nuvem')) return '⚡';
+  if (c.includes('compra') || c.includes('shopping') || c.includes('shopee') || c.includes('amazon') || c.includes('mercado livre') || c.includes('vestuario') || c.includes('roupa')) return '🛍️';
+  if (c.includes('renda') || c.includes('salario') || c.includes('investimento') || c.includes('dividendo') || c.includes('provento') || c.includes('pix')) return '💰';
+  if (c.includes('imposto') || c.includes('taxa') || c.includes('tarifa') || c.includes('iof') || c.includes('tributo')) return '🧾';
+  if (c.includes('pets') || c.includes('veterinario') || c.includes('racao')) return '🐾';
+  return '📂';
+}
+
+/** Retorna informações do dia anterior no fuso horário de São Paulo (UTC-3) */
+export function getYesterdayDateInfo(referenceDate = new Date()) {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  const todayStr = formatter.format(referenceDate);
+  const [y, m, d] = todayStr.split('-').map(Number);
+  const yesterdayUtc = new Date(Date.UTC(y, m - 1, d - 1));
+  const yesterdayStr = yesterdayUtc.toISOString().slice(0, 10);
+  const [yy, mm, dd] = yesterdayStr.split('-');
+  const displayDate = `${dd}/${mm}/${yy}`;
+
+  return {
+    todayStr,
+    yesterdayStr,
+    displayDate,
+  };
+}
+
+// Helper para enviar mensagens para o Telegram com fallback seguro
+export async function sendTelegramMessage(chatId, text) {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   if (!token) {
     console.error('[Telegram Chatbot] TELEGRAM_BOT_TOKEN não configurada!');
-    return;
+    return false;
   }
   const url = `https://api.telegram.org/bot${token}/sendMessage`;
   try {
@@ -53,8 +100,19 @@ async function sendTelegramMessage(chatId, text) {
       text: text,
       parse_mode: 'Markdown'
     });
+    return true;
   } catch (error) {
-    console.error('[Telegram Chatbot] Erro ao enviar mensagem:', error.response?.data || error.message);
+    console.warn('[Telegram Chatbot] Falha ao enviar com Markdown, tentando texto puro:', error.response?.data || error.message);
+    try {
+      await axios.post(url, {
+        chat_id: chatId,
+        text: text.replace(/[*_`]/g, '')
+      });
+      return true;
+    } catch (fallbackError) {
+      console.error('[Telegram Chatbot] Erro final ao enviar mensagem:', fallbackError.response?.data || fallbackError.message);
+      return false;
+    }
   }
 }
 
@@ -215,6 +273,14 @@ router.post('/telegram/webhook', async (req, res) => {
     ) {
       parsed = { intent: 'GET_BALANCE' };
     } else if (
+      normalized === '/ontem' ||
+      normalized === '/diario' ||
+      normalized === 'ontem' ||
+      normalized === 'diario' ||
+      /\b(resumo (de )?ontem|gastos? (de )?ontem|quanto gastei ontem|o que gastei ontem|transacoes (de )?ontem|lancamentos (de )?ontem|resumo diario)\b/.test(normalized)
+    ) {
+      parsed = { intent: 'GET_DAILY_SUMMARY' };
+    } else if (
       normalized === '/ultimos' ||
       normalized === 'extrato' ||
       /\b(extrato|ultimas? (compras|transacoes|lancamentos)|ultimos gastos)\b/.test(normalized)
@@ -232,7 +298,7 @@ router.post('/telegram/webhook', async (req, res) => {
         parsed = await parseNaturalLanguageCommand(text);
       } catch (geminiErr) {
         console.error('[Chatbot] Erro no Gemini:', geminiErr.message);
-        parsed = { intent: 'UNKNOWN', message: 'Desculpe, tive um problema de comunicação com minha inteligência artificial. Tente /saldo, /faturas, /resumo ou /ultimos.' };
+        parsed = { intent: 'UNKNOWN', message: 'Desculpe, tive um problema de comunicação com minha inteligência artificial. Tente /saldo, /faturas, /ontem, /resumo ou /ultimos.' };
       }
     }
 
@@ -249,6 +315,14 @@ router.post('/telegram/webhook', async (req, res) => {
         await sendTelegramMessage(chatId, '🔍 _Buscando faturas dos cartões..._');
         const billsText = await fetchUserCreditBillsText(profile);
         await sendTelegramMessage(chatId, billsText);
+        break;
+      }
+
+      case 'GET_DAILY_SUMMARY': {
+        await sendTelegramMessage(chatId, '🔍 _Montando resumo de ontem..._');
+        const summaryData = await fetchUserDailySummaryData(profile, supabase);
+        const summaryText = formatDailySummaryMessage(profile, summaryData);
+        await sendTelegramMessage(chatId, summaryText);
         break;
       }
 
@@ -301,7 +375,7 @@ router.post('/telegram/webhook', async (req, res) => {
 
       case 'UNKNOWN':
       default: {
-        const helpMessage = parsed.message || `Olá! Sou o assistente do MeuFlux.\n\nComo posso ajudar?\n- *Saldo das contas:* "Qual meu saldo?" ou /saldo\n- *Faturas do cartão:* "Minhas faturas" ou /faturas\n- *Resumo semanal:* "Resumo da semana" ou /resumo\n- *Despesas:* "Gastei 55 reais no supermercado hoje"`;
+        const helpMessage = parsed.message || `Olá! Sou o assistente do MeuFlux.\n\nComo posso ajudar?\n- *Saldo das contas:* "Qual meu saldo?" ou /saldo\n- *Faturas do cartão:* "Minhas faturas" ou /faturas\n- *Resumo de ontem:* "Resumo de ontem" ou /ontem\n- *Resumo semanal:* "Resumo da semana" ou /resumo\n- *Despesas:* "Gastei 55 reais no supermercado hoje"`;
         await sendTelegramMessage(chatId, helpMessage);
         break;
       }
@@ -702,5 +776,409 @@ async function fetchUserWeeklyRecapText(profile, supabase) {
     return '❌ Erro ao montar o resumo semanal.';
   }
 }
+
+/**
+ * Compila todas as informações do resumo do dia anterior:
+ * - Transações do dia anterior (Pluggy + Manual)
+ * - Agrupamento por categoria
+ * - Status consolidado atual (contas bancárias, carteira manual, faturas de cartão em aberto, saldo líquido)
+ */
+export async function fetchUserDailySummaryData(profile, supabase, options = {}) {
+  const targetDateStr = options.date || getYesterdayDateInfo().yesterdayStr;
+  const [yy, mm, dd] = targetDateStr.split('-');
+  const displayDate = `${dd}/${mm}/${yy}`;
+
+  const transactions = [];
+  const pluggyItemIds = asItemIdList(profile.pluggy_item_ids);
+  const creds = resolvePluggyCredentials(profile);
+
+  let accounts = [];
+  if (pluggyItemIds.length > 0 && creds) {
+    try {
+      accounts = await fetchPluggyAccounts(profile);
+    } catch (e) {
+      console.warn('[Chatbot Daily] Falha ao buscar contas Pluggy:', e.message);
+    }
+  }
+
+  // 1. Buscar transações do Pluggy na data alvo
+  if (accounts.length > 0 && creds) {
+    try {
+      const pluggyClient = await createPluggyClient(creds.clientId, creds.clientSecret);
+      const txPromises = accounts.map(async (acc) => {
+        try {
+          const res = await pluggyClient.get('/v2/transactions', {
+            params: { accountId: acc.id, from: targetDateStr, pageSize: 100 }
+          });
+          const list = res.data.results || res.data || [];
+          return (Array.isArray(list) ? list : []).map((t) => ({ ...t, _account: acc }));
+        } catch (e) {
+          console.warn(`[Chatbot Daily] Erro ao buscar transações da conta ${acc.id}:`, e.message);
+          return [];
+        }
+      });
+
+      const allAccountTxs = (await Promise.all(txPromises)).flat();
+      for (const t of allAccountTxs) {
+        const rawDate = String(t.date || '');
+        if (rawDate.slice(0, 10) === targetDateStr) {
+          const tAmount = Number(t.amount || 0);
+          const isPayment = isBillPayment(t);
+          const isDebit = tAmount < 0;
+          const translatedCat = translateCategory(t.category || 'Outros');
+          transactions.push({
+            id: t.id,
+            date: new Date(t.date),
+            rawDate,
+            description: t.description || 'Transação Bancária',
+            amount: tAmount,
+            absAmount: Math.abs(tAmount),
+            type: isDebit ? 'DEBIT' : 'CREDIT',
+            category: translatedCat,
+            accountName: accountDisplayName(profile, t._account),
+            origin: 'Banco',
+            isBillPayment: isPayment
+          });
+        }
+      }
+    } catch (e) {
+      console.warn('[Chatbot Daily] Falha geral nas transações Pluggy:', e.message);
+    }
+  }
+
+  // 2. Buscar transações manuais no Supabase na data alvo
+  try {
+    const { data: manualTxs, error: mError } = await supabase
+      .from('manual_transactions')
+      .select('id, date, description, amount, type, category')
+      .eq('user_id', profile.id)
+      .gte('date', targetDateStr)
+      .lt('date', `${targetDateStr}T23:59:59.999Z\uffff`);
+
+    if (!mError && manualTxs) {
+      for (const t of manualTxs) {
+        const rawDate = String(t.date || '');
+        if (rawDate.slice(0, 10) === targetDateStr) {
+          const numAmt = Number(t.amount || 0);
+          const isDebit = t.type === 'DEBIT' || numAmt < 0;
+          const absAmt = Math.abs(numAmt);
+          transactions.push({
+            id: t.id,
+            date: new Date(t.date),
+            rawDate,
+            description: t.description || 'Lançamento Manual',
+            amount: isDebit ? -absAmt : absAmt,
+            absAmount: absAmt,
+            type: isDebit ? 'DEBIT' : 'CREDIT',
+            category: translateCategory(t.category || 'Outros'),
+            accountName: 'Carteira Manual',
+            origin: 'Manual',
+            isBillPayment: false
+          });
+        }
+      }
+    }
+  } catch (mErr) {
+    console.warn('[Chatbot Daily] Falha ao buscar manual_transactions:', mErr.message);
+  }
+
+  // Ordenar transações por data mais recente
+  transactions.sort((a, b) => b.date.getTime() - a.date.getTime());
+
+  // 3. Totais e categorias do dia
+  let totalExpenses = 0;
+  let totalIncome = 0;
+  let expenseCount = 0;
+  let incomeCount = 0;
+  const categoryTotals = {};
+
+  for (const tx of transactions) {
+    if (tx.type === 'DEBIT') {
+      if (!tx.isBillPayment) {
+        totalExpenses += tx.absAmount;
+        expenseCount++;
+        const cat = tx.category || 'Outros';
+        categoryTotals[cat] = (categoryTotals[cat] || 0) + tx.absAmount;
+      }
+    } else {
+      if (!tx.isBillPayment) {
+        totalIncome += tx.absAmount;
+        incomeCount++;
+      }
+    }
+  }
+  const netDay = totalIncome - totalExpenses;
+
+  const sortedCategories = Object.entries(categoryTotals)
+    .sort((a, b) => b[1] - a[1])
+    .map(([category, amount]) => ({
+      category,
+      amount,
+      emoji: getCategoryEmoji(category),
+      percentage: totalExpenses > 0 ? (amount / totalExpenses) * 100 : 0
+    }));
+
+  // 4. Status Consolidado Atual
+  const bankAccounts = accounts.filter((a) => a.type === 'BANK');
+  let bankTotal = 0;
+  for (const acc of bankAccounts) {
+    const bal = Number(acc.balance || 0);
+    const boxes = (acc.bankData?.reservedBalances || []).map((item) => {
+      const amounts = Array.isArray(item?.availableAmounts) ? item.availableAmounts : [];
+      return amounts.reduce((sum, a) => sum + (Number(a?.amount) || 0), 0);
+    });
+    const reserved = boxes.reduce((sum, b) => sum + b, 0);
+    bankTotal += (bal + reserved);
+  }
+
+  let manualBalance = 0;
+  const { data: allManualTxs } = await supabase
+    .from('manual_transactions')
+    .select('amount, type')
+    .eq('user_id', profile.id);
+  if (allManualTxs) {
+    for (const tx of allManualTxs) {
+      const amt = Number(tx.amount || 0);
+      if (tx.type === 'DEBIT') manualBalance -= amt;
+      else manualBalance += amt;
+    }
+  }
+
+  const totalAvailable = bankTotal + manualBalance;
+
+  // Faturas de cartão em aberto
+  const creditCards = accounts.filter((a) => a.type === 'CREDIT');
+  let creditDebt = 0;
+  if (creditCards.length > 0 && creds) {
+    try {
+      const pluggyClient = await createPluggyClient(creds.clientId, creds.clientSecret);
+      for (const acc of creditCards) {
+        try {
+          const [bills, txs] = await Promise.all([
+            fetchPluggyBills(pluggyClient, acc.id),
+            fetchAllPluggyTransactions(pluggyClient, acc.id)
+          ]);
+          const summary = summarizeCardOpenBill(acc, txs, bills);
+          creditDebt += Number(summary.openTotal || 0);
+        } catch (e) {
+          console.warn('[Chatbot Daily] Falha ao resumir fatura:', acc.id, e.message);
+        }
+      }
+    } catch (e) {
+      console.warn('[Chatbot Daily] Erro ao buscar cartões:', e.message);
+    }
+  }
+
+  const netConsolidated = totalAvailable - creditDebt;
+
+  return {
+    targetDateStr,
+    displayDate,
+    transactions,
+    transactionCount: transactions.length,
+    hasTransactions: transactions.length > 0,
+    totalExpenses,
+    totalIncome,
+    expenseCount,
+    incomeCount,
+    netDay,
+    categories: sortedCategories,
+    consolidatedStatus: {
+      bankTotal,
+      manualBalance,
+      totalAvailable,
+      creditDebt,
+      netConsolidated,
+      hasBankAccounts: bankAccounts.length > 0,
+      hasCreditCards: creditCards.length > 0
+    }
+  };
+}
+
+/**
+ * Formata a mensagem Markdown para o Telegram
+ */
+export function formatDailySummaryMessage(profile, summaryData) {
+  const money = (v) => `R$ ${Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const userName = escapeTelegramMd(profile.display_name || 'você');
+
+  if (!summaryData.hasTransactions) {
+    let emptyMsg = `📅 *Resumo de Ontem — ${summaryData.displayDate}*\n`;
+    emptyMsg += `_Olá, ${userName}!_\n\n`;
+    emptyMsg += `ℹ️ *Nenhuma transação foi realizada no dia anterior.*\n\n`;
+    emptyMsg += `━━━━━━━━━━━━━━━━━━━━\n`;
+    emptyMsg += `📊 *Status Consolidado Atual:*\n`;
+    emptyMsg += `🏦 Contas & Reservas: *${money(summaryData.consolidatedStatus.bankTotal)}*\n`;
+    if (summaryData.consolidatedStatus.manualBalance !== 0) {
+      emptyMsg += `📦 Carteira manual: *${money(summaryData.consolidatedStatus.manualBalance)}*\n`;
+    }
+    if (summaryData.consolidatedStatus.hasCreditCards || summaryData.consolidatedStatus.creditDebt > 0) {
+      emptyMsg += `💳 Faturas em aberto: *${money(summaryData.consolidatedStatus.creditDebt)}*\n`;
+    }
+    emptyMsg += `💰 *Saldo líquido disponível:* *${money(summaryData.consolidatedStatus.netConsolidated)}*\n`;
+    return emptyMsg;
+  }
+
+  let text = `🌅 *Resumo de Ontem — ${summaryData.displayDate}*\n`;
+  text += `_Olá, ${userName}! Aqui está o resumo das suas movimentações do dia anterior:_\n\n`;
+
+  // Balanço do Dia
+  text += `📊 *Balanço do Dia:*\n`;
+  text += `💸 Despesas: *${money(summaryData.totalExpenses)}* (${summaryData.expenseCount} ${summaryData.expenseCount === 1 ? 'lançamento' : 'lançamentos'})\n`;
+  if (summaryData.totalIncome > 0) {
+    text += `💰 Receitas: *${money(summaryData.totalIncome)}* (${summaryData.incomeCount} ${summaryData.incomeCount === 1 ? 'entrada' : 'entradas'})\n`;
+  }
+  const netSign = summaryData.netDay > 0 ? '+' : '';
+  const netEmoji = summaryData.netDay >= 0 ? '🟢' : '🔴';
+  text += `${netEmoji} Resultado do dia: *${netSign}${money(summaryData.netDay)}*\n\n`;
+
+  // Gastos por Categoria
+  if (summaryData.categories.length > 0) {
+    text += `📂 *Gastos por Categoria:*\n`;
+    summaryData.categories.forEach((c) => {
+      text += `• ${c.emoji} *${escapeTelegramMd(c.category)}*: ${money(c.amount)} (${c.percentage.toFixed(0)}%)\n`;
+    });
+    text += `\n`;
+  }
+
+  // Lista de Transações
+  text += `📝 *Lançamentos de Ontem:*\n`;
+  const MAX_DISPLAY_TX = 15;
+  const displayedTxs = summaryData.transactions.slice(0, MAX_DISPLAY_TX);
+  displayedTxs.forEach((tx) => {
+    const isCredit = tx.type === 'CREDIT';
+    const prefix = isCredit ? '🟢' : '🔴';
+    const sign = isCredit ? '+' : '-';
+    const desc = escapeTelegramMd(tx.description);
+    const acc = escapeTelegramMd(tx.accountName);
+    const cat = escapeTelegramMd(tx.category);
+    text += `${prefix} *${desc}*\n     ${sign}${money(tx.absAmount)} • [${acc}] (${cat})\n`;
+  });
+
+  if (summaryData.transactions.length > MAX_DISPLAY_TX) {
+    text += `_... e mais ${summaryData.transactions.length - MAX_DISPLAY_TX} lançamentos._\n`;
+  }
+
+  text += `\n━━━━━━━━━━━━━━━━━━━━\n`;
+  text += `📊 *Status Consolidado Atual:*\n`;
+  text += `🏦 Contas & Reservas: *${money(summaryData.consolidatedStatus.bankTotal)}*\n`;
+  if (summaryData.consolidatedStatus.manualBalance !== 0) {
+    text += `📦 Carteira manual: *${money(summaryData.consolidatedStatus.manualBalance)}*\n`;
+  }
+  if (summaryData.consolidatedStatus.hasCreditCards || summaryData.consolidatedStatus.creditDebt > 0) {
+    text += `💳 Faturas em aberto: *${money(summaryData.consolidatedStatus.creditDebt)}*\n`;
+  }
+  text += `💰 *Saldo líquido disponível:* *${money(summaryData.consolidatedStatus.netConsolidated)}*\n`;
+
+  return text;
+}
+
+/**
+ * Envia o resumo diário para um perfil específico se houver transações (ou se force === true)
+ */
+export async function sendDailySummaryToUser(profile, supabase, options = {}) {
+  if (!profile.telegram_chat_id) {
+    return { skipped: true, reason: 'no_telegram_chat_id' };
+  }
+
+  const summaryData = await fetchUserDailySummaryData(profile, supabase, options);
+
+  // Regra central: envia apenas se houver transações no dia anterior (a menos que forçado)
+  if (!summaryData.hasTransactions && !options.force) {
+    console.log(`[Chatbot Daily] Usuário ${profile.display_name} (${profile.id}) sem transações em ${summaryData.targetDateStr}. Não enviando mensagem.`);
+    return { skipped: true, reason: 'no_transactions', date: summaryData.targetDateStr };
+  }
+
+  const messageText = formatDailySummaryMessage(profile, summaryData);
+
+  if (options.dryRun) {
+    console.log(`[Chatbot Daily] [DRY RUN] Mensagem para ${profile.display_name} (${profile.telegram_chat_id}):\n${messageText}`);
+    return { success: true, dryRun: true, messageText, summaryData };
+  }
+
+  const sent = await sendTelegramMessage(profile.telegram_chat_id, messageText);
+  if (sent) {
+    try {
+      await supabase
+        .from('profiles')
+        .update({ last_telegram_daily_summary_date: summaryData.targetDateStr })
+        .eq('id', profile.id);
+    } catch (updateErr) {
+      console.warn('[Chatbot Daily] Falha ao atualizar last_telegram_daily_summary_date:', updateErr.message);
+    }
+  }
+
+  return { success: sent, summaryData };
+}
+
+// 3. POST /api/chatbot/telegram/daily-summary (Executa o resumo diário para todos os usuários elegíveis)
+router.post('/telegram/daily-summary', async (req, res) => {
+  try {
+    let supabase;
+    try {
+      supabase = getServiceRoleClient();
+    } catch (e) {
+      supabase = getSupabaseClient(req);
+    }
+
+    const { date, userId, dryRun = false, force = false } = req.body || {};
+
+    let query = supabase
+      .from('profiles')
+      .select('id, display_name, telegram_chat_id, pluggy_item_ids, pluggy_client_id, pluggy_client_secret, custom_account_names, last_telegram_daily_summary_date')
+      .not('telegram_chat_id', 'is', null)
+      .neq('telegram_chat_id', '');
+
+    if (userId) {
+      query = query.eq('id', userId);
+    }
+
+    const { data: profiles, error } = await query;
+    if (error) throw error;
+
+    if (!profiles || profiles.length === 0) {
+      return res.json({ success: true, message: 'Nenhum usuário com Telegram conectado encontrado.', processed: 0, sent: 0 });
+    }
+
+    const targetDateInfo = date ? { yesterdayStr: date, displayDate: date } : getYesterdayDateInfo();
+    const results = [];
+
+    for (const profile of profiles) {
+      if (!force && profile.last_telegram_daily_summary_date === targetDateInfo.yesterdayStr) {
+        results.push({ userId: profile.id, name: profile.display_name, skipped: true, reason: 'already_sent_for_date' });
+        continue;
+      }
+
+      try {
+        const resUser = await sendDailySummaryToUser(profile, supabase, { date: targetDateInfo.yesterdayStr, dryRun, force });
+        results.push({ userId: profile.id, name: profile.display_name, ...resUser });
+      } catch (userErr) {
+        console.error(`[Chatbot Daily] Erro para usuário ${profile.id}:`, userErr);
+        results.push({ userId: profile.id, name: profile.display_name, error: userErr.message });
+      }
+    }
+
+    const sentCount = results.filter((r) => r.success && !r.dryRun).length;
+    const skippedCount = results.filter((r) => r.skipped).length;
+
+    res.json({
+      success: true,
+      date: targetDateInfo.yesterdayStr,
+      processed: profiles.length,
+      sent: sentCount,
+      skipped: skippedCount,
+      results
+    });
+  } catch (err) {
+    console.error('[Chatbot Daily Summary] Erro geral:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/chatbot/telegram/daily-summary para checagem ou trigger simples via GET
+router.get('/telegram/daily-summary', async (req, res) => {
+  req.body = { ...req.query };
+  return router.handle({ ...req, method: 'POST' }, res);
+});
 
 export default router;

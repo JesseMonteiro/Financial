@@ -2,7 +2,8 @@
 // Modular BFF: middleware + handlers + /v1 router; legacy unversioned paths preserved.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.8";
-import { summarizeCardOpenBill } from "./creditBillPeriod.ts";
+import { summarizeCardOpenBill, isBillPayment } from "./creditBillPeriod.ts";
+import { translateCategory } from "./utils/dashboardAnalytics.ts";
 import {
   CORS,
   correlationId,
@@ -68,17 +69,72 @@ function accountDisplayName(profile: TelegramProfile, account: { id?: string; na
   return account?.name || 'Conta';
 }
 
-async function sendTelegramMessage(chatId: string, text: string): Promise<void> {
+async function sendTelegramMessage(chatId: string, text: string): Promise<boolean> {
   const token = Deno.env.get('TELEGRAM_BOT_TOKEN');
   if (!token) {
     console.error('[telegram] TELEGRAM_BOT_TOKEN missing');
-    return;
+    return false;
   }
-  await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'Markdown' }),
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'Markdown' }),
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      console.warn('[telegram] Send with Markdown failed, retrying plain text:', errText);
+      const fallbackRes = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chat_id: chatId, text: text.replace(/[*_`]/g, '') }),
+      });
+      return fallbackRes.ok;
+    }
+    return true;
+  } catch (e) {
+    console.error('[telegram] sendTelegramMessage error:', e);
+    return false;
+  }
+}
+
+function escapeTelegramMd(text: string): string {
+  if (!text) return '';
+  return String(text).replace(/([_*\[\]`])/g, '\\$1');
+}
+
+function getCategoryEmojiEdge(category: string): string {
+  const c = String(category || '').toLowerCase().normalize('NFD').replace(/\p{M}/gu, '');
+  if (c.includes('alimenta') || c.includes('comida') || c.includes('restaurante') || c.includes('food') || c.includes('refeic') || c.includes('bar') || c.includes('cafe')) return '🍔';
+  if (c.includes('mercado') || c.includes('supermercado') || c.includes('grocer') || c.includes('feira') || c.includes('hortifruti')) return '🛒';
+  if (c.includes('transporte') || c.includes('uber') || c.includes('99') || c.includes('combustivel') || c.includes('posto') || c.includes('gasolina') || c.includes('onibus') || c.includes('metro') || c.includes('estacionamento') || c.includes('pedagio')) return '🚗';
+  if (c.includes('moradia') || c.includes('habitacao') || c.includes('aluguel') || c.includes('condominio') || c.includes('luz') || c.includes('energia') || c.includes('agua') || c.includes('gas') || c.includes('internet')) return '🏠';
+  if (c.includes('saude') || c.includes('farmacia') || c.includes('droga') || c.includes('medico') || c.includes('hospital') || c.includes('consulta') || c.includes('dentista') || c.includes('exame')) return '💊';
+  if (c.includes('educacao') || c.includes('curso') || c.includes('escola') || c.includes('faculdade') || c.includes('livr') || c.includes('livro')) return '📚';
+  if (c.includes('lazer') || c.includes('cinema') || c.includes('show') || c.includes('viag') || c.includes('hotel') || c.includes('passeio') || c.includes('jogos') || c.includes('game')) return '🎉';
+  if (c.includes('servico') || c.includes('assinatura') || c.includes('streaming') || c.includes('netflix') || c.includes('spotify') || c.includes('nuvem')) return '⚡';
+  if (c.includes('compra') || c.includes('shopping') || c.includes('shopee') || c.includes('amazon') || c.includes('mercado livre') || c.includes('vestuario') || c.includes('roupa')) return '🛍️';
+  if (c.includes('renda') || c.includes('salario') || c.includes('investimento') || c.includes('dividendo') || c.includes('provento') || c.includes('pix')) return '💰';
+  if (c.includes('imposto') || c.includes('taxa') || c.includes('tarifa') || c.includes('iof') || c.includes('tributo')) return '🧾';
+  if (c.includes('pets') || c.includes('veterinario') || c.includes('racao')) return '🐾';
+  return '📂';
+}
+
+function getYesterdayDateInfoEdge(referenceDate = new Date()): { todayStr: string; yesterdayStr: string; displayDate: string } {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
   });
+  const todayStr = formatter.format(referenceDate);
+  const [y, m, d] = todayStr.split('-').map(Number);
+  const yesterdayUtc = new Date(Date.UTC(y, m - 1, d - 1));
+  const yesterdayStr = yesterdayUtc.toISOString().slice(0, 10);
+  const [yy, mm, dd] = yesterdayStr.split('-');
+  const displayDate = `${dd}/${mm}/${yy}`;
+
+  return { todayStr, yesterdayStr, displayDate };
 }
 
 const MAX_VOICE_DURATION_SEC = 60;
@@ -205,12 +261,13 @@ async function parseIntentWithGemini(text: string): Promise<{ intent: string; da
   if (!apiKey) return { intent: 'UNKNOWN', message: 'Assistente de linguagem natural indisponível no momento.' };
 
   const system = `Você é o assistente do MeuFlux. Retorne APENAS JSON:
-{"intent":"ADD_TRANSACTION"|"GET_BALANCE"|"GET_CREDIT_BILLS"|"GET_TRANSACTIONS"|"GET_WEEKLY_SUMMARY"|"UNKNOWN","data":{"amount":number,"description":string,"category":string,"type":"DEBIT"|"CREDIT","date_offset_days":number},"message":string}
+{"intent":"ADD_TRANSACTION"|"GET_BALANCE"|"GET_CREDIT_BILLS"|"GET_TRANSACTIONS"|"GET_WEEKLY_SUMMARY"|"GET_DAILY_SUMMARY"|"UNKNOWN","data":{"amount":number,"description":string,"category":string,"type":"DEBIT"|"CREDIT","date_offset_days":number},"message":string}
 Regras de intent:
 - GET_BALANCE: saldo de conta corrente/poupança/banco (ex: "qual meu saldo?", "saldo das contas"). NÃO use para fatura ou cartão.
 - GET_CREDIT_BILLS: fatura/dívida/limite de cartão de crédito (ex: "minhas faturas", "fatura do cartão", "quanto está a fatura").
 - GET_TRANSACTIONS: extrato/últimos lançamentos.
 - GET_WEEKLY_SUMMARY: resumo da semana / quanto gastei esta semana / /resumo.
+- GET_DAILY_SUMMARY: resumo do dia anterior / ontem, quanto gastei ontem, transações de ontem, /ontem, /diario.
 - ADD_TRANSACTION: registrar gasto ou receita.
 Categorias: Alimentação, Transporte, Moradia, Lazer, Saúde, Educação, Outros.`;
 
@@ -358,6 +415,16 @@ function parseIntentLocally(text: string): { intent: string; data?: Record<strin
     /\b(saldo|quanto tenho|meu patrimonio|meus saldos|conta corrente|poupanca|saldo das contas)\b/.test(lower)
   ) {
     return { intent: 'GET_BALANCE' };
+  }
+
+  if (
+    lower === '/ontem' ||
+    lower === '/diario' ||
+    lower === 'ontem' ||
+    lower === 'diario' ||
+    /\b(resumo (de )?ontem|gastos? (de )?ontem|quanto gastei ontem|o que gastei ontem|transacoes (de )?ontem|lancamentos (de )?ontem|resumo diario)\b/.test(lower)
+  ) {
+    return { intent: 'GET_DAILY_SUMMARY' };
   }
 
   if (
@@ -766,6 +833,389 @@ async function buildWeeklyRecapText(profile: TelegramProfile, supabase: ReturnTy
   return text;
 }
 
+interface DailyTransactionItem {
+  id?: string;
+  date: Date;
+  rawDate: string;
+  description: string;
+  amount: number;
+  absAmount: number;
+  type: string;
+  category: string;
+  accountName: string;
+  origin: string;
+  isBillPayment: boolean;
+}
+
+interface DailySummaryResult {
+  targetDateStr: string;
+  displayDate: string;
+  transactions: DailyTransactionItem[];
+  transactionCount: number;
+  hasTransactions: boolean;
+  totalExpenses: number;
+  totalIncome: number;
+  expenseCount: number;
+  incomeCount: number;
+  netDay: number;
+  categories: Array<{ category: string; amount: number; emoji: string; percentage: number }>;
+  consolidatedStatus: {
+    bankTotal: number;
+    manualBalance: number;
+    totalAvailable: number;
+    creditDebt: number;
+    netConsolidated: number;
+    hasBankAccounts: boolean;
+    hasCreditCards: boolean;
+  };
+}
+
+async function buildDailySummaryDataEdge(
+  profile: TelegramProfile,
+  supabase: ReturnType<typeof createClient>,
+  options: { date?: string } = {}
+): Promise<DailySummaryResult> {
+  const targetDateStr = options.date || getYesterdayDateInfoEdge().yesterdayStr;
+  const [yy, mm, dd] = targetDateStr.split('-');
+  const displayDate = `${dd}/${mm}/${yy}`;
+
+  const transactions: DailyTransactionItem[] = [];
+  const accounts = await fetchPluggyAccountsForProfile(profile);
+  const creds = resolvePluggyCredentials(profile);
+
+  // 1. Pluggy transactions
+  if (accounts.length && creds) {
+    const client = { clientId: creds.clientId, clientSecret: creds.clientSecret };
+    for (const acc of accounts) {
+      try {
+        const d = (await pluggyJson(client, '/v2/transactions', {
+          params: { accountId: acc.id, from: targetDateStr, pageSize: 100 },
+        })) as { results?: Array<{ id?: string; date: string; description: string; amount: number; category?: string }> };
+
+        for (const t of d.results || []) {
+          const rawDate = String(t.date || '');
+          if (rawDate.slice(0, 10) === targetDateStr) {
+            const tAmount = Number(t.amount || 0);
+            const isPayment = isBillPayment(t);
+            const isDebit = tAmount < 0;
+            const translatedCat = translateCategory(t.category || 'Outros');
+            transactions.push({
+              id: t.id,
+              date: new Date(t.date),
+              rawDate,
+              description: t.description || 'Transação Bancária',
+              amount: tAmount,
+              absAmount: Math.abs(tAmount),
+              type: isDebit ? 'DEBIT' : 'CREDIT',
+              category: translatedCat,
+              accountName: accountDisplayName(profile, acc),
+              origin: 'Banco',
+              isBillPayment: isPayment,
+            });
+          }
+        }
+      } catch (e) {
+        console.warn('[daily-edge] txs fail', acc.id, e);
+      }
+    }
+  }
+
+  // 2. Manual transactions
+  try {
+    const { data: manualTxs } = await supabase
+      .from('manual_transactions')
+      .select('id, date, description, amount, type, category')
+      .eq('user_id', profile.id)
+      .gte('date', targetDateStr)
+      .lt('date', `${targetDateStr}T23:59:59.999Z\uffff`);
+
+    for (const t of manualTxs || []) {
+      const rawDate = String(t.date || '');
+      if (rawDate.slice(0, 10) === targetDateStr) {
+        const numAmt = Number(t.amount || 0);
+        const isDebit = t.type === 'DEBIT' || numAmt < 0;
+        const absAmt = Math.abs(numAmt);
+        transactions.push({
+          id: t.id,
+          date: new Date(t.date),
+          rawDate,
+          description: t.description || 'Lançamento Manual',
+          amount: isDebit ? -absAmt : absAmt,
+          absAmount: absAmt,
+          type: isDebit ? 'DEBIT' : 'CREDIT',
+          category: translateCategory(t.category || 'Outros'),
+          accountName: 'Carteira Manual',
+          origin: 'Manual',
+          isBillPayment: false,
+        });
+      }
+    }
+  } catch (mErr) {
+    console.warn('[daily-edge] manual fail', mErr);
+  }
+
+  transactions.sort((a, b) => b.date.getTime() - a.date.getTime());
+
+  // 3. Totals and categories
+  let totalExpenses = 0;
+  let totalIncome = 0;
+  let expenseCount = 0;
+  let incomeCount = 0;
+  const categoryTotals: Record<string, number> = {};
+
+  for (const tx of transactions) {
+    if (tx.type === 'DEBIT') {
+      if (!tx.isBillPayment) {
+        totalExpenses += tx.absAmount;
+        expenseCount++;
+        const cat = tx.category || 'Outros';
+        categoryTotals[cat] = (categoryTotals[cat] || 0) + tx.absAmount;
+      }
+    } else {
+      if (!tx.isBillPayment) {
+        totalIncome += tx.absAmount;
+        incomeCount++;
+      }
+    }
+  }
+  const netDay = totalIncome - totalExpenses;
+
+  const sortedCategories = Object.entries(categoryTotals)
+    .sort((a, b) => b[1] - a[1])
+    .map(([category, amount]) => ({
+      category,
+      amount,
+      emoji: getCategoryEmojiEdge(category),
+      percentage: totalExpenses > 0 ? (amount / totalExpenses) * 100 : 0,
+    }));
+
+  // 4. Status consolidado atual
+  const bankAccounts = accounts.filter((a) => a.type === 'BANK');
+  let bankTotal = 0;
+  for (const acc of bankAccounts) {
+    const bal = Number(acc.balance || 0);
+    const boxes = (acc.bankData?.reservedBalances || []).map((item) => {
+      const amounts = Array.isArray(item?.availableAmounts) ? item.availableAmounts : [];
+      return amounts.reduce((sum, a) => sum + (Number(a?.amount) || 0), 0);
+    });
+    const reserved = boxes.reduce((sum, b) => sum + b, 0);
+    bankTotal += (bal + reserved);
+  }
+
+  let manualBalance = 0;
+  const { data: allManualTxs } = await supabase
+    .from('manual_transactions')
+    .select('amount, type')
+    .eq('user_id', profile.id);
+  for (const tx of allManualTxs || []) {
+    const amt = Number(tx.amount || 0);
+    if (tx.type === 'DEBIT') manualBalance -= amt;
+    else manualBalance += amt;
+  }
+
+  const totalAvailable = bankTotal + manualBalance;
+
+  const creditCards = accounts.filter((a) => a.type === 'CREDIT');
+  let creditDebt = 0;
+  if (creditCards.length && creds) {
+    const client = { clientId: creds.clientId, clientSecret: creds.clientSecret };
+    for (const acc of creditCards) {
+      try {
+        const [bills, txs] = await Promise.all([
+          fetchPluggyBillsForAccount(client, acc.id),
+          fetchAllPluggyTransactionsForAccount(client, acc.id),
+        ]);
+        const summary = summarizeCardOpenBill(acc, txs, bills);
+        creditDebt += Number(summary.openTotal || 0);
+      } catch (e) {
+        console.warn('[daily-edge] bill fail', acc.id, e);
+      }
+    }
+  }
+
+  const netConsolidated = totalAvailable - creditDebt;
+
+  return {
+    targetDateStr,
+    displayDate,
+    transactions,
+    transactionCount: transactions.length,
+    hasTransactions: transactions.length > 0,
+    totalExpenses,
+    totalIncome,
+    expenseCount,
+    incomeCount,
+    netDay,
+    categories: sortedCategories,
+    consolidatedStatus: {
+      bankTotal,
+      manualBalance,
+      totalAvailable,
+      creditDebt,
+      netConsolidated,
+      hasBankAccounts: bankAccounts.length > 0,
+      hasCreditCards: creditCards.length > 0,
+    },
+  };
+}
+
+function formatDailySummaryMessageEdge(profile: TelegramProfile, summaryData: DailySummaryResult): string {
+  const money = (v: number) => `R$ ${Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const userName = escapeTelegramMd(profile.display_name || 'você');
+
+  if (!summaryData.hasTransactions) {
+    let emptyMsg = `📅 *Resumo de Ontem — ${summaryData.displayDate}*\n`;
+    emptyMsg += `_Olá, ${userName}!_\n\n`;
+    emptyMsg += `ℹ️ *Nenhuma transação foi realizada no dia anterior.*\n\n`;
+    emptyMsg += `━━━━━━━━━━━━━━━━━━━━\n`;
+    emptyMsg += `📊 *Status Consolidado Atual:*\n`;
+    emptyMsg += `🏦 Contas & Reservas: *${money(summaryData.consolidatedStatus.bankTotal)}*\n`;
+    if (summaryData.consolidatedStatus.manualBalance !== 0) {
+      emptyMsg += `📦 Carteira manual: *${money(summaryData.consolidatedStatus.manualBalance)}*\n`;
+    }
+    if (summaryData.consolidatedStatus.hasCreditCards || summaryData.consolidatedStatus.creditDebt > 0) {
+      emptyMsg += `💳 Faturas em aberto: *${money(summaryData.consolidatedStatus.creditDebt)}*\n`;
+    }
+    emptyMsg += `💰 *Saldo líquido disponível:* *${money(summaryData.consolidatedStatus.netConsolidated)}*\n`;
+    return emptyMsg;
+  }
+
+  let text = `🌅 *Resumo de Ontem — ${summaryData.displayDate}*\n`;
+  text += `_Olá, ${userName}! Aqui está o resumo das suas movimentações do dia anterior:_\n\n`;
+
+  // Balanço do Dia
+  text += `📊 *Balanço do Dia:*\n`;
+  text += `💸 Despesas: *${money(summaryData.totalExpenses)}* (${summaryData.expenseCount} ${summaryData.expenseCount === 1 ? 'lançamento' : 'lançamentos'})\n`;
+  if (summaryData.totalIncome > 0) {
+    text += `💰 Receitas: *${money(summaryData.totalIncome)}* (${summaryData.incomeCount} ${summaryData.incomeCount === 1 ? 'entrada' : 'entradas'})\n`;
+  }
+  const netSign = summaryData.netDay > 0 ? '+' : '';
+  const netEmoji = summaryData.netDay >= 0 ? '🟢' : '🔴';
+  text += `${netEmoji} Resultado do dia: *${netSign}${money(summaryData.netDay)}*\n\n`;
+
+  // Gastos por Categoria
+  if (summaryData.categories.length > 0) {
+    text += `📂 *Gastos por Categoria:*\n`;
+    for (const c of summaryData.categories) {
+      text += `• ${c.emoji} *${escapeTelegramMd(c.category)}*: ${money(c.amount)} (${c.percentage.toFixed(0)}%)\n`;
+    }
+    text += `\n`;
+  }
+
+  // Lista de Transações
+  text += `📝 *Lançamentos de Ontem:*\n`;
+  const MAX_DISPLAY_TX = 15;
+  const displayedTxs = summaryData.transactions.slice(0, MAX_DISPLAY_TX);
+  for (const tx of displayedTxs) {
+    const isCredit = tx.type === 'CREDIT';
+    const prefix = isCredit ? '🟢' : '🔴';
+    const sign = isCredit ? '+' : '-';
+    const desc = escapeTelegramMd(tx.description);
+    const acc = escapeTelegramMd(tx.accountName);
+    const cat = escapeTelegramMd(tx.category);
+    text += `${prefix} *${desc}*\n     ${sign}${money(tx.absAmount)} • [${acc}] (${cat})\n`;
+  }
+
+  if (summaryData.transactions.length > MAX_DISPLAY_TX) {
+    text += `_... e mais ${summaryData.transactions.length - MAX_DISPLAY_TX} lançamentos._\n`;
+  }
+
+  text += `\n━━━━━━━━━━━━━━━━━━━━\n`;
+  text += `📊 *Status Consolidado Atual:*\n`;
+  text += `🏦 Contas & Reservas: *${money(summaryData.consolidatedStatus.bankTotal)}*\n`;
+  if (summaryData.consolidatedStatus.manualBalance !== 0) {
+    text += `📦 Carteira manual: *${money(summaryData.consolidatedStatus.manualBalance)}*\n`;
+  }
+  if (summaryData.consolidatedStatus.hasCreditCards || summaryData.consolidatedStatus.creditDebt > 0) {
+    text += `💳 Faturas em aberto: *${money(summaryData.consolidatedStatus.creditDebt)}*\n`;
+  }
+  text += `💰 *Saldo líquido disponível:* *${money(summaryData.consolidatedStatus.netConsolidated)}*\n`;
+
+  return text;
+}
+
+async function sendDailySummaryToUserEdge(
+  profile: TelegramProfile,
+  supabase: ReturnType<typeof createClient>,
+  options: { date?: string; dryRun?: boolean; force?: boolean } = {}
+): Promise<{ success?: boolean; skipped?: boolean; reason?: string; summaryData?: DailySummaryResult }> {
+  const chatId = String((profile as Record<string, unknown>).telegram_chat_id || '');
+  if (!chatId) return { skipped: true, reason: 'no_telegram_chat_id' };
+
+  const summaryData = await buildDailySummaryDataEdge(profile, supabase, options);
+  if (!summaryData.hasTransactions && !options.force) {
+    return { skipped: true, reason: 'no_transactions', summaryData };
+  }
+
+  const messageText = formatDailySummaryMessageEdge(profile, summaryData);
+  if (options.dryRun) {
+    console.log(`[daily-edge-dry] ${profile.display_name}:\n${messageText}`);
+    return { success: true, summaryData };
+  }
+
+  const sent = await sendTelegramMessage(chatId, messageText);
+  if (sent) {
+    try {
+      await supabase
+        .from('profiles')
+        .update({ last_telegram_daily_summary_date: summaryData.targetDateStr })
+        .eq('id', profile.id);
+    } catch (_) {}
+  }
+  return { success: sent, summaryData };
+}
+
+async function executeDailySummaryEdge(
+  supabase: ReturnType<typeof createClient>,
+  options: { date?: string; userId?: string; dryRun?: boolean; force?: boolean } = {}
+): Promise<Record<string, unknown>> {
+  let query = supabase
+    .from('profiles')
+    .select('id, display_name, telegram_chat_id, pluggy_item_ids, pluggy_client_id, pluggy_client_secret, custom_account_names, last_telegram_daily_summary_date')
+    .not('telegram_chat_id', 'is', null)
+    .neq('telegram_chat_id', '');
+
+  if (options.userId) query = query.eq('id', options.userId);
+
+  const { data: profiles, error } = await query;
+  if (error) throw error;
+  if (!profiles || !profiles.length) {
+    return { success: true, message: 'Nenhum usuário com Telegram conectado.', processed: 0, sent: 0 };
+  }
+
+  const dateInfo = options.date ? { yesterdayStr: options.date } : getYesterdayDateInfoEdge();
+  const results = [];
+
+  for (const p of profiles) {
+    if (!options.force && p.last_telegram_daily_summary_date === dateInfo.yesterdayStr) {
+      results.push({ userId: p.id, name: p.display_name, skipped: true, reason: 'already_sent_today' });
+      continue;
+    }
+    try {
+      const res = await sendDailySummaryToUserEdge(p as TelegramProfile, supabase, {
+        date: dateInfo.yesterdayStr,
+        dryRun: options.dryRun,
+        force: options.force,
+      });
+      results.push({ userId: p.id, name: p.display_name, ...res });
+    } catch (e) {
+      results.push({ userId: p.id, name: p.display_name, error: (e as Error).message });
+    }
+  }
+
+  const sentCount = results.filter((r) => r.success && !options.dryRun).length;
+  const skippedCount = results.filter((r) => r.skipped).length;
+
+  return {
+    success: true,
+    date: dateInfo.yesterdayStr,
+    processed: profiles.length,
+    sent: sentCount,
+    skipped: skippedCount,
+    results,
+  };
+}
+
 async function handleTelegramWebhook(payload: unknown): Promise<void> {
   const message = (payload as {
     message?: {
@@ -825,6 +1275,13 @@ async function handleTelegramWebhook(payload: unknown): Promise<void> {
     return;
   }
 
+  if (parsed.intent === 'GET_DAILY_SUMMARY') {
+    await sendTelegramMessage(chatId, '🔍 _Montando resumo de ontem..._');
+    const summaryData = await buildDailySummaryDataEdge(profile, supabase);
+    await sendTelegramMessage(chatId, formatDailySummaryMessageEdge(profile, summaryData));
+    return;
+  }
+
   if (parsed.intent === 'GET_TRANSACTIONS') {
     await sendTelegramMessage(chatId, '🔍 _Buscando lançamentos..._');
     await sendTelegramMessage(chatId, await buildTransactionsText(profile, supabase));
@@ -868,7 +1325,7 @@ async function handleTelegramWebhook(payload: unknown): Promise<void> {
   await sendTelegramMessage(
     chatId,
     parsed.message ||
-      'Olá! Posso ajudar com:\n• *Saldo das contas:* "qual meu saldo?" ou /saldo\n• *Faturas do cartão:* "minhas faturas" ou /faturas\n• *Resumo semanal:* "resumo da semana" ou /resumo\n• *Registrar gasto:* "gastei 50 no mercado"'
+      'Olá! Posso ajudar com:\n• *Saldo das contas:* "qual meu saldo?" ou /saldo\n• *Faturas do cartão:* "minhas faturas" ou /faturas\n• *Resumo de ontem:* "resumo de ontem" ou /ontem\n• *Resumo semanal:* "resumo da semana" ou /resumo\n• *Registrar gasto:* "gastei 50 no mercado"'
   );
 }
 
@@ -1335,6 +1792,36 @@ Deno.serve(async (req: Request) => {
       const { data: linkToken, error: rpcError } = await serviceRoleClient.rpc('generate_telegram_link_token', { p_user_id: user.id });
       if (rpcError) return errorResponse(`RPC Error: ${rpcError.message}`, 500);
       return jsonResponse({ success: true, token: linkToken });
+    }
+
+    if (segments[1] === 'telegram' && action === 'daily-summary' && (method === 'POST' || method === 'GET')) {
+      const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+      const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+      const serviceRoleClient = createClient(supabaseUrl, supabaseServiceKey);
+
+      let options: { date?: string; userId?: string; dryRun?: boolean; force?: boolean } = {};
+      if (method === 'POST') {
+        try {
+          const body = await req.json();
+          options = {
+            date: body.date,
+            userId: body.userId,
+            dryRun: Boolean(body.dryRun),
+            force: Boolean(body.force),
+          };
+        } catch (_) {}
+      } else {
+        const urlObj = new URL(req.url);
+        options = {
+          date: urlObj.searchParams.get('date') || undefined,
+          userId: urlObj.searchParams.get('userId') || undefined,
+          dryRun: urlObj.searchParams.get('dryRun') === 'true',
+          force: urlObj.searchParams.get('force') === 'true',
+        };
+      }
+
+      const summaryResults = await executeDailySummaryEdge(serviceRoleClient, options);
+      return jsonResponse(summaryResults);
     }
     return errorResponse(`Route /chatbot/${segments.join('/')} not found`, 404);
   }

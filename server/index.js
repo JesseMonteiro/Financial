@@ -15,6 +15,7 @@ import chatbotRoutes from './routes/chatbot.js';
 import jointRoutes from './routes/joint.js';
 import parseBillRoutes from './routes/parseBill.js';
 import { clearCache } from './middleware/cache.js';
+import { initDailySummaryScheduler } from './services/dailySummaryScheduler.js';
 
 dotenv.config();
 
@@ -63,4 +64,5 @@ app.get('/api/health', (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`[MeuFlux Backend] Servidor rodando na porta ${PORT}`);
+  initDailySummaryScheduler();
 });

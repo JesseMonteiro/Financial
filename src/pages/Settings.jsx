@@ -219,7 +219,7 @@ export function Settings() {
           <div>
             <h4 style={{ fontWeight: 600 }}>Integração com Assistente Inteligente</h4>
             <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
-              Consulte seu saldo, peça extrato ou registre despesas por áudio ou texto usando o Telegram e Inteligência Artificial.
+              Consulte saldo, faturas, registre despesas por áudio ou texto e receba resumos diários automáticos das suas movimentações do dia anterior.
             </p>
           </div>
           
@@ -233,7 +233,7 @@ export function Settings() {
               <div style={{ width: 10, height: 10, borderRadius: '50%', backgroundColor: '#10b981' }}></div>
               <div>
                 <p style={{ fontSize: 'var(--font-size-sm)', fontWeight: 600, color: 'var(--text-primary)' }}>Telegram Conectado!</p>
-                <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>Seu chatbot está pronto para receber comandos.</p>
+                <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>Chatbot ativo. Você receberá resumos diários quando houver movimentações ontem.</p>
               </div>
               <Button 
                 variant="outline" 

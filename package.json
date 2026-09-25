@@ -16,7 +16,8 @@
     "test:categories": "node scripts/test-categories-pluggy.mjs",
     "test:merchants": "node scripts/run-merchant-logos.mjs",
     "test:ios": "cd ios && swift test",
-    "ios:secrets": "node scripts/ios-sync-secrets.mjs"
+    "ios:secrets": "node scripts/ios-sync-secrets.mjs",
+    "summary:telegram": "node scripts/send-daily-telegram-summary.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

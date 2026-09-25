@@ -1,0 +1,60 @@
+name: Daily Telegram Summary
+
+on:
+  schedule:
+    # 11:00 UTC = 08:00 BRT (Horário de Brasília) todos os dias
+    - cron: '0 11 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Simulação apenas (dry run)'
+        required: false
+        type: boolean
+        default: false
+      force:
+        description: 'Forçar envio mesmo sem transações ou se já enviado hoje'
+        required: false
+        type: boolean
+        default: false
+      date:
+        description: 'Data alvo customizada (YYYY-MM-DD)'
+        required: false
+        type: string
+
+jobs:
+  send-daily-summary:
+    name: Enviar Resumo Diário Telegram
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repositório
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Executar envio de resumo diário
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          PLUGGY_CLIENT_ID: ${{ secrets.PLUGGY_CLIENT_ID }}
+          PLUGGY_CLIENT_SECRET: ${{ secrets.PLUGGY_CLIENT_SECRET }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          ARGS=""
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            ARGS="$ARGS --dry-run"
+          fi
+          if [ "${{ inputs.force }}" = "true" ]; then
+            ARGS="$ARGS --force"
+          fi
+          if [ -n "${{ inputs.date }}" ]; then
+            ARGS="$ARGS --date ${{ inputs.date }}"
+          fi
+          node scripts/send-daily-telegram-summary.mjs $ARGS
