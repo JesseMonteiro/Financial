@@ -10,7 +10,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "lint": "oxlint .",
-    "test:fixtures": "node scripts/validate-credit-fixtures.mjs && node --experimental-strip-types scripts/run-credit-bill-parity.mjs",
+    "test:fixtures": "node scripts/validate-credit-fixtures.mjs && node --experimental-strip-types scripts/run-credit-bill-parity.mjs && node scripts/test-amazon-purchase-date.mjs",
     "test:budget": "node scripts/run-budget-period.mjs",
     "test:line-item": "node scripts/run-line-item-detail.mjs",
     "test:categories": "node scripts/test-categories-pluggy.mjs",

@@ -225,9 +225,35 @@ export function txBillingAmount(tx) {
  * (R$ 5,70 vs R$ 40,56) stay separate.
  * accountId is included so consolidated multi-card views do not merge series.
  */
+/**
+ * Purchase calendar day used to keep one installment plan on one series key.
+ *
+ * Date-only values stay as written. Timestamps are read in America/Sao_Paulo:
+ * Pluggy emits UTC, and a purchase after 21:00 BRT falls on the next UTC day.
+ * Slicing that timestamp (`2026-03-16T01:44Z` vs posted `2026-03-15T03:22Z`)
+ * split the series and slid the stale PENDING parcel onto the open bill
+ * (Lucas Amazon Oct/2026: extra 7/21, 5/5 and 4/4 → R$ 3.267,32 vs PDF R$ 3.119,34).
+ */
 export function installmentPurchaseDate(tx) {
   const pd = tx?.creditCardMetadata?.purchaseDate || tx?.purchaseDate;
-  const iso = pd ? String(pd).slice(0, 10) : '';
+  if (!pd) return '';
+  const raw = String(pd).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) {
+    const iso = raw.slice(0, 10);
+    return /^\d{4}-\d{2}-\d{2}$/.test(iso) ? iso : '';
+  }
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(d);
+  const year = parts.find((p) => p.type === 'year')?.value;
+  const month = parts.find((p) => p.type === 'month')?.value;
+  const day = parts.find((p) => p.type === 'day')?.value;
+  const iso = year && month && day ? `${year}-${month}-${day}` : '';
   return /^\d{4}-\d{2}-\d{2}$/.test(iso) ? iso : '';
 }
 
