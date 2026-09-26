@@ -188,6 +188,46 @@ const CREDIT_CARDS_TX_MAX_PAGES = 4;
 
 type BuiltBills = ReturnType<typeof buildCreditCardBills>;
 
+function mergeBuiltCardBills(builtByCard: Map<string, BuiltBills>): BuiltBills {
+  const opens = [...builtByCard.values()].map((b) => b.openDueKey).filter(Boolean).sort();
+  const openDueKey = opens[0] || "";
+  const months = new Set<string>();
+  for (const built of builtByCard.values()) {
+    for (const key of built.sortedDueKeys || []) {
+      if (key && key !== "Outros") months.add(key);
+    }
+  }
+  const bills: BuiltBills["bills"] = {};
+  for (const dueYm of [...months].sort()) {
+    const parts = [...builtByCard.values()].map((b) => b.bills[dueYm]).filter(Boolean);
+    if (!parts.length) continue;
+    const items = parts.flatMap((p) => p.items || []);
+    const total = Math.round(parts.reduce((sum, p) => sum + (Number(p.total) || 0), 0) * 100) / 100;
+    let type = "PAST";
+    if (dueYm === openDueKey) type = "CURRENT_OPEN";
+    else if (openDueKey && dueYm > openDueKey) type = "FUTURE";
+    const hasCharges = items.some((t) => !isBillPayment(t));
+    if (type === "FUTURE" && total <= 0.05 && !hasCharges) continue;
+    bills[dueYm] = {
+      dueMonthKey: dueYm,
+      monthKey: dueYm,
+      items,
+      total,
+      dueDate: parts.map((p) => p.dueDate).find(Boolean),
+      isPaid: type === "FUTURE" ? false : parts.every((p) => p.isPaid !== false),
+      type,
+      hasOfficial: parts.some((p) => p.hasOfficial),
+    };
+  }
+  return {
+    forecastToDueOffset: [...builtByCard.values()][0]?.forecastToDueOffset ?? 0,
+    openDueKey,
+    openByAccount: {},
+    sortedDueKeys: Object.keys(bills).sort(),
+    bills,
+  };
+}
+
 function summaryFromBuilt(built: BuiltBills) {
   const open = built.bills[built.openDueKey];
   const lastPaidKey = [...built.sortedDueKeys]
@@ -316,16 +356,12 @@ export async function handleCreditCards(client: PluggyClient): Promise<Response>
     return sum + (Number(available) || 0);
   }, 0);
 
-  const allTxs = Object.values(transactionsByAccount).flat();
-  const allBills = Object.values(billsByAccount).flat();
+  // Do not rebuild every card together. That second pass is what pushes the
+  // edge worker over its CPU limit (HTTP 546) on accounts with several cards,
+  // so iOS never receives the per-card totals already computed above.
   const periods: Record<string, ReturnType<typeof serializePeriod>> = {
     all: serializePeriod(
-      buildCreditCardBills({
-        transactions: allTxs,
-        officialBills: allBills,
-        creditCards,
-        selectedCardId: "all",
-      }),
+      mergeBuiltCardBills(builtByCard),
       cardsById,
       "all",
       displayNameById,

@@ -239,22 +239,15 @@ export function installmentPurchaseDate(tx) {
   if (!pd) return '';
   const raw = String(pd).trim();
   if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
-  const d = new Date(raw);
-  if (Number.isNaN(d.getTime())) {
-    const iso = raw.slice(0, 10);
-    return /^\d{4}-\d{2}-\d{2}$/.test(iso) ? iso : '';
-  }
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'America/Sao_Paulo',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(d);
-  const year = parts.find((p) => p.type === 'year')?.value;
-  const month = parts.find((p) => p.type === 'month')?.value;
-  const day = parts.find((p) => p.type === 'day')?.value;
-  const iso = year && month && day ? `${year}-${month}-${day}` : '';
-  return /^\d{4}-\d{2}-\d{2}$/.test(iso) ? iso : '';
+  const utcDay = raw.slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(utcDay)) return '';
+  const hour = Number(raw.slice(11, 13));
+  // America/Sao_Paulo is UTC−3 year-round. 03:00–23:59 UTC stay on that calendar day.
+  // Avoid Intl here: this runs per transaction inside the edge worker.
+  if (Number.isFinite(hour) && hour >= 3) return utcDay;
+  const ms = Date.parse(raw);
+  if (Number.isNaN(ms)) return utcDay;
+  return new Date(ms - 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
 }
 
 export function installmentSeriesKey(tx) {
@@ -1240,7 +1233,7 @@ export function buildCreditCardBills({
   const latestOfficialByAccount = {};
   /** ISO date (YYYY-MM-DD) of latest official bill close (or due) per account */
   const latestCycleEndByAccount = {};
-  /** @type {Record<string, import('./creditConnectors/profiles.js').CreditConnectorProfile>} */
+  /** @type {Record<string, import('./creditConnectors/profiles.ts').CreditConnectorProfile>} */
   const profileByAccount = {};
   for (const accountId of accountIds) {
     const offset = offsetForAccount(accountId, transactions, officialBills, offsetCache, creditCards);
