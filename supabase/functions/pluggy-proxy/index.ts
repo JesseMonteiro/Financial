@@ -1834,10 +1834,32 @@ Deno.serve(async (req: Request) => {
   }
 
   if (resource === 'chatbot') {
+    // 0. AI Chatbot (Gemini) endpoint: POST /chatbot/message
+    if ((actionOrId === 'message' || !actionOrId) && method === 'POST') {
+      const authHeader = req.headers.get('authorization');
+      if (!authHeader) return errorResponse('Missing authorization header', 401);
+      const token = authHeader.split(' ')[1];
+      if (!token) return errorResponse('Invalid authorization format', 401);
+
+      const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+      const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
+      const supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
+        global: { headers: { Authorization: authHeader } }
+      });
+
+      const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token);
+      if (authError || !user) return errorResponse('Invalid or expired authentication token', 401);
+
+      let body: unknown = {};
+      try { body = await req.json(); } catch (_) {}
+      return await handleEdgeChatbotMessage(body);
+    }
+
     const action = segments[2];
 
     // Public Telegram webhook — resolve MeuFlux user by telegram_chat_id
     if (segments[1] === 'telegram' && action === 'webhook' && method === 'POST') {
+
       if (!verifyTelegramSecret(req)) {
         return errorResponse('Invalid Telegram webhook secret', 401);
       }
@@ -1897,8 +1919,9 @@ Deno.serve(async (req: Request) => {
       const summaryResults = await executeDailySummaryEdge(serviceRoleClient, options);
       return jsonResponse(summaryResults);
     }
-    return errorResponse(`Route /chatbot/${segments.join('/')} not found`, 404);
+    return errorResponse(`Route /${segments.join('/')} not found`, 404);
   }
+
 
   if (resource === 'webhooks' && method === 'POST' && !actionOrId) {
     verifyPluggyWebhook(req);
@@ -1947,11 +1970,8 @@ Deno.serve(async (req: Request) => {
     return await handleParseBill(body);
   }
 
-  if (resource === 'chatbot' && (actionOrId === 'message' || actionOrId === '') && method === 'POST') {
-    return await handleEdgeChatbotMessage(body);
-  }
-
   const { data: profile } = await supabaseClient
+
     .from('profiles')
     .select('pluggy_item_ids, pluggy_client_id, pluggy_client_secret')
     .eq('id', user.id)

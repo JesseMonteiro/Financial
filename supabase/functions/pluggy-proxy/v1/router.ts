@@ -96,6 +96,11 @@ export async function handleV1(
     return null; // keep Gemini parser in index.ts
   }
 
+  if (resource === "chatbot") {
+    return null; // keep chatbot in index.ts
+  }
+
+
   const { data: profile } = await auth.supabase
     .from("profiles")
     .select("pluggy_item_ids, pluggy_client_id, pluggy_client_secret")
