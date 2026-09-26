@@ -112,6 +112,27 @@ public struct BFFClient: Sendable {
         return list.results
     }
 
+    public func postChatbotMessage(
+        message: String,
+        history: [[String: String]] = [],
+        context: [String: Any]? = nil
+    ) async throws -> String {
+        var payload: [String: Any] = [
+            "message": message,
+            "history": history,
+        ]
+        if let context {
+            payload["context"] = context
+        }
+        let body = try JSONSerialization.data(withJSONObject: payload)
+        let responseData = try await api.sendRaw(APIRequest(path: "chatbot/message", method: .post, body: body))
+        if let json = try? JSONSerialization.jsonObject(with: responseData) as? [String: Any],
+           let reply = json["reply"] as? String {
+            return reply
+        }
+        return String(decoding: responseData, as: UTF8.self)
+    }
+
     func getInvestments(force: Bool = false) async throws -> [PluggyInvestmentDTO] {
         let data = try await cachedRaw("bff:investments", force: force, APIRequest(path: "investments"))
         let list = try await decode(PluggyListDTO<PluggyInvestmentDTO>.self, from: data)

@@ -26,6 +26,10 @@ public struct AssistantChatMessage: Identifiable, Sendable, Hashable {
     }
 }
 
+public protocol RemoteChatbotProviding: Sendable {
+    func reply(message: String, history: [AssistantChatMessage], snapshot: SiriFinanceSnapshot) async throws -> String
+}
+
 public enum MeuFluxAssistantRouter {
     public static func cannedReply(question: String, snapshot: SiriFinanceSnapshot) -> String {
         let q = AssistantFacts.fold(question)
@@ -33,6 +37,13 @@ public enum MeuFluxAssistantRouter {
         if isCardSpendQuestion(q) {
             return snapshot.cardSpendDialog
         }
+        if isCreditPurchaseQuestion(q) {
+            let card = extractCardFilter(q, snapshot: snapshot)
+            let month = extractMonthFilter(q)
+            let instType = extractInstallmentType(q)
+            return AssistantFacts.creditPurchases(snapshot, cardName: card, month: month, installmentType: instType)
+        }
+
         if matches(q, ["semana", "7 dias", "sete dias", "recap"]) {
             return snapshot.weeklySpendDialog
         }
@@ -59,16 +70,67 @@ public enum MeuFluxAssistantRouter {
             return "\(hit.description) (\(hit.category)): \(sign)\(hit.amountLabel) · \(hit.dateRelative)."
         }
         return """
-        Posso falar sobre saldo, cartões, categorias do mês, gastos da semana, faturas, orçamento e transações recentes \
-        a partir do resumo salvo neste iPhone. Tente: "qual cartão tem mais gastos?"
+        Posso falar sobre saldo, cartões, compras à vista ou parceladas por mês, categorias, gastos da semana, faturas e orçamento \
+        a partir do resumo salvo neste iPhone. Tente: "quais as compras não parceladas no mês de outubro no meu cartão amazon?"
         """
+    }
+
+    public static func isCreditPurchaseQuestion(_ q: String) -> Bool {
+        let hasPurchaseWord = matches(q, ["compra", "compras", "lancamento", "lançamento", "gasto", "gastos", "comprei"])
+        let hasCardIndicator = matches(q, ["cartao", "cartão", "amazon", "nubank", "inter", "itau", "bradesco", "santander"])
+        let hasInstallmentIndicator = matches(q, ["parcelad", "a vista", "à vista", "nao parcelad", "não parcelad", "sem parcela"])
+        let hasMonth = !extractMonthFilter(q).isEmpty
+
+        return (hasPurchaseWord && (hasCardIndicator || hasInstallmentIndicator || hasMonth))
+            || (hasCardIndicator && (hasInstallmentIndicator || hasMonth))
+    }
+
+    public static func extractCardFilter(_ q: String, snapshot: SiriFinanceSnapshot) -> String {
+        for card in snapshot.cards {
+            let foldName = AssistantFacts.fold(card.name)
+            if q.contains(foldName) { return card.name }
+            let foldInst = AssistantFacts.fold(card.institutionName)
+            if !foldInst.isEmpty && q.contains(foldInst) { return card.name }
+        }
+        let known = ["amazon", "nubank", "inter", "itau", "bradesco", "santander", "c6", "neon"]
+        for kw in known {
+            if q.contains(kw) { return kw }
+        }
+        return ""
+    }
+
+    public static func extractMonthFilter(_ q: String) -> String {
+        let months = [
+            "janeiro": "01", "fevereiro": "02", "marco": "03", "março": "03",
+            "abril": "04", "maio": "05", "junho": "06", "julho": "07",
+            "agosto": "08", "setembro": "09", "outubro": "10", "novembro": "11",
+            "dezembro": "12"
+        ]
+        for (name, num) in months {
+            if q.contains(name) { return num }
+        }
+        return ""
+    }
+
+    public static func extractInstallmentType(_ q: String) -> String {
+        if matches(q, ["nao parcelad", "não parcelad", "a vista", "à vista", "sem parcela"]) {
+            return "non_installment"
+        }
+        if matches(q, ["parcelad", "parcela", "parcelas", "em vezes"]) {
+            return "installment"
+        }
+        return "all"
     }
 
     public static func isCardSpendQuestion(_ question: String) -> Bool {
         let q = AssistantFacts.fold(question)
         guard isCardQuestion(q) else { return false }
+        if extractInstallmentType(q) != "all" || !extractMonthFilter(q).isEmpty {
+            return false
+        }
         return matches(q, ["gasto", "gastei", "gastos", "mais", "maior"])
     }
+
 
     private static func isCardQuestion(_ q: String) -> Bool {
         matches(q, ["cartao", "cartão"])
@@ -85,23 +147,32 @@ public enum MeuFluxAssistantRouter {
 
 public final class MeuFluxAssistantSession: @unchecked Sendable {
     private let generator: any OnDeviceGenerating
+    private let remoteProvider: (any RemoteChatbotProviding)?
     private let box: AssistantSnapshotBox
     private var chat: (any OnDeviceChatConversing)?
+    private var history: [AssistantChatMessage] = []
 
     public init(
         generator: (any OnDeviceGenerating)? = nil,
-        provider: (any AssistantFinanceProviding)? = nil
+        provider: (any AssistantFinanceProviding)? = nil,
+        remoteProvider: (any RemoteChatbotProviding)? = nil
     ) {
         let resolved = provider ?? SnapshotAssistantFinanceProvider()
         self.generator = generator ?? OnDeviceGeneratorFactory.make()
+        self.remoteProvider = remoteProvider
         self.box = AssistantSnapshotBox(provider: resolved)
     }
 
     public convenience init(
         generator: (any OnDeviceGenerating)? = nil,
-        store: SiriSnapshotStore
+        store: SiriSnapshotStore,
+        remoteProvider: (any RemoteChatbotProviding)? = nil
     ) {
-        self.init(generator: generator, provider: SnapshotAssistantFinanceProvider(store: store))
+        self.init(
+            generator: generator,
+            provider: SnapshotAssistantFinanceProvider(store: store),
+            remoteProvider: remoteProvider
+        )
     }
 
     public func reply(to question: String) async -> String {
@@ -109,6 +180,8 @@ public final class MeuFluxAssistantSession: @unchecked Sendable {
         guard let snapshot = await box.current() else {
             return "Ainda não há um resumo financeiro neste iPhone. Abra a Visão Geral uma vez para eu poder responder."
         }
+
+        // 1. Apple Intelligence nativo no aparelho se disponível
         if generator.isAvailable {
             if chat == nil {
                 chat = generator.makeChat(instructions: Self.instructions, box: box)
@@ -116,16 +189,39 @@ public final class MeuFluxAssistantSession: @unchecked Sendable {
             if let session = chat, let generated = try? await session.respond(to: question) {
                 let trimmed = generated.trimmingCharacters(in: .whitespacesAndNewlines)
                 if !trimmed.isEmpty {
+                    history.append(.user(question))
+                    history.append(.assistant(trimmed))
                     return trimmed
                 }
             }
         }
-        return MeuFluxAssistantRouter.cannedReply(question: question, snapshot: snapshot)
+
+        // 2. Fallback para Gemini em nuvem segura para iPhones antigos
+        if let remote = remoteProvider {
+            do {
+                let reply = try await remote.reply(message: question, history: history, snapshot: snapshot)
+                let trimmed = reply.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty {
+                    history.append(.user(question))
+                    history.append(.assistant(trimmed))
+                    return trimmed
+                }
+            } catch {
+                // Fallback silencioso para o router estruturado local
+            }
+        }
+
+        // 3. Fallback estruturado local (offline e sem dependências)
+        let reply = MeuFluxAssistantRouter.cannedReply(question: question, snapshot: snapshot)
+        history.append(.user(question))
+        history.append(.assistant(reply))
+        return reply
     }
 
     private static let instructions = """
     Você é o assistente privado do MeuFlux. Responda em português do Brasil, curto e direto.
-    Use as tools para buscar fatos: overview, cards, accounts, categories, budgets, recent_transactions.
+    Use as tools para buscar fatos: overview, cards, accounts, categories, budgets, recent_transactions, credit_card_purchases.
+    Para compras de cartão, compras à vista ou parceladas e por mês, utilize credit_card_purchases.
     Use SOMENTE o que as tools devolverem. Não invente números.
     Se uma tool disser que falta dado, peça para abrir a tela correspondente uma vez (Início, Cartões ou Contas).
     """

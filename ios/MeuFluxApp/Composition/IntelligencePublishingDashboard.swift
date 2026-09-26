@@ -120,10 +120,89 @@ struct LiveAssistantFinanceProvider: AssistantFinanceProviding, Sendable {
     let accounts: any AccountsRepository
 
     func currentSnapshot() async -> SiriFinanceSnapshot? {
+        var fetchedScreen: CreditCardsScreen?
+        var fetchedAccounts: [Account]?
+
         await withTaskGroup(of: Void.self) { group in
-            group.addTask { _ = try? await cards.fetchScreen(force: false) }
-            group.addTask { _ = try? await accounts.fetchAccounts(force: false) }
+            group.addTask {
+                fetchedScreen = try? await cards.fetchScreen(force: false)
+            }
+            group.addTask {
+                fetchedAccounts = try? await accounts.fetchAccounts(force: false)
+            }
         }
+
+        if let screen = fetchedScreen {
+            let siriCards = SiriSnapshotMapper.cards(from: screen)
+            let siriPurchases = SiriSnapshotMapper.creditPurchases(from: screen)
+            _ = store.mergeCreditCardsAndPurchases(cards: siriCards, purchases: siriPurchases)
+        }
+
+        if let accts = fetchedAccounts {
+            let siriAccounts = SiriSnapshotMapper.accounts(from: accts)
+            _ = store.mergeAccounts(siriAccounts)
+        }
+
         return store.load()
+    }
+}
+
+struct LiveRemoteChatbotProvider: RemoteChatbotProviding, Sendable {
+    let bff: BFFClient
+
+    func reply(
+        message: String,
+        history: [AssistantChatMessage],
+        snapshot: SiriFinanceSnapshot
+    ) async throws -> String {
+        let historyPayload = history.suffix(10).map { msg in
+            ["role": msg.role.rawValue, "text": msg.text]
+        }
+
+        let contextDict: [String: Any] = [
+            "displayName": snapshot.displayName,
+            "monthKey": snapshot.monthKey,
+            "bankBalance": snapshot.bankBalanceLabel,
+            "netWorth": snapshot.netWorthLabel,
+            "openBills": snapshot.openBillsLabel,
+            "cards": snapshot.cards.map { [
+                "name": $0.name,
+                "openTotal": $0.openTotalLabel,
+                "outstanding": $0.outstandingLabel,
+                "lastFour": $0.lastFour
+            ] },
+            "creditPurchases": snapshot.creditPurchases.prefix(150).map { [
+                "cardName": $0.cardName,
+                "description": $0.description,
+                "amount": $0.amount,
+                "amountLabel": $0.amountLabel,
+                "purchaseDate": $0.purchaseDate ?? "",
+                "dueMonth": $0.dueMonth,
+                "isInstallment": $0.isInstallment,
+                "installmentLabel": $0.installmentLabel ?? "À vista",
+                "category": $0.category ?? ""
+            ] },
+            "accounts": snapshot.accounts.map { [
+                "name": $0.name,
+                "kind": $0.kind,
+                "balance": $0.amountLabel
+            ] },
+            "categories": snapshot.categories.map { [
+                "name": $0.name,
+                "amount": $0.amountLabel
+            ] },
+            "budgets": snapshot.budgets.map { [
+                "category": $0.category,
+                "spent": $0.spentLabel,
+                "limit": $0.limitLabel,
+                "percent": $0.percent
+            ] }
+        ]
+
+        return try await bff.postChatbotMessage(
+            message: message,
+            history: historyPayload,
+            context: contextDict
+        )
     }
 }

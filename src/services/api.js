@@ -466,6 +466,15 @@ export async function parseCreditBillPdf({ base64, mimeType = 'application/pdf' 
   return res.data;
 }
 
+export async function sendChatbotMessage({ message, history = [], context = {} }) {
+  const res = await api.post(
+    '/chatbot/message',
+    { message, history, context },
+    { timeout: 60_000 }
+  );
+  return res.data;
+}
+
 export async function checkServerHealth() {
   try {
     const res = await api.get('/health');

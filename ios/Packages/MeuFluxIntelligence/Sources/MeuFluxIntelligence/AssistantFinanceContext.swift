@@ -123,6 +123,75 @@ public enum AssistantFacts {
         }.joined(separator: "\n")
     }
 
+    public static func creditPurchases(
+        _ snapshot: SiriFinanceSnapshot,
+        cardName: String = "",
+        month: String = "",
+        installmentType: String = "all"
+    ) -> String {
+        var items = snapshot.creditPurchases.filter { !$0.isPayment }
+
+        if !cardName.isEmpty {
+            let q = fold(cardName)
+            items = items.filter { fold($0.cardName).contains(q) }
+        }
+
+        if !month.isEmpty {
+            let monthDigit = normalizeMonthQuery(month)
+            items = items.filter { item in
+                let matchPurchase = item.purchaseDate?.contains("-\(monthDigit)-") == true
+                let matchDue = item.dueMonth.contains("-\(monthDigit)") || item.dueMonth == monthDigit || item.dueMonth.contains(monthDigit)
+                return matchPurchase || matchDue
+            }
+        }
+
+        let normType = fold(installmentType)
+        if normType.contains("non") || normType.contains("nao") || normType.contains("vista") || normType.contains("single") {
+            items = items.filter { !$0.isInstallment }
+        } else if normType.contains("installment") || normType.contains("parcelad") {
+            items = items.filter { $0.isInstallment }
+        }
+
+        guard !items.isEmpty else {
+            if snapshot.creditPurchases.isEmpty {
+                return "Ainda não há compras de cartão carregadas no resumo. Abra a tela de Cartões para sincronizar."
+            }
+            return "Nenhuma compra encontrada com os filtros informados (cartão: '\(cardName)', mês: '\(month)', tipo: '\(installmentType)')."
+        }
+
+        let total = items.reduce(0.0) { $0 + $1.amount }
+        let totalFormatted = String(format: "R$ %.2f", total).replacingOccurrences(of: ".", with: ",")
+
+        let lines = items.prefix(25).map { item in
+            let datePart = item.purchaseDate.map { " em \($0)" } ?? ""
+            let instPart = item.isInstallment ? (item.installmentLabel ?? "Parcelada") : "À vista (não parcelada)"
+            return "• \(item.description): \(item.amountLabel)\(datePart) · \(item.cardName) · \(instPart)"
+        }
+
+        var header = "Encontradas \(items.count) compra(s) (Total: \(totalFormatted)):"
+        if items.count > 25 {
+            header += " (exibindo as 25 primeiras)"
+        }
+        return "\(header)\n\(lines.joined(separator: "\n"))"
+    }
+
+    public static func normalizeMonthQuery(_ text: String) -> String {
+        let folded = fold(text).lowercased()
+        if folded.contains("janeiro") || folded == "jan" || folded == "1" || folded == "01" { return "01" }
+        if folded.contains("fevereiro") || folded == "fev" || folded == "2" || folded == "02" { return "02" }
+        if folded.contains("marco") || folded.contains("março") || folded == "mar" || folded == "3" || folded == "03" { return "03" }
+        if folded.contains("abril") || folded == "abr" || folded == "4" || folded == "04" { return "04" }
+        if folded.contains("maio") || folded == "mai" || folded == "5" || folded == "05" { return "05" }
+        if folded.contains("junho") || folded == "jun" || folded == "6" || folded == "06" { return "06" }
+        if folded.contains("julho") || folded == "jul" || folded == "7" || folded == "07" { return "07" }
+        if folded.contains("agosto") || folded == "ago" || folded == "8" || folded == "08" { return "08" }
+        if folded.contains("setembro") || folded == "set" || folded == "9" || folded == "09" { return "09" }
+        if folded.contains("outubro") || folded == "out" || folded == "10" { return "10" }
+        if folded.contains("novembro") || folded == "nov" || folded == "11" { return "11" }
+        if folded.contains("dezembro") || folded == "dez" || folded == "12" { return "12" }
+        return folded
+    }
+
     private static func filtered<T>(
         _ items: [T],
         filter: String,

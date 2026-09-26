@@ -405,7 +405,8 @@ final class AppCompositionRoot {
                     store: siriSnapshotStore,
                     cards: creditCardsRepository,
                     accounts: accountsRepository
-                )
+                ),
+                remoteProvider: LiveRemoteChatbotProvider(bff: bff)
             )
         )
     }

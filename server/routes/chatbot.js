@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { checkAuth } from '../middleware/auth.js';
 import { getSupabaseClient, getServiceRoleClient } from '../services/supabaseClient.js';
 import { createPluggyClient } from '../services/pluggyClient.js';
-import { parseNaturalLanguageCommand, transcribeAudioCommand } from '../services/geminiService.js';
+import { parseNaturalLanguageCommand, transcribeAudioCommand, answerFinancialChat } from '../services/geminiService.js';
 import { summarizeCardOpenBill, isBillPayment } from '../../src/utils/creditBillPeriod.js';
 import { translateCategory } from '../../src/utils/categories.js';
 import axios from 'axios';
@@ -176,6 +176,62 @@ async function resolveMessageText(message, chatId) {
   if (message.text) return message.text.trim();
   return null;
 }
+
+// 0. POST /api/chatbot/message (Autenticado - Chatbot IA Gemini para Web e iOS)
+router.post('/message', checkAuth, async (req, res) => {
+  try {
+    const { message, history, context } = req.body;
+
+    if (!message || typeof message !== 'string') {
+      return res.status(400).json({ error: 'Mensagem inválida ou ausente.' });
+    }
+
+    let finalContext = context;
+
+    // Se o cliente não enviou contexto completo, buscar perfil e transações manuais
+    if (!finalContext || typeof finalContext !== 'object' || Object.keys(finalContext).length === 0) {
+      const supabase = req.supabase;
+      const userId = req.user?.id;
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .maybeSingle();
+
+      const { data: manuals } = await supabase
+        .from('manual_transactions')
+        .select('*')
+        .eq('user_id', userId)
+        .order('date', { ascending: false })
+        .limit(100);
+
+      finalContext = {
+        userName: profile?.display_name || 'Usuário',
+        manualTransactions: manuals || [],
+        accounts: [],
+        note: 'Contexto gerado automaticamente pelo servidor'
+      };
+    }
+
+    const reply = await answerFinancialChat({
+      message,
+      history: Array.isArray(history) ? history : [],
+      context: finalContext
+    });
+
+    res.json({
+      success: true,
+      reply,
+      model: 'gemini'
+    });
+  } catch (err) {
+    console.error('[Chatbot Route] Erro ao responder mensagem:', err);
+    res.status(500).json({
+      error: 'Falha ao processar resposta da IA.',
+      details: err.message
+    });
+  }
+});
 
 // 1. POST /api/chatbot/telegram/link-token (Autenticado - Gera o token de 6 dígitos)
 router.post('/telegram/link-token', checkAuth, async (req, res) => {

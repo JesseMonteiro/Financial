@@ -1,7 +1,7 @@
 // Central registry for connected Pluggy Item IDs
 // IDs are resolved dynamically at runtime via GET /items.
 // Add hardcoded IDs here only in private/local environments via .env, not in source control.
-const registeredItemIds = new Set<string>();
+const registeredItemIds = new Set();
 
 
 export function getItemIds() {

@@ -3,6 +3,8 @@ import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import { LiquidGlassTabBar } from './LiquidGlassTabBar';
 import { PageTransition } from '../motion/PageTransition';
+import { ChatbotLauncher } from '../chatbot/ChatbotLauncher';
+import { ChatbotModal } from '../chatbot/ChatbotModal';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useJointStore } from '../../stores/jointStore';
 import { useIsMobile } from '../../hooks/useMediaQuery';
@@ -44,6 +46,8 @@ export function MainLayout() {
           onMoreClose={() => setMoreOpen(false)}
         />
       )}
+      <ChatbotLauncher />
+      <ChatbotModal />
     </div>
   );
 }

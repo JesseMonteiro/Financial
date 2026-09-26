@@ -8,6 +8,7 @@ public final class MeuFluxAssistantViewModel {
     public static let suggestedPrompts = [
         "Qual meu saldo?",
         "Qual cartão tem mais gastos?",
+        "Compras não parceladas no cartão Amazon em outubro",
         "Onde gastei mais este mês?",
     ]
 
@@ -21,9 +22,9 @@ public final class MeuFluxAssistantViewModel {
     public init(session: MeuFluxAssistantSession = MeuFluxAssistantSession()) {
         self.session = session
         if AppleIntelligenceAvailability.isAvailable {
-            self.availabilityCaption = "Respostas geradas no iPhone. Seus dados não saem do aparelho."
+            self.availabilityCaption = "Apple Intelligence nativo no aparelho. Seus dados não saem do iPhone."
         } else {
-            self.availabilityCaption = "Apple Intelligence indisponível. Uso o resumo financeiro salvo neste iPhone."
+            self.availabilityCaption = "Assistente MeuFlux com IA Gemini (nuvem segura)."
         }
         self.messages = []
     }

@@ -299,7 +299,97 @@ final class MeuFluxAssistantRouterTests: XCTestCase {
         XCTAssertTrue(reply.contains("Alimentação"), reply)
         XCTAssertTrue(reply.contains("R$ 900,00"), reply)
     }
+
+    func testCreditPurchasesFilterForAmazonNonInstallmentInOctober() {
+        let snapshot = SiriFinanceSnapshot(
+            displayName: "Jesse",
+            monthKey: "2026-10",
+            bankBalanceLabel: "R$ 1.000,00",
+            netWorthLabel: "R$ 5.000,00",
+            weeklySpendLabel: "R$ 0,00",
+            weeklyDeltaPct: 0,
+            weeklyTopCategory: nil,
+            openBillsLabel: "R$ 950,00",
+            creditCount: 1,
+            insights: [],
+            budgets: [],
+            recentTransactions: [],
+            cards: [
+                .init(
+                    id: "c-amazon",
+                    name: "Cartão Amazon",
+                    institutionName: "Bradesco",
+                    lastFour: "9999",
+                    openTotalLabel: "R$ 950,00",
+                    openTotalAmount: 950,
+                    outstandingLabel: "R$ 950,00"
+                )
+            ],
+            creditPurchases: [
+                .init(
+                    id: "p1",
+                    cardId: "c-amazon",
+                    cardName: "Cartão Amazon",
+                    description: "Livro Clean Architecture",
+                    amountLabel: "R$ 89,90",
+                    amount: 89.90,
+                    purchaseDate: "2026-10-02",
+                    dueMonth: "2026-10",
+                    isInstallment: false
+                ),
+                .init(
+                    id: "p2",
+                    cardId: "c-amazon",
+                    cardName: "Cartão Amazon",
+                    description: "Kindle Paperwhite (1/3)",
+                    amountLabel: "R$ 200,00",
+                    amount: 200.00,
+                    purchaseDate: "2026-10-05",
+                    dueMonth: "2026-10",
+                    isInstallment: true,
+                    installmentNumber: 1,
+                    installmentTotal: 3,
+                    installmentLabel: "Parcela 1/3"
+                ),
+                .init(
+                    id: "p3",
+                    cardId: "c-amazon",
+                    cardName: "Cartão Amazon",
+                    description: "Cabo USB-C",
+                    amountLabel: "R$ 35,00",
+                    amount: 35.00,
+                    purchaseDate: "2026-10-14",
+                    dueMonth: "2026-10",
+                    isInstallment: false
+                ),
+                .init(
+                    id: "p4",
+                    cardId: "c-nubank",
+                    cardName: "Nubank",
+                    description: "Almoço",
+                    amountLabel: "R$ 45,00",
+                    amount: 45.00,
+                    purchaseDate: "2026-10-08",
+                    dueMonth: "2026-10",
+                    isInstallment: false
+                )
+            ],
+            updatedAt: Date()
+        )
+
+        let reply = MeuFluxAssistantRouter.cannedReply(
+            question: "Quais as compras não parceladas no mês de outubro no meu cartão amazon?",
+            snapshot: snapshot
+        )
+
+        XCTAssertTrue(reply.contains("Livro Clean Architecture"), reply)
+        XCTAssertTrue(reply.contains("Cabo USB-C"), reply)
+        XCTAssertFalse(reply.contains("Kindle Paperwhite"), reply)
+        XCTAssertFalse(reply.contains("Nubank"), reply)
+        XCTAssertFalse(reply.contains("Almoço"), reply)
+    }
 }
+
 
 final class SiriSnapshotMapperTests: XCTestCase {
     func testMapsCategoriesAndCashflow() {
@@ -406,7 +496,163 @@ final class SiriSnapshotMapperTests: XCTestCase {
         XCTAssertTrue(snapshot.cards.isEmpty)
         XCTAssertTrue(snapshot.categories.isEmpty)
     }
+
+    func testMapsCreditPurchasesDetectingInstallmentAndDates() {
+        let amazonLine1 = CreditBillLine(
+            id: "tx-amazon-1",
+            accountId: "card-amazon",
+            accountName: "Amazon Prime",
+            description: "Kindle Oasis",
+            amount: Money(amount: 800),
+            isCredit: false,
+            isPayment: false,
+            isProjected: false,
+            isPending: false,
+            category: "Shopping",
+            purchaseDate: InstantDate(isoString: "2026-10-05"),
+            installmentNumber: nil,
+            installmentTotal: 1
+        )
+        let amazonLine2 = CreditBillLine(
+            id: "tx-amazon-2",
+            accountId: "card-amazon",
+            accountName: "Amazon Prime",
+            description: "Fone Bluetooth 2/5",
+            amount: Money(amount: 150),
+            isCredit: false,
+            isPayment: false,
+            isProjected: false,
+            isPending: false,
+            category: "Shopping",
+            purchaseDate: InstantDate(isoString: "2026-09-10"),
+            installmentNumber: 2,
+            installmentTotal: 5
+        )
+        let amazonPayment = CreditBillLine(
+            id: "tx-amazon-pay",
+            accountId: "card-amazon",
+            accountName: "Amazon Prime",
+            description: "Pagamento de Fatura",
+            amount: Money(amount: 950),
+            isCredit: true,
+            isPayment: true,
+            isProjected: false,
+            isPending: false
+        )
+        let bucket = CreditBillBucket(
+            dueMonth: "2026-10",
+            title: "Outubro 2026",
+            type: .currentOpen,
+            total: Money(amount: 950),
+            dueDateShort: "15/10",
+            isPaid: false,
+            hasOfficial: false,
+            items: [amazonLine1, amazonLine2, amazonPayment]
+        )
+        let screen = CreditCardsScreen(
+            cards: [
+                CreditCardSummary(
+                    id: "card-amazon",
+                    name: "Cartão Amazon",
+                    institutionName: "Bradesco",
+                    lastFour: "9999",
+                    outstanding: Money(amount: 950),
+                    openTotal: Money(amount: 950)
+                )
+            ],
+            outstandingTotal: Money(amount: 950),
+            creditLimitTotal: Money(amount: 10000),
+            availableLimitTotal: Money(amount: 9050),
+            periods: [
+                "card-amazon": CreditBillPeriod(openDueKey: "2026-10", bills: [bucket])
+            ]
+        )
+
+        let purchases = SiriSnapshotMapper.creditPurchases(from: screen)
+        XCTAssertEqual(purchases.count, 2)
+        let kindle = purchases.first(where: { $0.id == "tx-amazon-1" })
+        XCTAssertNotNil(kindle)
+        XCTAssertFalse(kindle!.isInstallment)
+        XCTAssertEqual(kindle!.cardName, "Amazon Prime")
+        XCTAssertEqual(kindle!.dueMonth, "2026-10")
+
+        let fone = purchases.first(where: { $0.id == "tx-amazon-2" })
+        XCTAssertNotNil(fone)
+        XCTAssertTrue(fone!.isInstallment)
+        XCTAssertEqual(fone!.installmentTotal, 5)
+    }
 }
+
+private struct MockRemoteChatbotProvider: RemoteChatbotProviding {
+    let mockedReply: String
+    func reply(message: String, history: [AssistantChatMessage], snapshot: SiriFinanceSnapshot) async throws -> String {
+        mockedReply
+    }
+}
+
+final class MeuFluxAssistantSessionTests: XCTestCase {
+    func testAssistantSessionFallsBackToRemoteProviderWhenOnDeviceUnavailable() async {
+        let remote = MockRemoteChatbotProvider(mockedReply: "Resposta vinda do Gemini na nuvem")
+        let snapshot = SiriFinanceSnapshot(
+            displayName: "Jesse",
+            monthKey: "2026-10",
+            bankBalanceLabel: "R$ 100,00",
+            netWorthLabel: "R$ 100,00",
+            weeklySpendLabel: "R$ 0,00",
+            weeklyDeltaPct: 0,
+            weeklyTopCategory: nil,
+            openBillsLabel: "R$ 0,00",
+            creditCount: 0,
+            insights: [],
+            budgets: [],
+            recentTransactions: [],
+            updatedAt: Date()
+        )
+        let defaults = UserDefaults(suiteName: "siri.snapshot.tests.\(UUID().uuidString)")!
+        let store = SiriSnapshotStore(defaults: defaults, fallback: nil)
+        store.save(snapshot)
+
+        let session = MeuFluxAssistantSession(
+            generator: UnavailableOnDeviceGenerator(),
+            store: store,
+            remoteProvider: remote
+        )
+
+        let reply = await session.reply(to: "Olá, como estão minhas finanças?")
+        XCTAssertEqual(reply, "Resposta vinda do Gemini na nuvem")
+    }
+
+    func testAssistantSessionUsesCannedReplyWhenRemoteAndOnDeviceFail() async {
+        let snapshot = SiriFinanceSnapshot(
+            displayName: "Jesse",
+            monthKey: "2026-10",
+            bankBalanceLabel: "R$ 2.500,00",
+            netWorthLabel: "R$ 10.000,00",
+            weeklySpendLabel: "R$ 0,00",
+            weeklyDeltaPct: 0,
+            weeklyTopCategory: nil,
+            openBillsLabel: "R$ 0,00",
+            creditCount: 0,
+            insights: [],
+            budgets: [],
+            recentTransactions: [],
+            updatedAt: Date()
+        )
+        let defaults = UserDefaults(suiteName: "siri.snapshot.tests.\(UUID().uuidString)")!
+        let store = SiriSnapshotStore(defaults: defaults, fallback: nil)
+        store.save(snapshot)
+
+        let session = MeuFluxAssistantSession(
+            generator: UnavailableOnDeviceGenerator(),
+            store: store,
+            remoteProvider: nil
+        )
+
+        let reply = await session.reply(to: "Qual meu saldo?")
+        XCTAssertTrue(reply.contains("R$ 2.500,00"), reply)
+    }
+}
+
 
 private extension StubLoadDashboard {
     func makeSnapshot(budgets: [DashboardBudgetCategory]) -> DashboardSnapshot {

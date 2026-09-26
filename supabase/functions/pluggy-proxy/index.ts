@@ -393,6 +393,80 @@ async function handleParseBill(body: unknown): Promise<Response> {
   return errorResponse('Falha ao ler a fatura com IA.', 500);
 }
 
+async function handleEdgeChatbotMessage(body: unknown): Promise<Response> {
+  const apiKey = Deno.env.get('GEMINI_API_KEY');
+  if (!apiKey) {
+    return errorResponse('GEMINI_API_KEY não configurada no servidor', 500);
+  }
+  const payload = (body || {}) as { message?: string; history?: Array<{ role: string; text: string }>; context?: unknown };
+  const message = payload?.message;
+  if (!message || typeof message !== 'string') {
+    return errorResponse('Mensagem inválida ou ausente', 400);
+  }
+
+  const contextStr = typeof payload.context === 'string' ? payload.context : JSON.stringify(payload.context ?? {}, null, 2);
+
+  const contents: Array<{ role: string; parts: Array<{ text: string }> }> = [
+    {
+      role: 'user',
+      parts: [{ text: `Aqui está o meu contexto financeiro atualizado do MeuFlux:\n\`\`\`json\n${contextStr}\n\`\`\`\nPor favor, use esses dados para responder às minhas próximas perguntas com precisão.` }]
+    },
+    {
+      role: 'model',
+      parts: [{ text: 'Entendido! Tenho acesso ao seu contexto financeiro completo (contas, cartões, compras, faturas e orçamentos). Como posso te ajudar hoje?' }]
+    }
+  ];
+
+  if (Array.isArray(payload.history)) {
+    for (const h of payload.history.slice(-8)) {
+      if (!h.text) continue;
+      contents.push({
+        role: h.role === 'user' ? 'user' : 'model',
+        parts: [{ text: h.text }]
+      });
+    }
+  }
+
+  contents.push({
+    role: 'user',
+    parts: [{ text: message }]
+  });
+
+  const systemInstruction = `Você é o assistente financeiro inteligente do MeuFlux.
+Seu objetivo é responder a perguntas do usuário com precisão, clareza e objetividade em Português do Brasil.
+Baseie-se ESTRITAMENTE nos dados financeiros fornecidos no contexto.
+Para compras de cartão de crédito:
+- Compras NÃO PARCELADAS (à vista): isInstallment é falso ou total de parcelas é 1 (ou ausente) e descrição não indica parcelas.
+- Compras PARCELADAS: isInstallment é verdadeiro ou total de parcelas > 1 ou descrição possui indicação de parcelamento.
+- Ao filtrar por mês (ex: outubro), considere tanto a data da compra (purchaseDate / date) quanto o mês de vencimento da fatura (dueMonth).
+- Ao filtrar por cartão (ex: amazon), busque correspondência aproximada no nome do cartão.
+Apresente cada compra com descrição, valor formatado em R$, data, cartão e o valor total somado.`;
+
+  try {
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+    const res = await fetch(geminiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        system_instruction: { parts: [{ text: systemInstruction }] },
+        contents,
+        generationConfig: { temperature: 0.2, maxOutputTokens: 1024 }
+      })
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      return errorResponse(`Erro no serviço Gemini: ${errText}`, 502);
+    }
+
+    const data = await res.json();
+    const replyText = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? 'Não foi possível gerar uma resposta.';
+    return jsonResponse({ success: true, reply: replyText.trim(), model: 'gemini' });
+  } catch (err) {
+    return errorResponse(`Falha ao comunicar com a IA: ${(err as Error).message}`, 500);
+  }
+}
+
 function parseIntentLocally(text: string): { intent: string; data?: Record<string, unknown>; message?: string } | null {
   const lower = text.toLowerCase().normalize('NFD').replace(/\p{M}/gu, '');
 
@@ -1871,6 +1945,10 @@ Deno.serve(async (req: Request) => {
 
   if ((resource === 'parse-bill' || resource === 'parsebill') && method === 'POST') {
     return await handleParseBill(body);
+  }
+
+  if (resource === 'chatbot' && (actionOrId === 'message' || actionOrId === '') && method === 'POST') {
+    return await handleEdgeChatbotMessage(body);
   }
 
   const { data: profile } = await supabaseClient

@@ -194,6 +194,64 @@ public enum SiriSnapshotMapper {
         }
     }
 
+    public static func creditPurchases(from screen: CreditCardsScreen) -> [SiriFinanceSnapshot.SiriCreditBillPurchase] {
+        var results: [SiriFinanceSnapshot.SiriCreditBillPurchase] = []
+        var seenIds = Set<String>()
+
+        let specificPeriods = screen.periods.filter { $0.key != CreditCardsScreen.allCardsId }
+        let periodsToScan = specificPeriods.isEmpty ? screen.periods : specificPeriods
+
+        for (cardId, period) in periodsToScan {
+            let fallbackName = screen.displayName(forAccountId: cardId)
+                ?? screen.cards.first(where: { $0.id == cardId })?.name
+                ?? "Cartão"
+
+            for bucket in period.bills {
+                for line in bucket.items {
+                    if line.isPayment { continue }
+                    let uniqueKey = "\(cardId)_\(line.id)_\(bucket.dueMonth)"
+                    if seenIds.contains(uniqueKey) { continue }
+                    seenIds.insert(uniqueKey)
+
+                    let totalInst = line.installmentTotal ?? 0
+                    let numInst = line.installmentNumber
+                    let hasInstPattern = isInstallmentDescription(line.description)
+                    let isInstallment = totalInst > 1 || line.installmentLabel != nil || hasInstPattern
+                    let resolvedCardName = line.accountName.isEmpty ? fallbackName : line.accountName
+
+                    results.append(
+                        .init(
+                            id: line.id,
+                            cardId: line.accountId.isEmpty ? cardId : line.accountId,
+                            cardName: resolvedCardName,
+                            description: line.description,
+                            amountLabel: line.amount.formatted(),
+                            amount: NSDecimalNumber(decimal: line.amount.amount).doubleValue,
+                            purchaseDate: line.purchaseDate?.description,
+                            dueMonth: bucket.dueMonth,
+                            isInstallment: isInstallment,
+                            installmentNumber: numInst,
+                            installmentTotal: totalInst > 0 ? totalInst : nil,
+                            installmentLabel: line.installmentLabel,
+                            category: line.category,
+                            merchantName: line.merchantName,
+                            isPayment: line.isPayment
+                        )
+                    )
+                }
+            }
+        }
+        return results
+    }
+
+    private static func isInstallmentDescription(_ text: String) -> Bool {
+        guard let regex = try? NSRegularExpression(pattern: #"(?:\b\d+\s*\/\s*\d+\b|\b\d+\s*de\s*\d+\b|parcela\s+\d+)"#, options: .caseInsensitive) else {
+            return false
+        }
+        let ns = text as NSString
+        return regex.firstMatch(in: text, options: [], range: NSRange(location: 0, length: ns.length)) != nil
+    }
+
     public static func accounts(from accounts: [Account]) -> [SiriFinanceSnapshot.SiriAccount] {
         accounts
             .filter { !$0.isHidden && !$0.isCreditCard }

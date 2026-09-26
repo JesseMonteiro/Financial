@@ -21,6 +21,7 @@ public struct SiriFinanceSnapshot: Codable, Sendable, Equatable, Hashable {
     public var categories: [SiriCategory]
     public var cards: [SiriCard]
     public var accounts: [SiriAccount]
+    public var creditPurchases: [SiriCreditBillPurchase]
     public var updatedAt: Date
 
     public init(
@@ -42,6 +43,7 @@ public struct SiriFinanceSnapshot: Codable, Sendable, Equatable, Hashable {
         categories: [SiriCategory] = [],
         cards: [SiriCard] = [],
         accounts: [SiriAccount] = [],
+        creditPurchases: [SiriCreditBillPurchase] = [],
         updatedAt: Date
     ) {
         self.displayName = displayName
@@ -62,6 +64,7 @@ public struct SiriFinanceSnapshot: Codable, Sendable, Equatable, Hashable {
         self.categories = categories
         self.cards = cards
         self.accounts = accounts
+        self.creditPurchases = creditPurchases
         self.updatedAt = updatedAt
     }
 
@@ -85,6 +88,7 @@ public struct SiriFinanceSnapshot: Codable, Sendable, Equatable, Hashable {
         categories = try c.decodeIfPresent([SiriCategory].self, forKey: .categories) ?? []
         cards = try c.decodeIfPresent([SiriCard].self, forKey: .cards) ?? []
         accounts = try c.decodeIfPresent([SiriAccount].self, forKey: .accounts) ?? []
+        creditPurchases = try c.decodeIfPresent([SiriCreditBillPurchase].self, forKey: .creditPurchases) ?? []
         updatedAt = try c.decode(Date.self, forKey: .updatedAt)
     }
 
@@ -205,6 +209,58 @@ public struct SiriFinanceSnapshot: Codable, Sendable, Equatable, Hashable {
         }
     }
 
+    public struct SiriCreditBillPurchase: Codable, Sendable, Equatable, Hashable, Identifiable {
+        public var id: String
+        public var cardId: String
+        public var cardName: String
+        public var description: String
+        public var amountLabel: String
+        public var amount: Double
+        public var purchaseDate: String?
+        public var dueMonth: String
+        public var isInstallment: Bool
+        public var installmentNumber: Int?
+        public var installmentTotal: Int?
+        public var installmentLabel: String?
+        public var category: String?
+        public var merchantName: String?
+        public var isPayment: Bool
+
+        public init(
+            id: String,
+            cardId: String,
+            cardName: String,
+            description: String,
+            amountLabel: String,
+            amount: Double,
+            purchaseDate: String? = nil,
+            dueMonth: String,
+            isInstallment: Bool = false,
+            installmentNumber: Int? = nil,
+            installmentTotal: Int? = nil,
+            installmentLabel: String? = nil,
+            category: String? = nil,
+            merchantName: String? = nil,
+            isPayment: Bool = false
+        ) {
+            self.id = id
+            self.cardId = cardId
+            self.cardName = cardName
+            self.description = description
+            self.amountLabel = amountLabel
+            self.amount = amount
+            self.purchaseDate = purchaseDate
+            self.dueMonth = dueMonth
+            self.isInstallment = isInstallment
+            self.installmentNumber = installmentNumber
+            self.installmentTotal = installmentTotal
+            self.installmentLabel = installmentLabel
+            self.category = category
+            self.merchantName = merchantName
+            self.isPayment = isPayment
+        }
+    }
+
     public var rankedCards: [SiriCard] {
         cards.sorted { $0.openTotalAmount > $1.openTotalAmount }
     }
@@ -222,6 +278,7 @@ public struct SiriFinanceSnapshot: Codable, Sendable, Equatable, Hashable {
         var copy = self
         if copy.cards.isEmpty { copy.cards = previous.cards }
         if copy.accounts.isEmpty { copy.accounts = previous.accounts }
+        if copy.creditPurchases.isEmpty { copy.creditPurchases = previous.creditPurchases }
         return copy
     }
 
@@ -322,6 +379,27 @@ public struct SiriSnapshotStore: @unchecked Sendable {
     public func mergeCards(_ cards: [SiriFinanceSnapshot.SiriCard], now: Date = Date()) -> SiriFinanceSnapshot? {
         guard var snapshot = load() else { return nil }
         snapshot.cards = cards
+        snapshot.updatedAt = now
+        save(snapshot)
+        return snapshot
+    }
+
+    public func mergeCreditPurchases(_ purchases: [SiriFinanceSnapshot.SiriCreditBillPurchase], now: Date = Date()) -> SiriFinanceSnapshot? {
+        guard var snapshot = load() else { return nil }
+        snapshot.creditPurchases = purchases
+        snapshot.updatedAt = now
+        save(snapshot)
+        return snapshot
+    }
+
+    public func mergeCreditCardsAndPurchases(
+        cards: [SiriFinanceSnapshot.SiriCard],
+        purchases: [SiriFinanceSnapshot.SiriCreditBillPurchase],
+        now: Date = Date()
+    ) -> SiriFinanceSnapshot? {
+        guard var snapshot = load() else { return nil }
+        snapshot.cards = cards
+        snapshot.creditPurchases = purchases
         snapshot.updatedAt = now
         save(snapshot)
         return snapshot

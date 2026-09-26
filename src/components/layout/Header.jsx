@@ -1,10 +1,11 @@
 import React from 'react';
-import { Sun, Moon, RefreshCw, Search, Menu } from 'lucide-react';
+import { Sun, Moon, RefreshCw, Search, Menu, Sparkles } from 'lucide-react';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useAccountStore } from '../../stores/accountStore';
 import { useTransactionStore } from '../../stores/transactionStore';
 import { useInvestmentStore } from '../../stores/investmentStore';
 import { useCreditDataStore } from '../../stores/creditDataStore';
+import { useChatbotStore } from '../../stores/chatbotStore';
 import { clearApiCache } from '../../services/api';
 import { GlassSurface } from '../ui/GlassSurface';
 import { format } from 'date-fns';
@@ -15,6 +16,7 @@ export function Header({ onOpenMore, isMobile = false }) {
   const { loadTransactions, loading: txLoading } = useTransactionStore();
   const { loadInvestments, loading: invLoading } = useInvestmentStore();
   const clearCreditData = useCreditDataStore((s) => s.clear);
+  const openChat = useChatbotStore((s) => s.openChat);
 
   const isRefreshing = accLoading || txLoading || invLoading;
 
@@ -86,6 +88,15 @@ export function Header({ onOpenMore, isMobile = false }) {
                 {isRefreshing ? 'Atualizando...' : 'Sincronizar'}
               </span>
             )}
+          </button>
+          <button
+            type="button"
+            onClick={openChat}
+            className="header-cluster__btn"
+            title="Abrir Assistente IA Gemini"
+            aria-label="Assistente IA Gemini"
+          >
+            <Sparkles size={18} style={{ color: 'var(--primary)' }} />
           </button>
           <button
             type="button"

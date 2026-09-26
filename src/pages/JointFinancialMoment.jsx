@@ -274,6 +274,12 @@ export function JointFinancialMoment() {
     ]
   );
 
+  const salaryTotals = useMemo(() => {
+    const amounts = (members || []).map((m) => parseFloat(salaryInputs[m.id]) || 0);
+    const total = amounts.reduce((sum, n) => sum + n, 0);
+    return { amounts, total };
+  }, [members, salaryInputs]);
+
   const handleSaveSalary = async (memberId) => {
     const member = members.find((m) => m.id === memberId);
     if (!member || savingSalaryIds[memberId]) return;
@@ -408,12 +414,6 @@ export function JointFinancialMoment() {
       </div>
     );
   });
-
-  const salaryTotals = useMemo(() => {
-    const amounts = members.map((m) => parseFloat(salaryInputs[m.id]) || 0);
-    const total = amounts.reduce((sum, n) => sum + n, 0);
-    return { amounts, total };
-  }, [members, salaryInputs]);
 
   const salaryCard = (
     <div className="surface moment-salaries-card">

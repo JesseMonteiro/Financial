@@ -245,3 +245,102 @@ export async function parseNaturalLanguageCommand(messageText) {
     };
   }
 }
+
+const CHATBOT_FINANCIAL_INSTRUCTION = `
+Você é o assistente financeiro inteligente do MeuFlux (plataforma de finanças pessoais).
+Seu objetivo é responder a perguntas do usuário com precisão, clareza, empatia e objetividade.
+
+REGRAS DE OURO:
+1. Responda em Português do Brasil com formatação elegante em Markdown (use negrito para valores e nomes, e listas com marcadores para múltiplos lançamentos).
+2. Baseie-se ESTRITAMENTE nos dados financeiros fornecidos no contexto (contas, cartões, compras, faturas, categorias e orçamentos).
+3. Nunca invente dados ou transações. Se a informação não existir ou o cartão/mês não estiver carregado, explique com clareza o que foi encontrado e o que falta.
+4. COMPRAS DE CARTÃO DE CRÉDITO E PARCELAMENTO:
+   - Uma compra NÃO PARCELADA (ou compra À VISTA) é aquela onde:
+     * isInstallment é falso OU installmentTotal é 1 (ou nulo) E a descrição não contém padrão de parcela (ex: "02/06", "3/10").
+   - Uma compra PARCELADA é aquela onde:
+     * isInstallment é verdadeiro OU installmentTotal > 1 OU descrição possui indicação de parcelamento (ex: "Parcela 2/6").
+   - Quando o usuário perguntar por compras não parceladas (à vista), filtre estritamente apenas as compras não parceladas!
+   - Quando o usuário perguntar por compras parceladas, filtre apenas as parceladas.
+   - Quando o usuário especificar um mês (ex: "outubro", "mês 10", "novembro"), analise as compras daquele mês:
+     * Considere tanto a data da compra (purchaseDate / date) quanto o mês de vencimento da fatura (dueMonth). Se houver compras com vencimento em outubro ou realizadas em outubro, cite-as detalhando a data e a fatura.
+   - Quando o usuário especificar um cartão (ex: "amazon", "nubank", "itaú", "inter"), faça correspondência aproximada/case-insensitive pelo nome do cartão ou da instituição (ex: "Amazon Prime Bradescard" corresponde a "amazon").
+5. Sempre apresente:
+   - Nome do estabelecimento / descrição
+   - Valor formatado em Reais (ex: R$ 54,90)
+   - Data da compra (se disponível)
+   - Cartão ou conta utilizada
+   - O somatório total dos gastos filtrados (ex: "Total: R$ 230,00")
+6. Mantenha as respostas concisas e diretas, sem introduções prolixas.
+`;
+
+/**
+ * Responde conversacionalmente a perguntas sobre finanças usando o Gemini.
+ * @param {{ message: string, history?: Array<{role: string, text: string}>, context: object }} params
+ * @returns {Promise<string>}
+ */
+export async function answerFinancialChat({ message, history = [], context = {} }) {
+  if (!genAI) {
+    throw new Error('Serviço Gemini não inicializado. Verifique a GEMINI_API_KEY no arquivo .env.');
+  }
+
+  const model = genAI.getGenerativeModel({
+    model: 'gemini-2.5-flash',
+    systemInstruction: CHATBOT_FINANCIAL_INSTRUCTION,
+  });
+
+  const formattedContext = typeof context === 'string' ? context : JSON.stringify(context, null, 2);
+
+  const contents = [];
+
+  // Contexto inicial
+  contents.push({
+    role: 'user',
+    parts: [
+      {
+        text: `Aqui está o meu contexto financeiro atualizado do MeuFlux:\n\`\`\`json\n${formattedContext}\n\`\`\`\nPor favor, use esses dados para responder às minhas próximas perguntas com precisão.`
+      }
+    ]
+  });
+
+  contents.push({
+    role: 'model',
+    parts: [
+      {
+        text: 'Entendido! Tenho acesso ao seu contexto financeiro completo (contas, cartões, compras, faturas e orçamentos). Como posso te ajudar hoje?'
+      }
+    ]
+  });
+
+  // Histórico anterior
+  if (Array.isArray(history)) {
+    for (const h of history.slice(-8)) {
+      if (!h.text) continue;
+      const role = h.role === 'user' ? 'user' : 'model';
+      contents.push({
+        role,
+        parts: [{ text: h.text }]
+      });
+    }
+  }
+
+  // Pergunta atual
+  contents.push({
+    role: 'user',
+    parts: [{ text: message }]
+  });
+
+  try {
+    const result = await model.generateContent({
+      contents,
+      generationConfig: {
+        temperature: 0.2,
+        maxOutputTokens: 1024,
+      }
+    });
+
+    return (result.response.text() || '').trim();
+  } catch (err) {
+    console.error('[Gemini Service] Erro ao gerar resposta do chatbot:', err);
+    throw err;
+  }
+}

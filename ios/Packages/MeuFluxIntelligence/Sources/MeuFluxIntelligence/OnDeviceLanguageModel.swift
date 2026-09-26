@@ -189,6 +189,36 @@ struct AssistantTransactionsTool: Tool {
     }
 }
 
+@Generable
+struct AssistantCreditPurchasesFilter {
+    @Guide(description: "Filtro opcional por nome do cartão (ex: amazon, nubank, itau). Deixe vazio para todos.")
+    var cardName: String?
+
+    @Guide(description: "Filtro opcional por mês (ex: outubro, 10, 2026-10). Deixe vazio para qualquer mês.")
+    var month: String?
+
+    @Guide(description: "Tipo de parcelamento: 'non_installment' para compras não parceladas (à vista), 'installment' para compras parceladas, ou 'all' para todas.")
+    var installmentType: String?
+}
+
+struct AssistantCreditPurchasesTool: Tool {
+    let box: AssistantSnapshotBox
+    var name: String { "credit_card_purchases" }
+    var description: String {
+        "Consulta compras de cartão de crédito no MeuFlux por cartão (ex: amazon), mês (ex: outubro) e se é compra não parcelada (à vista) ou parcelada."
+    }
+
+    func call(arguments: AssistantCreditPurchasesFilter) async throws -> String {
+        guard let snapshot = await box.current() else { return "Sem resumo local." }
+        return AssistantFacts.creditPurchases(
+            snapshot,
+            cardName: arguments.cardName ?? "",
+            month: arguments.month ?? "",
+            installmentType: arguments.installmentType ?? "all"
+        )
+    }
+}
+
 final class FoundationChatSession: OnDeviceChatConversing, @unchecked Sendable {
     private let session: LanguageModelSession
 
@@ -201,6 +231,7 @@ final class FoundationChatSession: OnDeviceChatConversing, @unchecked Sendable {
                 AssistantCategoriesTool(box: box),
                 AssistantBudgetsTool(box: box),
                 AssistantTransactionsTool(box: box),
+                AssistantCreditPurchasesTool(box: box),
             ],
             instructions: instructions
         )
