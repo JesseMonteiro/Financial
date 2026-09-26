@@ -1,7 +1,9 @@
 import Foundation
 import MeuFluxCore
+import MeuFluxData
 import MeuFluxDomain
 import MeuFluxIntelligence
+
 
 struct IntelligencePublishingDashboard: LoadDashboardUseCase {
     let inner: any LoadDashboardUseCase
@@ -120,31 +122,23 @@ struct LiveAssistantFinanceProvider: AssistantFinanceProviding, Sendable {
     let accounts: any AccountsRepository
 
     func currentSnapshot() async -> SiriFinanceSnapshot? {
-        var fetchedScreen: CreditCardsScreen?
-        var fetchedAccounts: [Account]?
+        async let fetchedScreen = try? cards.fetchScreen(force: false)
+        async let fetchedAccounts = try? accounts.fetchAccounts(force: false)
 
-        await withTaskGroup(of: Void.self) { group in
-            group.addTask {
-                fetchedScreen = try? await cards.fetchScreen(force: false)
-            }
-            group.addTask {
-                fetchedAccounts = try? await accounts.fetchAccounts(force: false)
-            }
-        }
-
-        if let screen = fetchedScreen {
+        if let screen = await fetchedScreen {
             let siriCards = SiriSnapshotMapper.cards(from: screen)
             let siriPurchases = SiriSnapshotMapper.creditPurchases(from: screen)
             _ = store.mergeCreditCardsAndPurchases(cards: siriCards, purchases: siriPurchases)
         }
 
-        if let accts = fetchedAccounts {
+        if let accts = await fetchedAccounts {
             let siriAccounts = SiriSnapshotMapper.accounts(from: accts)
             _ = store.mergeAccounts(siriAccounts)
         }
 
         return store.load()
     }
+
 }
 
 struct LiveRemoteChatbotProvider: RemoteChatbotProviding, Sendable {
