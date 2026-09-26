@@ -176,6 +176,24 @@ public enum SiriSnapshotMapper {
                         amount: $0.value
                     )
                 },
+            creditPurchases: snapshot.recentCreditPurchases.map { tx in
+                let hasInst = isInstallmentDescription(tx.description)
+                let cardName = (tx.accountName?.isEmpty == false ? tx.accountName! : "Cartão")
+                let dueMonth = tx.date.count >= 7 ? String(tx.date.prefix(7)) : snapshot.selectedMonth.description
+                return SiriFinanceSnapshot.SiriCreditBillPurchase(
+                    id: tx.id,
+                    cardId: tx.accountId ?? "",
+                    cardName: cardName,
+                    description: tx.description,
+                    amountLabel: tx.amount.formatted(),
+                    amount: NSDecimalNumber(decimal: tx.amount.amount).doubleValue,
+                    purchaseDate: tx.date,
+                    dueMonth: dueMonth,
+                    isInstallment: hasInst,
+                    installmentLabel: hasInst ? "Parcelada" : "À vista (não parcelada)",
+                    category: tx.category
+                )
+            },
             updatedAt: now
         )
     }

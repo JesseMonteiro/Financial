@@ -87,10 +87,12 @@ public enum MeuFluxAssistantRouter {
 
     public static func extractCardFilter(_ q: String, snapshot: SiriFinanceSnapshot) -> String {
         for card in snapshot.cards {
-            let foldName = AssistantFacts.fold(card.name)
-            if q.contains(foldName) { return card.name }
+            if AssistantFacts.matchesCard(itemCardName: card.name, query: q) { return card.name }
             let foldInst = AssistantFacts.fold(card.institutionName)
             if !foldInst.isEmpty && q.contains(foldInst) { return card.name }
+        }
+        for item in snapshot.creditPurchases {
+            if AssistantFacts.matchesCard(itemCardName: item.cardName, query: q) { return item.cardName }
         }
         let known = ["amazon", "nubank", "inter", "itau", "bradesco", "santander", "c6", "neon"]
         for kw in known {
@@ -100,14 +102,8 @@ public enum MeuFluxAssistantRouter {
     }
 
     public static func extractMonthFilter(_ q: String) -> String {
-        let months = [
-            "janeiro": "01", "fevereiro": "02", "marco": "03", "março": "03",
-            "abril": "04", "maio": "05", "junho": "06", "julho": "07",
-            "agosto": "08", "setembro": "09", "outubro": "10", "novembro": "11",
-            "dezembro": "12"
-        ]
-        for (name, num) in months {
-            if q.contains(name) { return num }
+        if let parsed = AssistantFacts.parseMonthQuery(q) {
+            return parsed.monthString2Digits
         }
         return ""
     }
@@ -222,7 +218,9 @@ public final class MeuFluxAssistantSession: @unchecked Sendable {
     Você é o assistente privado do MeuFlux. Responda em português do Brasil, curto e direto.
     Use as tools para buscar fatos: overview, cards, accounts, categories, budgets, recent_transactions, credit_card_purchases.
     Para compras de cartão, compras à vista ou parceladas e por mês, utilize credit_card_purchases.
+    Ao chamar credit_card_purchases, passe no cardName apenas o nome ou marca do cartão (ex: amazon, nubank, itau), sem a palavra "cartão".
     Use SOMENTE o que as tools devolverem. Não invente números.
+    Se a tool credit_card_purchases listar compras, cite cada uma delas com o valor, data e o total.
     Se uma tool disser que falta dado, peça para abrir a tela correspondente uma vez (Início, Cartões ou Contas).
     """
 }

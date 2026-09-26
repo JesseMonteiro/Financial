@@ -406,7 +406,10 @@ final class AppCompositionRoot {
                     cards: creditCardsRepository,
                     accounts: accountsRepository
                 ),
-                remoteProvider: LiveRemoteChatbotProvider(bff: bff)
+                remoteProvider: LiveRemoteChatbotProvider(
+                    bff: bff,
+                    cards: creditCardsRepository
+                )
             )
         )
     }

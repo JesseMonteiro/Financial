@@ -33,6 +33,7 @@ ios/.build/
 ios/*.xcodeproj/
 ios/*.xcworkspace/
 ios/DerivedData/
+ios/.build_dd/
 **/xcuserdata/
 ios/MeuFluxApp/Config/Secrets.xcconfig
 

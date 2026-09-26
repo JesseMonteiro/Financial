@@ -393,18 +393,92 @@ async function handleParseBill(body: unknown): Promise<Response> {
   return errorResponse('Falha ao ler a fatura com IA.', 500);
 }
 
-async function handleEdgeChatbotMessage(body: unknown): Promise<Response> {
+async function handleEdgeChatbotMessage(
+  body: unknown,
+  supabaseClient?: ReturnType<typeof createClient>,
+  userId?: string
+): Promise<Response> {
   const apiKey = Deno.env.get('GEMINI_API_KEY');
   if (!apiKey) {
     return errorResponse('GEMINI_API_KEY não configurada no servidor', 500);
   }
-  const payload = (body || {}) as { message?: string; history?: Array<{ role: string; text: string }>; context?: unknown };
+  const payload = (body || {}) as {
+    message?: string;
+    history?: Array<{ role: string; text: string }>;
+    context?: Record<string, unknown>;
+  };
   const message = payload?.message;
   if (!message || typeof message !== 'string') {
     return errorResponse('Mensagem inválida ou ausente', 400);
   }
 
-  const contextStr = typeof payload.context === 'string' ? payload.context : JSON.stringify(payload.context ?? {}, null, 2);
+  let ctx: Record<string, unknown> = (payload.context && typeof payload.context === 'object')
+    ? { ...(payload.context as Record<string, unknown>) }
+    : {};
+
+  // Auto-enrich credit cards context if creditPurchases is empty or missing
+  if (supabaseClient && userId && (!Array.isArray(ctx.creditPurchases) || (ctx.creditPurchases as unknown[]).length === 0)) {
+    try {
+      const { data: profile } = await supabaseClient
+        .from('profiles')
+        .select('pluggy_item_ids, pluggy_client_id, pluggy_client_secret')
+        .eq('id', userId)
+        .maybeSingle();
+
+      const clientId = profile?.pluggy_client_id || Deno.env.get('PLUGGY_CLIENT_ID');
+      const clientSecret = profile?.pluggy_client_secret || Deno.env.get('PLUGGY_CLIENT_SECRET');
+      const itemIds = profile?.pluggy_item_ids || [];
+
+      if (clientId && clientSecret) {
+        const clientConfig: PluggyClient = {
+          clientId,
+          clientSecret,
+          itemIds,
+          userId,
+          supabase: supabaseClient,
+        };
+
+        const ccResponse = await handleCreditCards(clientConfig);
+        if (ccResponse.ok) {
+          const ccData = await ccResponse.json();
+          if (Array.isArray(ccData.cards) && (!Array.isArray(ctx.cards) || (ctx.cards as unknown[]).length === 0)) {
+            ctx.cards = ccData.cards;
+          }
+          const periods = (ccData.periods || {}) as Record<string, { bills?: Array<{ dueMonth?: string; items?: Array<Record<string, unknown>> }> }>;
+          const allPeriod = periods.all || Object.values(periods)[0];
+          const bills = allPeriod?.bills || [];
+          const enrichedPurchases: Array<Record<string, unknown>> = [];
+          for (const bill of bills) {
+            for (const item of (bill.items || [])) {
+              if (item.isPayment) continue;
+              const totalInst = Number(item.installmentTotal || 0);
+              const numInst = Number(item.installmentNumber || 0);
+              const isInst = totalInst > 1;
+              enrichedPurchases.push({
+                cardName: String(item.accountName || 'Cartão'),
+                description: String(item.description || 'Compra'),
+                amount: Number(item.amount) || 0,
+                amountLabel: `R$ ${item.amount}`,
+                purchaseDate: item.purchaseDate ? String(item.purchaseDate) : null,
+                date: item.purchaseDate ? String(item.purchaseDate) : null,
+                dueMonth: bill.dueMonth || '',
+                isInstallment: isInst,
+                installmentLabel: isInst ? `Parcela ${numInst || 1}/${totalInst}` : 'À vista (não parcelada)',
+                category: item.category ? String(item.category) : ''
+              });
+            }
+          }
+          if (enrichedPurchases.length > 0) {
+            ctx.creditPurchases = enrichedPurchases;
+          }
+        }
+      }
+    } catch (e) {
+      console.error('[chatbot] Failed to auto-enrich credit cards context:', e);
+    }
+  }
+
+  const contextStr = JSON.stringify(ctx, null, 2);
 
   const contents: Array<{ role: string; parts: Array<{ text: string }> }> = [
     {
@@ -433,14 +507,15 @@ async function handleEdgeChatbotMessage(body: unknown): Promise<Response> {
   });
 
   const systemInstruction = `Você é o assistente financeiro inteligente do MeuFlux.
-Seu objetivo é responder a perguntas do usuário com precisão, clareza e objetividade em Português do Brasil.
-Baseie-se ESTRITAMENTE nos dados financeiros fornecidos no contexto.
+Seu objetivo é responder a perguntas do usuário com precisão, clareza e simpatia em Português do Brasil.
+Baseie-se nos dados financeiros fornecidos no contexto (contas, cartões, compras, faturas e orçamentos).
 Para compras de cartão de crédito:
-- Compras NÃO PARCELADAS (à vista): isInstallment é falso ou total de parcelas é 1 (ou ausente) e descrição não indica parcelas.
-- Compras PARCELADAS: isInstallment é verdadeiro ou total de parcelas > 1 ou descrição possui indicação de parcelamento.
-- Ao filtrar por mês (ex: outubro), considere tanto a data da compra (purchaseDate / date) quanto o mês de vencimento da fatura (dueMonth).
-- Ao filtrar por cartão (ex: amazon), busque correspondência aproximada no nome do cartão.
-Apresente cada compra com descrição, valor formatado em R$, data, cartão e o valor total somado.`;
+- Compras NÃO PARCELADAS (à vista): isInstallment é falso, ou installmentLabel contém "À vista" ou "não parcelada", ou descrição não possui indicação de parcelas.
+- Compras PARCELADAS: isInstallment é verdadeiro, ou total de parcelas > 1, ou descrição/installmentLabel indica parcela.
+- Ao filtrar por mês (ex: outubro), considere tanto o mês da data da compra (purchaseDate / date, ex: 2026-10-XX) quanto o mês de vencimento da fatura (dueMonth, ex: 2026-10).
+- Ao filtrar por cartão (ex: "Amazon", "cartão Amazon", "Nubank"), busque por correspondência aproximada no nome do cartão (ex: "Amazon Prime Bradescard" corresponde a "Amazon").
+- Se encontrar compras que atendam aos filtros, liste cada uma delas com o nome/estabelecimento, data, valor em R$ e o cartão, e informe a soma total das compras encontradas.
+- Se não encontrar compras com os filtros exatos, informe com clareza quais cartões e faturas estão registrados no contexto para orientar o usuário.`;
 
   try {
     const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
@@ -1852,7 +1927,7 @@ Deno.serve(async (req: Request) => {
 
       let body: unknown = {};
       try { body = await req.json(); } catch (_) {}
-      return await handleEdgeChatbotMessage(body);
+      return await handleEdgeChatbotMessage(body, supabaseClient, user.id);
     }
 
     const action = segments[2];

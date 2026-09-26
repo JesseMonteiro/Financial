@@ -388,6 +388,131 @@ final class MeuFluxAssistantRouterTests: XCTestCase {
         XCTAssertFalse(reply.contains("Nubank"), reply)
         XCTAssertFalse(reply.contains("Almoço"), reply)
     }
+
+    func testCardNameCleaningAndMatching() {
+        XCTAssertEqual(AssistantFacts.cleanCardQuery("cartão amazon"), "amazon")
+        XCTAssertEqual(AssistantFacts.cleanCardQuery("no meu cartão amazon"), "amazon")
+        XCTAssertEqual(AssistantFacts.cleanCardQuery("cartão de crédito nubank"), "nubank")
+        XCTAssertEqual(AssistantFacts.cleanCardQuery("Amazon Prime"), "amazon prime")
+
+        XCTAssertTrue(AssistantFacts.matchesCard(itemCardName: "Amazon Prime Bradescard", query: "cartão amazon"))
+        XCTAssertTrue(AssistantFacts.matchesCard(itemCardName: "Amazon Prime Bradescard", query: "no meu cartão amazon"))
+        XCTAssertTrue(AssistantFacts.matchesCard(itemCardName: "Amazon Prime Bradescard", query: "Amazon"))
+        XCTAssertTrue(AssistantFacts.matchesCard(itemCardName: "Amazon Prime Bradescard", query: "amazon prime"))
+        XCTAssertFalse(AssistantFacts.matchesCard(itemCardName: "Amazon Prime Bradescard", query: "nubank"))
+    }
+
+    func testMonthQueryParsing() {
+        let oct = AssistantFacts.parseMonthQuery("outubro")
+        XCTAssertEqual(oct?.month, 10)
+        XCTAssertNil(oct?.year)
+
+        let iso = AssistantFacts.parseMonthQuery("2026-10")
+        XCTAssertEqual(iso?.month, 10)
+        XCTAssertEqual(iso?.year, 2026)
+
+        let slash = AssistantFacts.parseMonthQuery("10/2026")
+        XCTAssertEqual(slash?.month, 10)
+        XCTAssertEqual(slash?.year, 2026)
+
+        let digit = AssistantFacts.parseMonthQuery("10")
+        XCTAssertEqual(digit?.month, 10)
+        XCTAssertNil(digit?.year)
+    }
+
+    func testCreditPurchasesWithRealCardNameAndExtractedParameters() {
+        let snapshot = SiriFinanceSnapshot(
+            displayName: "Jesse",
+            monthKey: "2026-10",
+            bankBalanceLabel: "R$ 0,00",
+            netWorthLabel: "R$ 0,00",
+            weeklySpendLabel: "R$ 0,00",
+            weeklyDeltaPct: 0,
+            weeklyTopCategory: nil,
+            openBillsLabel: "R$ 0,00",
+            creditCount: 1,
+            insights: [],
+            budgets: [],
+            recentTransactions: [],
+            cards: [
+                .init(
+                    id: "c-amazon",
+                    name: "Amazon Prime Bradescard",
+                    institutionName: "Bradesco",
+                    lastFour: "1234",
+                    openTotalLabel: "R$ 150,00",
+                    openTotalAmount: 150.00,
+                    outstandingLabel: "R$ 150,00"
+                )
+            ],
+            creditPurchases: [
+                .init(
+                    id: "p1",
+                    cardId: "c-amazon",
+                    cardName: "Amazon Prime Bradescard",
+                    description: "Livro Swift",
+                    amountLabel: "R$ 120,00",
+                    amount: 120.00,
+                    purchaseDate: "2026-10-02",
+                    dueMonth: "2026-10",
+                    isInstallment: false
+                ),
+                .init(
+                    id: "p2",
+                    cardId: "c-amazon",
+                    cardName: "Amazon Prime Bradescard",
+                    description: "Monitor 4K (1/10)",
+                    amountLabel: "R$ 250,00",
+                    amount: 250.00,
+                    purchaseDate: "2026-10-04",
+                    dueMonth: "2026-10",
+                    isInstallment: true
+                ),
+                .init(
+                    id: "p3",
+                    cardId: "c-amazon",
+                    cardName: "Amazon Prime Bradescard",
+                    description: "Mouse Pad",
+                    amountLabel: "R$ 30,00",
+                    amount: 30.00,
+                    purchaseDate: "2026-10-15",
+                    dueMonth: "2026-10",
+                    isInstallment: false
+                )
+            ],
+            updatedAt: Date()
+        )
+
+        // Simula o que o Apple Intelligence ou usuário passa
+        let result1 = AssistantFacts.creditPurchases(
+            snapshot,
+            cardName: "cartão Amazon",
+            month: "outubro",
+            installmentType: "non_installment"
+        )
+        XCTAssertTrue(result1.contains("Livro Swift"), result1)
+        XCTAssertTrue(result1.contains("Mouse Pad"), result1)
+        XCTAssertFalse(result1.contains("Monitor 4K"), result1)
+        XCTAssertTrue(result1.contains("Total: R$ 150,00"), result1)
+
+        // Simula quando month é "2026-10"
+        let result2 = AssistantFacts.creditPurchases(
+            snapshot,
+            cardName: "Amazon",
+            month: "2026-10",
+            installmentType: "non_installment"
+        )
+        XCTAssertTrue(result2.contains("Livro Swift"), result2)
+        XCTAssertTrue(result2.contains("Mouse Pad"), result2)
+
+        // Simula resposta padrão do canned router com pergunta em linguagem natural
+        let reply = MeuFluxAssistantRouter.cannedReply(
+            question: "Quais as compras não parceladas no mês de outubro no meu cartão amazon?",
+            snapshot: snapshot
+        )
+        XCTAssertTrue(reply.contains("Livro Swift"), reply)
+        XCTAssertTrue(reply.contains("Mouse Pad"), reply)
+    }
 }
 
 

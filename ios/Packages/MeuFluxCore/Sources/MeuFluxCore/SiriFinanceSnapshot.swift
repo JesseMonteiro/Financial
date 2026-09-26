@@ -68,6 +68,28 @@ public struct SiriFinanceSnapshot: Codable, Sendable, Equatable, Hashable {
         self.updatedAt = updatedAt
     }
 
+    public static func empty(now: Date = Date()) -> SiriFinanceSnapshot {
+        SiriFinanceSnapshot(
+            displayName: "MeuFlux",
+            monthKey: "",
+            bankBalanceLabel: "R$ 0,00",
+            netWorthLabel: "R$ 0,00",
+            weeklySpendLabel: "R$ 0,00",
+            weeklyDeltaPct: 0,
+            weeklyTopCategory: nil,
+            openBillsLabel: "R$ 0,00",
+            creditCount: 0,
+            insights: [],
+            budgets: [],
+            recentTransactions: [],
+            categories: [],
+            cards: [],
+            accounts: [],
+            creditPurchases: [],
+            updatedAt: now
+        )
+    }
+
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         displayName = try c.decode(String.self, forKey: .displayName)
@@ -278,7 +300,15 @@ public struct SiriFinanceSnapshot: Codable, Sendable, Equatable, Hashable {
         var copy = self
         if copy.cards.isEmpty { copy.cards = previous.cards }
         if copy.accounts.isEmpty { copy.accounts = previous.accounts }
-        if copy.creditPurchases.isEmpty { copy.creditPurchases = previous.creditPurchases }
+        if copy.creditPurchases.isEmpty {
+            copy.creditPurchases = previous.creditPurchases
+        } else if !previous.creditPurchases.isEmpty {
+            var seen = Set(copy.creditPurchases.map(\.id))
+            for p in previous.creditPurchases where !seen.contains(p.id) {
+                seen.insert(p.id)
+                copy.creditPurchases.append(p)
+            }
+        }
         return copy
     }
 
@@ -376,28 +406,31 @@ public struct SiriSnapshotStore: @unchecked Sendable {
         return nil
     }
 
+    @discardableResult
     public func mergeCards(_ cards: [SiriFinanceSnapshot.SiriCard], now: Date = Date()) -> SiriFinanceSnapshot? {
-        guard var snapshot = load() else { return nil }
+        var snapshot = load() ?? .empty(now: now)
         snapshot.cards = cards
         snapshot.updatedAt = now
         save(snapshot)
         return snapshot
     }
 
+    @discardableResult
     public func mergeCreditPurchases(_ purchases: [SiriFinanceSnapshot.SiriCreditBillPurchase], now: Date = Date()) -> SiriFinanceSnapshot? {
-        guard var snapshot = load() else { return nil }
+        var snapshot = load() ?? .empty(now: now)
         snapshot.creditPurchases = purchases
         snapshot.updatedAt = now
         save(snapshot)
         return snapshot
     }
 
+    @discardableResult
     public func mergeCreditCardsAndPurchases(
         cards: [SiriFinanceSnapshot.SiriCard],
         purchases: [SiriFinanceSnapshot.SiriCreditBillPurchase],
         now: Date = Date()
     ) -> SiriFinanceSnapshot? {
-        guard var snapshot = load() else { return nil }
+        var snapshot = load() ?? .empty(now: now)
         snapshot.cards = cards
         snapshot.creditPurchases = purchases
         snapshot.updatedAt = now
@@ -405,8 +438,9 @@ public struct SiriSnapshotStore: @unchecked Sendable {
         return snapshot
     }
 
+    @discardableResult
     public func mergeAccounts(_ accounts: [SiriFinanceSnapshot.SiriAccount], now: Date = Date()) -> SiriFinanceSnapshot? {
-        guard var snapshot = load() else { return nil }
+        var snapshot = load() ?? .empty(now: now)
         snapshot.accounts = accounts
         snapshot.updatedAt = now
         save(snapshot)

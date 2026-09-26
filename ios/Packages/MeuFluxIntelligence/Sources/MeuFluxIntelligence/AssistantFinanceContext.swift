@@ -56,7 +56,7 @@ public enum AssistantFacts {
 
     public static func cards(_ snapshot: SiriFinanceSnapshot, filter: String = "") -> String {
         let items = filtered(snapshot.rankedCards, filter: filter) { card, q in
-            contains(card.name, q) || contains(card.institutionName, q) || card.lastFour.contains(q)
+            matchesCard(itemCardName: card.name, query: q) || contains(card.institutionName, q) || card.lastFour.contains(q)
         }
         guard !items.isEmpty else {
             if snapshot.cards.isEmpty {
@@ -123,6 +123,166 @@ public enum AssistantFacts {
         }.joined(separator: "\n")
     }
 
+    public struct ParsedMonthFilter: Equatable, Sendable {
+        public let month: Int
+        public let year: Int?
+
+        public init(month: Int, year: Int? = nil) {
+            self.month = month
+            self.year = year
+        }
+
+        public var monthString2Digits: String {
+            String(format: "%02d", month)
+        }
+
+        public func matches(purchaseDate: String?, dueMonth: String) -> Bool {
+            let mStr = monthString2Digits
+
+            let matchDue: Bool
+            if let year {
+                let yStr = String(year)
+                matchDue = dueMonth == "\(yStr)-\(mStr)" ||
+                           (dueMonth.contains(yStr) && (dueMonth.hasSuffix("-\(mStr)") || dueMonth.contains("-\(mStr)-") || dueMonth.contains("/\(mStr)")))
+            } else {
+                matchDue = dueMonth.hasSuffix("-\(mStr)") ||
+                           dueMonth.contains("-\(mStr)-") ||
+                           dueMonth == mStr ||
+                           dueMonth.contains("/\(mStr)")
+            }
+
+            var matchPurchase = false
+            if let date = purchaseDate, !date.isEmpty {
+                if let year {
+                    let yStr = String(year)
+                    matchPurchase = date.starts(with: "\(yStr)-\(mStr)-") ||
+                                    date.contains("\(yStr)-\(mStr)") ||
+                                    date.contains("/\(mStr)/\(yStr)")
+                } else {
+                    matchPurchase = date.contains("-\(mStr)-") ||
+                                    date.contains("/\(mStr)/") ||
+                                    date.starts(with: "\(mStr)-")
+                }
+            }
+
+            return matchDue || matchPurchase
+        }
+    }
+
+    public static func cleanCardQuery(_ text: String) -> String {
+        var folded = fold(text).lowercased()
+        let stopWords = [
+            "cartao de credito", "cartao de debito",
+            "cartao", "credito", "debito",
+            "meu", "minha", "meus", "minhas",
+            "no", "na", "nos", "nas",
+            "do", "da", "dos", "das",
+            "de", "em"
+        ]
+        for stop in stopWords {
+            if let regex = try? NSRegularExpression(pattern: "\\b\(stop)\\b", options: .caseInsensitive) {
+                folded = regex.stringByReplacingMatches(
+                    in: folded,
+                    options: [],
+                    range: NSRange(location: 0, length: folded.utf16.count),
+                    withTemplate: " "
+                )
+            }
+        }
+        let cleaned = folded.trimmingCharacters(in: .whitespacesAndNewlines)
+        return cleaned.isEmpty ? fold(text).lowercased() : cleaned
+    }
+
+    public static func matchesCard(itemCardName: String, query: String) -> Bool {
+        let cleanQuery = cleanCardQuery(query)
+        if cleanQuery.isEmpty { return true }
+
+        let itemFolded = fold(itemCardName).lowercased()
+        if itemFolded.contains(cleanQuery) || cleanQuery.contains(itemFolded) {
+            return true
+        }
+
+        let tokens = cleanQuery.split(separator: " ").map(String.init).filter { $0.count >= 3 }
+        if !tokens.isEmpty && tokens.contains(where: { itemFolded.contains($0) }) {
+            return true
+        }
+
+        return false
+    }
+
+    public static func parseMonthQuery(_ text: String) -> ParsedMonthFilter? {
+        let folded = fold(text).lowercased()
+        guard !folded.isEmpty else { return nil }
+
+        var extractedYear: Int? = nil
+        if let yearMatch = folded.range(of: #"\b(20\d\d)\b"#, options: .regularExpression) {
+            extractedYear = Int(folded[yearMatch])
+        }
+
+        let monthNames: [(names: [String], month: Int)] = [
+            (["janeiro", "jan"], 1),
+            (["fevereiro", "fev"], 2),
+            (["marco", "março", "mar"], 3),
+            (["abril", "abr"], 4),
+            (["maio", "mai"], 5),
+            (["junho", "jun"], 6),
+            (["julho", "jul"], 7),
+            (["agosto", "ago"], 8),
+            (["setembro", "set"], 9),
+            (["outubro", "out"], 10),
+            (["novembro", "nov"], 11),
+            (["dezembro", "dez"], 12)
+        ]
+
+        // 1. Slash and dash date formats: YYYY-MM or YYYY/MM
+        if let match = folded.range(of: #"\b(20\d\d)[-/](0?[1-9]|1[0-2])\b"#, options: .regularExpression) {
+            let matched = String(folded[match])
+            let parts = matched.split(whereSeparator: { $0 == "-" || $0 == "/" })
+            if parts.count == 2, let y = Int(parts[0]), let m = Int(parts[1]) {
+                return ParsedMonthFilter(month: m, year: y)
+            }
+        }
+
+        // 2. Slash and dash date formats: MM/YYYY or MM-YYYY
+        if let match = folded.range(of: #"\b(0?[1-9]|1[0-2])[-/](20\d\d)\b"#, options: .regularExpression) {
+            let matched = String(folded[match])
+            let parts = matched.split(whereSeparator: { $0 == "-" || $0 == "/" })
+            if parts.count == 2, let m = Int(parts[0]), let y = Int(parts[1]) {
+                return ParsedMonthFilter(month: m, year: y)
+            }
+        }
+
+        // 3. Explicit "mes MM" or "mês MM"
+        if let match = folded.range(of: #"\bmes\s+(0?[1-9]|1[0-2])\b"#, options: .regularExpression) {
+            let matched = String(folded[match])
+            let parts = matched.split(separator: " ")
+            if parts.count >= 2, let m = Int(parts.last!) {
+                return ParsedMonthFilter(month: m, year: extractedYear)
+            }
+        }
+
+        // 4. Standalone number representing month only (e.g. "10", "5")
+        if let match = folded.range(of: #"^\s*(0?[1-9]|1[0-2])\s*$"#, options: .regularExpression) {
+            let trimmed = folded.trimmingCharacters(in: .whitespaces)
+            if let m = Int(trimmed) {
+                return ParsedMonthFilter(month: m, year: extractedYear)
+            }
+        }
+
+        // 5. Textual month names with strict word boundary matching
+        for entry in monthNames {
+            for name in entry.names {
+                let foldedName = fold(name).lowercased()
+                let pattern = #"(^|\b)"# + NSRegularExpression.escapedPattern(for: foldedName) + #"(\b|$)"#
+                if folded.range(of: pattern, options: .regularExpression) != nil {
+                    return ParsedMonthFilter(month: entry.month, year: extractedYear)
+                }
+            }
+        }
+
+        return nil
+    }
+
     public static func creditPurchases(
         _ snapshot: SiriFinanceSnapshot,
         cardName: String = "",
@@ -132,16 +292,19 @@ public enum AssistantFacts {
         var items = snapshot.creditPurchases.filter { !$0.isPayment }
 
         if !cardName.isEmpty {
-            let q = fold(cardName)
-            items = items.filter { fold($0.cardName).contains(q) }
+            items = items.filter { matchesCard(itemCardName: $0.cardName, query: cardName) }
         }
 
         if !month.isEmpty {
-            let monthDigit = normalizeMonthQuery(month)
-            items = items.filter { item in
-                let matchPurchase = item.purchaseDate?.contains("-\(monthDigit)-") == true
-                let matchDue = item.dueMonth.contains("-\(monthDigit)") || item.dueMonth == monthDigit || item.dueMonth.contains(monthDigit)
-                return matchPurchase || matchDue
+            if let monthFilter = parseMonthQuery(month) {
+                items = items.filter { monthFilter.matches(purchaseDate: $0.purchaseDate, dueMonth: $0.dueMonth) }
+            } else {
+                let monthDigit = normalizeMonthQuery(month)
+                items = items.filter { item in
+                    let matchPurchase = item.purchaseDate?.contains("-\(monthDigit)-") == true
+                    let matchDue = item.dueMonth.contains("-\(monthDigit)") || item.dueMonth == monthDigit || item.dueMonth.contains(monthDigit)
+                    return matchPurchase || matchDue
+                }
             }
         }
 
@@ -156,7 +319,8 @@ public enum AssistantFacts {
             if snapshot.creditPurchases.isEmpty {
                 return "Ainda não há compras de cartão carregadas no resumo. Abra a tela de Cartões para sincronizar."
             }
-            return "Nenhuma compra encontrada com os filtros informados (cartão: '\(cardName)', mês: '\(month)', tipo: '\(installmentType)')."
+            let availableCards = Set(snapshot.creditPurchases.map(\.cardName)).sorted().joined(separator: ", ")
+            return "Nenhuma compra encontrada com os filtros informados (cartão: '\(cardName)', mês: '\(month)', tipo: '\(installmentType)'). Cartões com compras disponíveis no resumo: \(availableCards.isEmpty ? "nenhum" : availableCards)."
         }
 
         let total = items.reduce(0.0) { $0 + $1.amount }
@@ -176,20 +340,10 @@ public enum AssistantFacts {
     }
 
     public static func normalizeMonthQuery(_ text: String) -> String {
-        let folded = fold(text).lowercased()
-        if folded.contains("janeiro") || folded == "jan" || folded == "1" || folded == "01" { return "01" }
-        if folded.contains("fevereiro") || folded == "fev" || folded == "2" || folded == "02" { return "02" }
-        if folded.contains("marco") || folded.contains("março") || folded == "mar" || folded == "3" || folded == "03" { return "03" }
-        if folded.contains("abril") || folded == "abr" || folded == "4" || folded == "04" { return "04" }
-        if folded.contains("maio") || folded == "mai" || folded == "5" || folded == "05" { return "05" }
-        if folded.contains("junho") || folded == "jun" || folded == "6" || folded == "06" { return "06" }
-        if folded.contains("julho") || folded == "jul" || folded == "7" || folded == "07" { return "07" }
-        if folded.contains("agosto") || folded == "ago" || folded == "8" || folded == "08" { return "08" }
-        if folded.contains("setembro") || folded == "set" || folded == "9" || folded == "09" { return "09" }
-        if folded.contains("outubro") || folded == "out" || folded == "10" { return "10" }
-        if folded.contains("novembro") || folded == "nov" || folded == "11" { return "11" }
-        if folded.contains("dezembro") || folded == "dez" || folded == "12" { return "12" }
-        return folded
+        if let parsed = parseMonthQuery(text) {
+            return parsed.monthString2Digits
+        }
+        return fold(text).lowercased()
     }
 
     private static func filtered<T>(

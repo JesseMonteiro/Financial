@@ -191,13 +191,13 @@ struct AssistantTransactionsTool: Tool {
 
 @Generable
 struct AssistantCreditPurchasesFilter {
-    @Guide(description: "Filtro opcional por nome do cartão (ex: amazon, nubank, itau). Deixe vazio para todos.")
+    @Guide(description: "Apenas o nome ou marca do cartão (ex: amazon, nubank, itau, inter). NÃO inclua a palavra 'cartão'. Deixe vazio para todos.")
     var cardName: String?
 
-    @Guide(description: "Filtro opcional por mês (ex: outubro, 10, 2026-10). Deixe vazio para qualquer mês.")
+    @Guide(description: "Filtro opcional por mês ou fatura (ex: outubro, 10, 2026-10). Deixe vazio para qualquer mês.")
     var month: String?
 
-    @Guide(description: "Tipo de parcelamento: 'non_installment' para compras não parceladas (à vista), 'installment' para compras parceladas, ou 'all' para todas.")
+    @Guide(description: "Tipo de compra: 'non_installment' para compras não parceladas (à vista), 'installment' para compras parceladas, ou 'all' para todas.")
     var installmentType: String?
 }
 

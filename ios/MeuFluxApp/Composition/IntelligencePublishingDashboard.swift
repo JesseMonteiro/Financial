@@ -67,7 +67,9 @@ struct IntelligencePublishingCreditCards: CreditCardsRepository, Sendable {
 
     func fetchScreen(force: Bool) async throws -> CreditCardsScreen {
         let screen = try await inner.fetchScreen(force: force)
-        if let snapshot = store.mergeCards(SiriSnapshotMapper.cards(from: screen)) {
+        let siriCards = SiriSnapshotMapper.cards(from: screen)
+        let siriPurchases = SiriSnapshotMapper.creditPurchases(from: screen)
+        if let snapshot = store.mergeCreditCardsAndPurchases(cards: siriCards, purchases: siriPurchases) {
             if let onIndexed {
                 Task.detached(priority: .utility) {
                     await onIndexed(snapshot)
@@ -143,53 +145,82 @@ struct LiveAssistantFinanceProvider: AssistantFinanceProviding, Sendable {
 
 struct LiveRemoteChatbotProvider: RemoteChatbotProviding, Sendable {
     let bff: BFFClient
+    let cards: (any CreditCardsRepository)?
+
+    init(bff: BFFClient, cards: (any CreditCardsRepository)? = nil) {
+        self.bff = bff
+        self.cards = cards
+    }
 
     func reply(
         message: String,
         history: [AssistantChatMessage],
         snapshot: SiriFinanceSnapshot
     ) async throws -> String {
+        var activeSnapshot = snapshot
+
+        if activeSnapshot.creditPurchases.isEmpty, let cards {
+            if let screen = try? await cards.fetchScreen(force: false) {
+                let purchases = SiriSnapshotMapper.creditPurchases(from: screen)
+                if !purchases.isEmpty {
+                    activeSnapshot.creditPurchases = purchases
+                }
+                let cardsList = SiriSnapshotMapper.cards(from: screen)
+                if !cardsList.isEmpty {
+                    activeSnapshot.cards = cardsList
+                }
+            }
+        }
+
         let historyPayload = history.suffix(10).map { msg in
             ["role": msg.role.rawValue, "text": msg.text]
         }
 
         let contextDict: [String: Any] = [
-            "displayName": snapshot.displayName,
-            "monthKey": snapshot.monthKey,
-            "bankBalance": snapshot.bankBalanceLabel,
-            "netWorth": snapshot.netWorthLabel,
-            "openBills": snapshot.openBillsLabel,
-            "cards": snapshot.cards.map { [
+            "displayName": activeSnapshot.displayName,
+            "monthKey": activeSnapshot.monthKey,
+            "bankBalance": activeSnapshot.bankBalanceLabel,
+            "netWorth": activeSnapshot.netWorthLabel,
+            "openBills": activeSnapshot.openBillsLabel,
+            "cards": activeSnapshot.cards.map { [
                 "name": $0.name,
                 "openTotal": $0.openTotalLabel,
                 "outstanding": $0.outstandingLabel,
                 "lastFour": $0.lastFour
             ] },
-            "creditPurchases": snapshot.creditPurchases.prefix(150).map { [
+            "creditPurchases": activeSnapshot.creditPurchases.prefix(150).map { [
                 "cardName": $0.cardName,
                 "description": $0.description,
                 "amount": $0.amount,
                 "amountLabel": $0.amountLabel,
                 "purchaseDate": $0.purchaseDate ?? "",
+                "date": $0.purchaseDate ?? "",
                 "dueMonth": $0.dueMonth,
                 "isInstallment": $0.isInstallment,
                 "installmentLabel": $0.installmentLabel ?? "À vista",
                 "category": $0.category ?? ""
             ] },
-            "accounts": snapshot.accounts.map { [
+            "accounts": activeSnapshot.accounts.map { [
                 "name": $0.name,
                 "kind": $0.kind,
                 "balance": $0.amountLabel
             ] },
-            "categories": snapshot.categories.map { [
+            "categories": activeSnapshot.categories.map { [
                 "name": $0.name,
                 "amount": $0.amountLabel
             ] },
-            "budgets": snapshot.budgets.map { [
+            "budgets": activeSnapshot.budgets.map { [
                 "category": $0.category,
                 "spent": $0.spentLabel,
                 "limit": $0.limitLabel,
                 "percent": $0.percent
+            ] },
+            "recentTransactions": activeSnapshot.recentTransactions.prefix(30).map { [
+                "description": $0.description,
+                "category": $0.category,
+                "amount": $0.amountLabel,
+                "dateRelative": $0.dateRelative,
+                "isCredit": $0.isCredit
             ] }
         ]
 

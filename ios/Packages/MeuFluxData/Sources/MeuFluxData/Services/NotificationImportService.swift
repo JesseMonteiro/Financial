@@ -383,6 +383,7 @@ public struct NotificationImportService: NotificationImporting, Sendable {
 
         let rules = await store.loadRules()
         let rule = rules.first { $0.matches(source: parsed.source, title: parsed.rawTitle) }
+            ?? rules.first { $0.matches(source: .wallet, title: parsed.rawTitle) }
             ?? rules.first { $0.enabled && $0.source == .generic }
 
         guard let destination = rule?.destination else {
