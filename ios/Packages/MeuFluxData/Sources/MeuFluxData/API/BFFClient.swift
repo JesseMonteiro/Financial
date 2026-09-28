@@ -31,14 +31,12 @@ public struct BFFClient: Sendable {
     }
 
     private func decode<T: Decodable & Sendable>(_ type: T.Type, from data: Data) async throws -> T {
-        try await Task.detached(priority: .userInitiated) {
-            let decoder = JSONDecoder()
-            do {
-                return try decoder.decode(T.self, from: data)
-            } catch {
-                throw AppError.decodingFailed(String(describing: error))
-            }
-        }.value
+        let decoder = JSONDecoder()
+        do {
+            return try decoder.decode(T.self, from: data)
+        } catch {
+            throw AppError.decodingFailed(String(describing: error))
+        }
     }
 
     public func invalidateCaches(matching prefixes: [String]) async {
@@ -659,13 +657,11 @@ public struct BFFClient: Sendable {
     }
 
     private func decodeSnake<T: Decodable & Sendable>(_ type: T.Type, from data: Data) async throws -> T {
-        try await Task.detached(priority: .userInitiated) {
-            do {
-                return try JSONDecoder.financial.decode(T.self, from: data)
-            } catch {
-                throw AppError.decodingFailed(String(describing: error))
-            }
-        }.value
+        do {
+            return try JSONDecoder.financial.decode(T.self, from: data)
+        } catch {
+            throw AppError.decodingFailed(String(describing: error))
+        }
     }
 
     private func unwrapDomain<T: Decodable & Sendable>(_ type: T.Type, from data: Data) async throws -> T {

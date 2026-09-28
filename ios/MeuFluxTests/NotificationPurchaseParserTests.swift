@@ -1,5 +1,6 @@
 import XCTest
 @testable import MeuFluxDomain
+@testable import MeuFluxCore
 
 final class NotificationPurchaseParserTests: XCTestCase {
     private let now = InstantDate(year: 2026, month: 9, day: 14).date()!

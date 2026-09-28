@@ -10,10 +10,7 @@ public struct LiveBuildFinancialMomentDetail: BuildFinancialMomentDetailUseCase 
 
     public func execute(month: YearMonth, force: Bool) async throws -> FinancialMomentDetail {
         let dto = try await bffClient.getFinancialMoment(month: month, force: force)
-        
-        return await Task.detached(priority: .userInitiated) {
-            DomainMapper.financialMomentDetail(dto)
-        }.value
+        return DomainMapper.financialMomentDetail(dto)
     }
 }
 

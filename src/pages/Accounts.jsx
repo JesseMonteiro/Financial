@@ -35,7 +35,7 @@ import {
   parseCreditBillPdf,
 } from '../services/api';
 import { getCurrentUserId } from '../services/storage';
-import { PurchaseModal } from './ManualExpenses';
+import { PurchaseModal } from '../components/modals';
 import { userCategoryOptions } from '../utils/categories';
 import { useCategoryStore } from '../stores/categoryStore';
 import { AccountIcon } from '../components/AccountIcon';
@@ -69,19 +69,17 @@ function cardOpenBillAmount(acc, transactionsByAccount = {}, billsByAccount = {}
 }
 
 /** Open Pluggy Connect in update mode (MFA / invalid credentials). */
-function openPluggyItemUpdate(itemId) {
-  return new Promise(async (resolve, reject) => {
-    try {
-      const data = await createConnectToken(itemId);
-      if (!data?.accessToken) {
-        reject(new Error('Token de conexão Pluggy inválido.'));
-        return;
-      }
-      if (!window.PluggyConnect) {
-        reject(new Error('O SDK do Pluggy Connect não foi carregado. Recarregue a página.'));
-        return;
-      }
+async function openPluggyItemUpdate(itemId) {
+  const data = await createConnectToken(itemId);
+  if (!data?.accessToken) {
+    throw new Error('Token de conexão Pluggy inválido.');
+  }
+  if (!window.PluggyConnect) {
+    throw new Error('O SDK do Pluggy Connect não foi carregado. Recarregue a página.');
+  }
 
+  return new Promise((resolve, reject) => {
+    try {
       const pluggyConnect = new window.PluggyConnect({
         connectToken: data.accessToken,
         updateItem: itemId,
@@ -89,7 +87,7 @@ function openPluggyItemUpdate(itemId) {
           try {
             const item = await waitForItemUpdate(itemId);
             resolve(item);
-          } catch (err) {
+          } catch (_) {
             resolve(null);
           }
         },

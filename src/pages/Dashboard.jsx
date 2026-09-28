@@ -47,7 +47,7 @@ import { ItemDetailSheet } from '../components/ItemDetailSheet';
 import { fromTransaction, rowActivateProps, categoryOptionsForItem, applyingCategory } from '../utils/lineItemDetail';
 import { fetchCategories, clearApiCache } from '../services/api';
 import { format } from 'date-fns';
-import { accountById } from '../components/AccountIcon';
+import { accountById } from '../utils/accountIcons';
 import { asOfForBudgetMonth, mergeBudgetRows } from '../utils/budgetPeriod';
 import { mealSpendByCategory } from '../utils/mealBenefits';
 import { useCreditDataStore } from '../stores/creditDataStore';
@@ -108,11 +108,12 @@ export function Dashboard() {
 
   const creditCards = useMemo(() => accounts.filter((a) => a.type === 'CREDIT'), [accounts]);
   const creditCardIds = useMemo(() => creditCards.map((c) => c.id).filter(Boolean), [creditCards]);
+  const creditCardIdsKey = useMemo(() => creditCardIds.join(','), [creditCardIds]);
 
   useEffect(() => {
     if (accLoading || creditCardIds.length === 0) return;
     loadForAccounts(creditCardIds);
-  }, [accLoading, creditCardIds.join(','), loadForAccounts]);
+  }, [accLoading, creditCardIdsKey, loadForAccounts]);
 
   const summary = useMemo(
     () => calculateNetWorth(accounts, investments, loans),

@@ -18,8 +18,7 @@ import { useAccountStore } from '../stores/accountStore';
 import { useReceivableStore } from '../stores/receivableStore';
 import { useCreditDataStore } from '../stores/creditDataStore';
 import { useTransactionStore } from '../stores/transactionStore';
-import { PurchaseModal } from './ManualExpenses';
-import { ReceivableModal } from './Receivables';
+import { PurchaseModal, ReceivableModal } from '../components/modals';
 import { ItemDetailSheet } from '../components/ItemDetailSheet';
 import { fromCreditPurchase, rowActivateProps, categoryOptionsForItem, applyingCategory } from '../utils/lineItemDetail';
 import { fetchCategories, patchTransactionCategory } from '../services/api';
@@ -105,12 +104,14 @@ export function CreditCards() {
     return activeCard?.id ? [activeCard.id] : [];
   }, [selectedCardId, creditCards, activeCard?.id]);
 
+  const cardIdsForLoadKey = useMemo(() => cardIdsForLoad.join(','), [cardIdsForLoad]);
+
   // ── Load card data (shared 1h cache) ───────────────────────────────────────
   useEffect(() => {
     if (accountsLoading) return;
     if (cardIdsForLoad.length === 0) return;
     loadForAccounts(cardIdsForLoad);
-  }, [cardIdsForLoad.join(','), accountsLoading, loadForAccounts]);
+  }, [cardIdsForLoadKey, accountsLoading, loadForAccounts]);
 
   const cardTransactions = useMemo(() => {
     const txs = [];

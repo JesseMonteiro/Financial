@@ -39,6 +39,7 @@ let package = Package(
     targets: [
         .target(
             name: "MeuFluxCore",
+            dependencies: ["MeuFluxDomain"],
             path: "Packages/MeuFluxCore/Sources/MeuFluxCore"
         ),
         .target(

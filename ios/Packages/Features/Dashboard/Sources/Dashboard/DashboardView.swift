@@ -687,7 +687,7 @@ public struct DashboardView: View {
                 valueColor: snap.summary.netWorth.amount >= 0 ? MeuFluxColors.textPrimary : MeuFluxColors.danger,
                 icon: "chart.line.uptrend.xyaxis",
                 iconTint: MeuFluxColors.primary,
-                sparkline: snap.netWorthSeries.map(\.value)
+                sparkline: snap.netWorthSeries.map(\.value.doubleValue)
             ),
             KPISlide(
                 id: "bank-balance",
@@ -697,7 +697,7 @@ public struct DashboardView: View {
                 valueColor: MeuFluxColors.textPrimary,
                 icon: "wallet.pass.fill",
                 iconTint: MeuFluxColors.success,
-                sparkline: snap.incomeExpenseSeries.map(\.net)
+                sparkline: snap.incomeExpenseSeries.map(\.net.doubleValue)
             ),
             KPISlide(
                 id: "savings-rate",
@@ -707,7 +707,7 @@ public struct DashboardView: View {
                 valueColor: (snap.cashflow.savingsRate ?? 0) >= 0 ? MeuFluxColors.success : MeuFluxColors.danger,
                 icon: "percent",
                 iconTint: MeuFluxColors.info,
-                sparkline: snap.incomeExpenseSeries.map(\.net)
+                sparkline: snap.incomeExpenseSeries.map(\.net.doubleValue)
             ),
             KPISlide(
                 id: "mom-expense",
@@ -717,7 +717,7 @@ public struct DashboardView: View {
                 valueColor: snap.monthOverMonth.expenseDeltaPct > 0 ? MeuFluxColors.danger : MeuFluxColors.success,
                 icon: "chart.bar.fill",
                 iconTint: snap.monthOverMonth.expenseDeltaPct > 0 ? MeuFluxColors.danger : MeuFluxColors.success,
-                sparkline: snap.incomeExpenseSeries.map(\.despesa)
+                sparkline: snap.incomeExpenseSeries.map(\.despesa.doubleValue)
             ),
             KPISlide(
                 id: "investments",
@@ -727,7 +727,7 @@ public struct DashboardView: View {
                 valueColor: MeuFluxColors.textPrimary,
                 icon: "chart.line.uptrend.xyaxis",
                 iconTint: MeuFluxColors.info,
-                sparkline: snap.netWorthSeries.map(\.value)
+                sparkline: snap.netWorthSeries.map(\.value.doubleValue)
             ),
             KPISlide(
                 id: "credit-debt",
@@ -737,7 +737,7 @@ public struct DashboardView: View {
                 valueColor: MeuFluxColors.danger,
                 icon: "creditcard.fill",
                 iconTint: MeuFluxColors.danger,
-                sparkline: snap.incomeExpenseSeries.map(\.despesa)
+                sparkline: snap.incomeExpenseSeries.map(\.despesa.doubleValue)
             )
         ]
     }
@@ -850,12 +850,12 @@ public struct DashboardView: View {
                         Chart(snap.netWorthSeries) { point in
                             AreaMark(
                                 x: .value("Mês", point.month),
-                                y: .value("Patrimônio", point.value)
+                                y: .value("Patrimônio", point.value.amount)
                             )
                             .foregroundStyle(MeuFluxColors.primary.opacity(0.18))
                             LineMark(
                                 x: .value("Mês", point.month),
-                                y: .value("Patrimônio", point.value)
+                                y: .value("Patrimônio", point.value.amount)
                             )
                             .foregroundStyle(MeuFluxColors.primary)
                             .lineStyle(StrokeStyle(lineWidth: 2.5, lineCap: .round))
@@ -892,7 +892,7 @@ public struct DashboardView: View {
                         SectionHeader("Gastos por Categoria", subtitle: "Mês atual")
                         Chart(snap.categoryExpenses) { cat in
                             BarMark(
-                                x: .value("Valor", cat.value),
+                                x: .value("Valor", cat.value.amount),
                                 y: .value("Categoria", cat.name)
                             )
                             .foregroundStyle(color(from: cat.colorHex) ?? MeuFluxColors.primary)
@@ -932,7 +932,7 @@ public struct DashboardView: View {
                             ForEach(snap.incomeExpenseSeries) { point in
                                 BarMark(
                                     x: .value("Mês", point.month),
-                                    y: .value("Receita", point.receita)
+                                    y: .value("Receita", point.receita.amount)
                                 )
                                 .foregroundStyle(MeuFluxColors.success)
                                 .position(by: .value("Tipo", "Receita"))
@@ -940,7 +940,7 @@ public struct DashboardView: View {
 
                                 BarMark(
                                     x: .value("Mês", point.month),
-                                    y: .value("Despesa", point.despesa)
+                                    y: .value("Despesa", point.despesa.amount)
                                 )
                                 .foregroundStyle(MeuFluxColors.danger)
                                 .position(by: .value("Tipo", "Despesa"))

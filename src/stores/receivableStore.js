@@ -5,6 +5,7 @@ import {
   deleteStoredReceivable,
 } from '../services/storage';
 import { CACHE_TTL_MS, isFreshTimestamp } from '../services/clientCache';
+import { generateReceivableInstallments, CONTINUOUS_PROJECTION_MONTHS } from '../utils/receivables';
 
 function addPending(pending, ids) {
   const next = { ...pending };
@@ -67,20 +68,15 @@ export const useReceivableStore = create((set, get) => ({
     };
 
     const isContinuous = data.isContinuous || false;
-    const installments = isContinuous ? 24 : (data.installments || 1);
+    const installments = isContinuous ? CONTINUOUS_PROJECTION_MONTHS : (data.installments || 1);
     const firstDueDate = data.firstDueDate || now.slice(0, 10);
-    const installmentAmount = isContinuous ? data.totalAmount : (data.totalAmount / installments);
-
-    const installmentHistory = Array.from({ length: installments }, (_, i) => {
-      const dueDate = new Date(firstDueDate);
-      dueDate.setMonth(dueDate.getMonth() + i);
-      return {
-        installmentNumber: i + 1,
-        amount: installmentAmount,
-        dueDate: dueDate.toISOString().slice(0, 10),
-        paidAt: null,
-      };
+    const installmentHistory = generateReceivableInstallments({
+      totalAmount: data.totalAmount,
+      installments: data.installments,
+      firstDueDate,
+      isContinuous,
     });
+    const installmentAmount = installmentHistory[0]?.amount || 0;
 
     const existing = get().receivables.find(r => r.personName.toLowerCase() === (data.personName || '').toLowerCase());
     const personColor = existing ? existing.personColor : (data.personColor || randomColor());
@@ -90,7 +86,7 @@ export const useReceivableStore = create((set, get) => ({
       personName: data.personName || '',
       personColor,
       description: data.description || '',
-      totalAmount: isContinuous ? (installmentAmount * 24) : (data.totalAmount || 0),
+      totalAmount: isContinuous ? (installmentAmount * CONTINUOUS_PROJECTION_MONTHS) : (data.totalAmount || 0),
       originalTotalAmount: data.totalAmount,
       installments,
       paidInstallments: 0,
@@ -131,21 +127,16 @@ export const useReceivableStore = create((set, get) => ({
 
     if (data.totalAmount !== undefined || data.installments !== undefined || data.firstDueDate !== undefined || data.isContinuous !== undefined) {
       const isContinuous = data.isContinuous !== undefined ? data.isContinuous : (existing.isContinuous || false);
-      installments = isContinuous ? 24 : (data.installments !== undefined ? data.installments : existing.installments);
+      installments = isContinuous ? CONTINUOUS_PROJECTION_MONTHS : (data.installments !== undefined ? data.installments : existing.installments);
       const firstDueDate = data.firstDueDate || (existing.installmentHistory[0]?.dueDate || new Date().toISOString().slice(0, 10));
       const totalAmount = data.totalAmount !== undefined ? data.totalAmount : (existing.originalTotalAmount || existing.totalAmount);
-      const installmentAmount = isContinuous ? totalAmount : (totalAmount / installments);
 
-      installmentHistory = Array.from({ length: installments }, (_, i) => {
-        const dueDate = new Date(firstDueDate);
-        dueDate.setMonth(dueDate.getMonth() + i);
-        const existingInst = existing.installmentHistory?.find(inst => inst.installmentNumber === i + 1);
-        return {
-          installmentNumber: i + 1,
-          amount: installmentAmount,
-          dueDate: dueDate.toISOString().slice(0, 10),
-          paidAt: existingInst ? existingInst.paidAt : null,
-        };
+      installmentHistory = generateReceivableInstallments({
+        totalAmount,
+        installments,
+        firstDueDate,
+        isContinuous,
+        existingHistory: existing.installmentHistory,
       });
       paidInstallments = installmentHistory.filter(i => i.paidAt).length;
     }

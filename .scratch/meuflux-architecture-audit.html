@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Auditoria de Arquitetura & Código — MeuFlux</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <script>
+    mermaid.initialize({ startOnLoad: true, theme: 'dark', themeVariables: { darkMode: true, background: '#0f172a' } });
+  </script>
+  <style>
+    body { background-color: #080d1a; color: #f1f5f9; font-family: system-ui, -apple-system, sans-serif; }
+    .glass-card { background: rgba(15, 23, 42, 0.75); backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 1rem; }
+    .glass-danger { background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); }
+    .glass-success { background: rgba(34, 197, 94, 0.1); border: 1px solid rgba(34, 197, 94, 0.3); }
+    .glass-warning { background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.3); }
+    .badge-strong { background: #16a34a; color: white; padding: 0.25rem 0.75rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; }
+    .badge-worth { background: #0284c7; color: white; padding: 0.25rem 0.75rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; }
+  </style>
+</head>
+<body class="p-6 max-w-7xl mx-auto space-y-8">
+
+  <!-- Header -->
+  <header class="glass-card p-8 border-b border-slate-700/50">
+    <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+      <div>
+        <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 text-blue-400 text-xs font-semibold uppercase tracking-wider mb-2 border border-blue-500/20">
+          <span>Relatório de Arquitetura & Qualidade</span>
+        </div>
+        <h1 class="text-3xl font-extrabold text-white tracking-tight">MeuFlux Codebase Deepening Audit</h1>
+        <p class="text-slate-400 mt-1">Orquestração: <strong class="text-slate-200">Ana Costa (PM)</strong> com <span class="text-blue-400">Lucas Silva</span>, <span class="text-indigo-400">Rafael Mendes</span>, <span class="text-purple-400">Thiago Nunes</span> e <span class="text-emerald-400">Carla Dias</span></p>
+      </div>
+      <div class="flex gap-3 flex-wrap">
+        <div class="px-4 py-2 rounded-xl bg-red-500/10 border border-red-500/20 text-center">
+          <div class="text-2xl font-bold text-red-400">3</div>
+          <div class="text-[11px] text-red-300 uppercase tracking-wider">Vulns Críticas</div>
+        </div>
+        <div class="px-4 py-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-center">
+          <div class="text-2xl font-bold text-amber-400">114</div>
+          <div class="text-[11px] text-amber-300 uppercase tracking-wider">Oxlint Warnings</div>
+        </div>
+        <div class="px-4 py-2 rounded-xl bg-blue-500/10 border border-blue-500/20 text-center">
+          <div class="text-2xl font-bold text-blue-400">2.231</div>
+          <div class="text-[11px] text-blue-300 uppercase tracking-wider">Linhas no Edge</div>
+        </div>
+        <div class="px-4 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-center">
+          <div class="text-2xl font-bold text-emerald-400">100%</div>
+          <div class="text-[11px] text-emerald-300 uppercase tracking-wider">Paridade Faturas</div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Top Recommendation Banner -->
+  <section class="glass-card p-6 border-l-4 border-l-emerald-500 bg-emerald-950/20">
+    <div class="flex items-start gap-4">
+      <div class="p-3 bg-emerald-500/20 rounded-xl text-emerald-400 text-xl font-bold">★</div>
+      <div>
+        <h2 class="text-lg font-bold text-emerald-300">Top Recomendação: FASE 1 Imediata (Segurança & Desacoplamento de Modais)</h2>
+        <p class="text-slate-300 text-sm mt-1 leading-relaxed">
+          Recomendamos iniciar imediatamente pela blindagem do endpoint <code class="bg-slate-800 px-1 py-0.5 rounded text-rose-300">/telegram/daily-summary</code> (que expõe dados de todos os usuários via bypass de RLS) e pela extração de <code class="bg-slate-800 px-1 py-0.5 rounded text-blue-300">PurchaseModal</code> e <code class="bg-slate-800 px-1 py-0.5 rounded text-blue-300">ReceivableModal</code> para <code class="bg-slate-800 px-1 py-0.5 rounded text-slate-200">src/components/modals/</code>, eliminando o acoplamento circular entre páginas.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Candidato 1: Edge Function Decomposition -->
+  <article class="glass-card p-6 space-y-6">
+    <div class="flex justify-between items-start">
+      <div>
+        <div class="flex items-center gap-2">
+          <span class="badge-strong">Strong</span>
+          <span class="text-xs text-slate-400">Backend & Edge Architecture</span>
+        </div>
+        <h3 class="text-xl font-bold text-white mt-2">1. Decomposição do God-File `pluggy-proxy/index.ts` (2.231 linhas)</h3>
+        <p class="text-xs text-slate-400">Arquivos: <code class="text-blue-300">supabase/functions/pluggy-proxy/index.ts</code>, <code class="text-blue-300">handlers/telegram/*</code>, <code class="text-blue-300">v1/router.ts</code></p>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+      <div class="p-4 rounded-xl glass-danger">
+        <h4 class="font-bold text-red-400 flex items-center gap-2"><span>✕</span> Arquitetura Atual (Monólito Acoplado)</h4>
+        <p class="text-slate-300 mt-2 text-xs leading-relaxed">
+          O <code class="text-red-300">index.ts</code> contém 2.231 linhas acumulando auth repetida, download e transcrição de áudio com Gemini, orquestrador do Telegram com parsing de intents, query de saldo de banco de dados, geração de resumo diário e fallback manual de rotas. O <code class="text-red-300">v1/router.ts</code> possui desvios hardcoded que devolvem requisições para o próprio index.
+        </p>
+      </div>
+      <div class="p-4 rounded-xl glass-success">
+        <h4 class="font-bold text-emerald-400 flex items-center gap-2"><span>✓</span> Arquitetura Proposta (Deep Modules)</h4>
+        <p class="text-slate-300 mt-2 text-xs leading-relaxed">
+          <code class="text-emerald-300">index.ts</code> reduzido para ~60 linhas atuando exclusivamente como dispatch HTTP. Criação de <code class="text-emerald-300">handlers/telegram/botHandler.ts</code>, <code class="text-emerald-300">dailySummary.ts</code> e <code class="text-emerald-300">handlers/parseBill.ts</code>. Eliminação das queries manuais no banco através de um serviço consolidado de contexto financeiro.
+        </p>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 bg-slate-900/60 p-4 rounded-xl border border-slate-800">
+      <div>
+        <div class="text-xs uppercase font-bold text-red-400 mb-2">Before: Acoplamento Monolítico</div>
+        <div class="mermaid">
+flowchart TD
+  Client[Web / Telegram / iOS] --> Index["index.ts (2231 linhas)"]
+  Index --> Auth["Auth Inline 4x"]
+  Index --> Bot["Telegram Bot & Formatters"]
+  Index --> STT["Gemini Audio STT"]
+  Index --> PDF["Gemini PDF Parser"]
+  Index --> Joint["Joint Queries Sequenciais"]
+  Index --> DB[(Supabase Postgres)]
+        </div>
+      </div>
+      <div>
+        <div class="text-xs uppercase font-bold text-emerald-400 mb-2">After: Deep Modules Desacoplados</div>
+        <div class="mermaid">
+flowchart TD
+  Client[Web / Telegram / iOS] --> Router["index.ts Dispatcher (60L)"]
+  Router --> M1["middleware/auth.ts"]
+  Router --> H1["handlers/telegram/botHandler.ts"]
+  Router --> H2["handlers/telegram/dailySummary.ts"]
+  Router --> H3["handlers/jointMoment.ts (Async)"]
+  Router --> H4["handlers/parseBill.ts"]
+  H1 & H2 & H3 --> SVC["services/financialContext.ts"]
+  SVC --> DB[(Supabase Postgres)]
+        </div>
+      </div>
+    </div>
+  </article>
+
+  <!-- Candidato 2: Frontend Monoliths & Modals -->
+  <article class="glass-card p-6 space-y-6">
+    <div class="flex justify-between items-start">
+      <div>
+        <div class="flex items-center gap-2">
+          <span class="badge-strong">Strong</span>
+          <span class="text-xs text-slate-400">Frontend Web & Seams</span>
+        </div>
+        <h3 class="text-xl font-bold text-white mt-2">2. Desacoplamento de Modais Cruzados e Criação de `src/utils/receivables.js`</h3>
+        <p class="text-xs text-slate-400">Arquivos: <code class="text-blue-300">src/pages/Receivables.jsx</code>, <code class="text-blue-300">ManualExpenses.jsx</code>, <code class="text-blue-300">CreditCards.jsx</code></p>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+      <div class="p-4 rounded-xl glass-danger">
+        <h4 class="font-bold text-red-400 flex items-center gap-2"><span>✕</span> Problema (Cross-Page Imports & JSX Math)</h4>
+        <p class="text-slate-300 mt-2 text-xs leading-relaxed">
+          <code class="text-red-300">CreditCards.jsx</code> importa <code class="text-red-300">PurchaseModal</code> de <code class="text-red-300">ManualExpenses.jsx</code> e <code class="text-red-300">ReceivableModal</code> de <code class="text-red-300">Receivables.jsx</code>. Cálculos de 24 meses contínuos e rateios de pessoas rodam dentro de JSX.
+        </p>
+      </div>
+      <div class="p-4 rounded-xl glass-success">
+        <h4 class="font-bold text-emerald-400 flex items-center gap-2"><span>✓</span> Solução (Módulo Puro + Pasta Modals)</h4>
+        <p class="text-slate-300 mt-2 text-xs leading-relaxed">
+          Criar <code class="text-emerald-300">src/components/modals/</code> para abrigar todos os formulários dialog/sheet compartilhados. Mover toda a matemática financeira de recebíveis para o módulo puro <code class="text-emerald-300">src/utils/receivables.js</code> com testes unitários.
+        </p>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 bg-slate-900/60 p-4 rounded-xl border border-slate-800">
+      <div>
+        <div class="text-xs uppercase font-bold text-red-400 mb-2">Before: Importações Circulares</div>
+        <div class="mermaid">
+flowchart LR
+  CC[CreditCards.jsx] --> ME[ManualExpenses.jsx]
+  CC --> RC[Receivables.jsx]
+  AC[Accounts.jsx] --> ME
+  RC -. Math inline .-> JSX[JSX Render]
+        </div>
+      </div>
+      <div>
+        <div class="text-xs uppercase font-bold text-emerald-400 mb-2">After: Seam Puro e Pasta de Modais</div>
+        <div class="mermaid">
+flowchart LR
+  subgraph Modals [src/components/modals/]
+    PM[PurchaseModal.jsx]
+    RM[ReceivableModal.jsx]
+  end
+  subgraph Utils [src/utils/]
+    RU[receivables.js]
+  end
+  CC[CreditCards.jsx] --> PM & RM
+  RC[Receivables.jsx] --> RM
+  RC & BD[Budget.jsx] --> RU
+        </div>
+      </div>
+    </div>
+  </article>
+
+  <!-- Candidato 3: iOS Concurrency & Currency Precision -->
+  <article class="glass-card p-6 space-y-6">
+    <div class="flex justify-between items-start">
+      <div>
+        <div class="flex items-center gap-2">
+          <span class="badge-worth">Worth Exploring</span>
+          <span class="text-xs text-slate-400">iOS Native & Swift 6.2</span>
+        </div>
+        <h3 class="text-xl font-bold text-white mt-2">3. Concorrência Estruturada e Tipagem Monetária `Decimal` no App iOS</h3>
+        <p class="text-xs text-slate-400">Arquivos: <code class="text-blue-300">ios/Packages/MeuFluxData/API/BFFClient.swift</code>, <code class="text-blue-300">Dashboard.swift</code>, <code class="text-blue-300">DomainMapper.swift</code></p>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+      <div class="p-4 rounded-xl glass-danger">
+        <h4 class="font-bold text-red-400 flex items-center gap-2"><span>✕</span> Problema (Task.detached & Double)</h4>
+        <p class="text-slate-300 mt-2 text-xs leading-relaxed">
+          14 chamadas a <code class="text-red-300">Task.detached</code> quebrando o cancelamento cooperativo quando o usuário sai de telas do app. Pontos de gráficos em <code class="text-red-300">Dashboard.swift</code> usando <code class="text-red-300">Double</code> e mapper fazendo <code class="text-red-300">Money(Decimal(double))</code> com risco de imprecisão financeira.
+        </p>
+      </div>
+      <div class="p-4 rounded-xl glass-success">
+        <h4 class="font-bold text-emerald-400 flex items-center gap-2"><span>✓</span> Solução (Structured Concurrency & Money)</h4>
+        <p class="text-slate-300 mt-2 text-xs leading-relaxed">
+          Substituição por chamadas síncronas inline de decodificação JSON, adoção de <code class="text-emerald-300">withTaskGroup</code> para busca paralela de transações mensais e conversão dos pontos do gráfico para <code class="text-emerald-300">Money</code>.
+        </p>
+      </div>
+    </div>
+  </article>
+
+  <!-- Candidato 4: Vitest & Test Coverage -->
+  <article class="glass-card p-6 space-y-6">
+    <div class="flex justify-between items-start">
+      <div>
+        <div class="flex items-center gap-2">
+          <span class="badge-worth">Worth Exploring</span>
+          <span class="text-xs text-slate-400">QA, Fixtures & Test Automation</span>
+        </div>
+        <h3 class="text-xl font-bold text-white mt-2">4. Implantação de Test Runner Unificado (Vitest) e Expansão de Fixtures</h3>
+        <p class="text-xs text-slate-400">Arquivos: <code class="text-blue-300">vitest.config.js</code>, <code class="text-blue-300">tests/unit/financialMoment.test.js</code>, <code class="text-blue-300">docs/fixtures/credit-bills/*.json</code></p>
+      </div>
+    </div>
+
+    <div class="p-4 rounded-xl bg-slate-900 border border-slate-800 space-y-2 text-xs text-slate-300">
+      <div class="font-bold text-slate-200">Gaps Críticos Cobertos por Esta Ação:</div>
+      <ul class="list-disc pl-5 space-y-1">
+        <li>Criação de testes automatizados para a fórmula mestre do <strong>Momento Financeiro</strong> (atualmente 0% testada).</li>
+        <li>Unificação dos 6 scripts esparsos sob o comando oficial <code class="text-emerald-300">npm test</code>.</li>
+        <li>Inclusão de transações de <strong>estorno, parcelamento 1/1 e IOF internacional</strong> nas fixtures dos bancos.</li>
+      </ul>
+    </div>
+  </article>
+
+  <!-- Footer -->
+  <footer class="text-center text-xs text-slate-500 py-8 border-t border-slate-800">
+    MeuFlux Financial Management • Relatório gerado autonomamente via Skill improve-architecture • 2026
+  </footer>
+
+</body>
+</html>

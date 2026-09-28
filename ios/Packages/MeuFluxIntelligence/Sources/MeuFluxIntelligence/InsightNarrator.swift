@@ -172,8 +172,8 @@ public enum SiriSnapshotMapper {
                 .map {
                     .init(
                         name: $0.name,
-                        amountLabel: Money(amount: Decimal($0.value)).formatted(),
-                        amount: $0.value
+                        amountLabel: $0.value.formatted(),
+                        amount: $0.value.doubleValue
                     )
                 },
             creditPurchases: snapshot.recentCreditPurchases.map { tx in

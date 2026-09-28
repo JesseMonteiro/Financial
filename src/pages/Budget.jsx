@@ -20,6 +20,7 @@ import { PageLoadingSkeleton, SkeletonList } from '../components/ui/Skeleton';
 import { useBudgetStore } from '../stores/budgetStore';
 import { useAccountStore } from '../stores/accountStore';
 import { useReceivableStore } from '../stores/receivableStore';
+import { reimbursementsReceivedInMonth } from '../utils/receivables';
 import { useCreditDataStore } from '../stores/creditDataStore';
 import { useMealBenefitStore } from '../stores/mealBenefitStore';
 import { useTransactionStore } from '../stores/transactionStore';
@@ -178,12 +179,13 @@ export function Budget() {
   useEffect(() => { loadBudgets(); loadAccounts(); loadReceivables(); loadMealBenefits(); loadCategories(); loadTransactions(); }, []);
 
   const accountIds = useMemo(() => accounts.map((a) => a.id), [accounts]);
+  const accountIdsKey = useMemo(() => accountIds.join(','), [accountIds]);
 
   useEffect(() => {
     if (accountsLoading) return;
     if (!accountIds.length) return;
     loadForAccounts(accountIds);
-  }, [accountIds.join(','), accountsLoading, loadForAccounts]);
+  }, [accountIdsKey, accountsLoading, loadForAccounts]);
 
   const allTransactions = useMemo(() => {
     const txs = [];
@@ -391,14 +393,10 @@ export function Budget() {
     budgetRows.filter(r => r.hasLimit).length, [budgetRows]);
 
   // ── Reimbursements received in selected month ──────────────────────────────
-  const reimbursementsReceived = useMemo(() => {
-    return receivables.reduce((total, r) => {
-      const monthPaid = r.installmentHistory
-        .filter(i => i.paidAt && i.paidAt.slice(0, 7) === selectedMonth)
-        .reduce((s, i) => s + i.amount, 0);
-      return total + monthPaid;
-    }, 0);
-  }, [receivables, selectedMonth]);
+  const reimbursementsReceived = useMemo(
+    () => reimbursementsReceivedInMonth(receivables, selectedMonth),
+    [receivables, selectedMonth]
+  );
 
   // ── Historical chart: spending by month for a specific category ────────────
   const chartData = useMemo(() => {

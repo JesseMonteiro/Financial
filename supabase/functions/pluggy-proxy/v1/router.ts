@@ -21,6 +21,13 @@ import { handleAgenda } from "../handlers/agenda.ts";
 import { handleBudgetScreen } from "../handlers/budgetScreen.ts";
 import { handleReports } from "../handlers/reports.ts";
 import { handleSubscriptions } from "../handlers/subscriptions.ts";
+import { handleParseBill } from "../handlers/parseBill.ts";
+import { handleJoint } from "../handlers/joint.ts";
+import {
+  handleTelegramWebhookRequest,
+  handleEdgeChatbotMessage,
+} from "../handlers/telegram/botHandler.ts";
+import { handleDailySummaryRequest } from "../handlers/telegram/dailySummary.ts";
 
 export interface V1Context {
   requestId: string;
@@ -59,6 +66,22 @@ export async function handleV1(
     return await handleDomainV1(req, segments);
   }
 
+  if (segments[0] === "chatbot" && segments[1] === "telegram") {
+    if (segments[2] === "webhook" && method === "POST") {
+      return await handleTelegramWebhookRequest(req);
+    }
+    if (segments[2] === "daily-summary" && (method === "POST" || method === "GET")) {
+      const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
+      const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+      const supabase = createClient(supabaseUrl, serviceKey);
+      let body: unknown = {};
+      if (method === "POST") {
+        try { body = await req.json(); } catch (_) {}
+      }
+      return await handleDailySummaryRequest(req, supabase, body);
+    }
+  }
+
   // Authenticated Pluggy-backed resources under /v1/*
   const resource = segments[0];
   const actionOrId = segments[1];
@@ -82,22 +105,26 @@ export async function handleV1(
   }
 
   if (resource === "joint") {
-    // Joint stays in index for now — signal not handled here for complex path.
-    // Expose status via domain-like thin proxy using RPC.
-    if (method === "GET" && actionOrId === "status") {
-      const { data, error } = await auth.supabase.rpc("get_my_joint_link");
-      if (error) return v1Err(error.message, 500, req);
-      return v1Ok({ link: data }, req);
-    }
-    return null;
+    const legacy = await handleJoint(auth.supabase, auth.user.id, method, actionOrId, body, url);
+    return await wrapLegacyJsonAsV1(legacy, req);
   }
 
   if ((resource === "parse-bill" || resource === "parsebill") && method === "POST") {
-    return null; // keep Gemini parser in index.ts
+    const legacy = await handleParseBill(body);
+    return await wrapLegacyJsonAsV1(legacy, req);
   }
 
   if (resource === "chatbot") {
-    return null; // keep chatbot in index.ts
+    if ((actionOrId === "message" || !actionOrId) && method === "POST") {
+      const legacy = await handleEdgeChatbotMessage(body, auth.supabase, auth.user.id);
+      return await wrapLegacyJsonAsV1(legacy, req);
+    }
+    if (actionOrId === "telegram" && subPath === "link-token" && method === "POST") {
+      const { data: linkToken, error: rpcError } = await auth.supabase.rpc('generate_telegram_link_token', { p_user_id: auth.user.id });
+      if (rpcError) return v1Err(`RPC Error: ${rpcError.message}`, 500, req);
+      return v1Ok({ success: true, token: linkToken }, req);
+    }
+    return v1Err(`Route /v1/${segments.join('/')} not found`, 404, req);
   }
 
 

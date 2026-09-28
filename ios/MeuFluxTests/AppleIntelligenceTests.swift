@@ -520,8 +520,8 @@ final class SiriSnapshotMapperTests: XCTestCase {
     func testMapsCategoriesAndCashflow() {
         var snapshot = StubLoadDashboard().makeSnapshot(budgets: [])
         snapshot.categoryExpenses = [
-            DashboardCategoryExpense(name: "Alimentação", value: 500, colorHex: "#f00"),
-            DashboardCategoryExpense(name: "Transporte", value: 80, colorHex: "#0f0"),
+            DashboardCategoryExpense(name: "Alimentação", value: Money(amount: 500), colorHex: "#f00"),
+            DashboardCategoryExpense(name: "Transporte", value: Money(amount: 80), colorHex: "#0f0"),
         ]
         snapshot.cashflow = DashboardCashflow(
             income: Money(amount: 3000),

@@ -26,7 +26,8 @@ import {
   summarizeAgendaMonth,
 } from '../utils/agenda';
 import { isInitialEmpty } from '../utils/loading';
-import { AccountIcon, accountById } from '../components/AccountIcon';
+import { AccountIcon } from '../components/AccountIcon';
+import { accountById } from '../utils/accountIcons';
 import { ItemDetailSheet } from '../components/ItemDetailSheet';
 import { fromAgendaItem, rowActivateProps } from '../utils/lineItemDetail';
 
@@ -95,16 +96,17 @@ export function Agenda() {
 
   const creditCards = useMemo(() => accounts.filter((a) => a.type === 'CREDIT'), [accounts]);
   const creditIds = useMemo(() => creditCards.map((c) => c.id), [creditCards]);
+  const creditIdsKey = useMemo(() => creditIds.join(','), [creditIds]);
   const months = useMemo(() => buildAgendaMonthKeys(new Date(), { before: 2, after: 3 }), []);
 
   useEffect(() => {
     loadTransactions();
     loadAccounts();
-  }, []);
+  }, [loadTransactions, loadAccounts]);
 
   useEffect(() => {
     if (creditIds.length) loadForAccounts(creditIds);
-  }, [creditIds.join(',')]);
+  }, [creditIdsKey, creditIds, loadForAccounts]);
 
   // Center current month card on first paint
   useEffect(() => {

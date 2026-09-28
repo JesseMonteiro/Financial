@@ -253,6 +253,13 @@ router.post('/telegram/link-token', checkAuth, async (req, res) => {
 
 // 2. POST /api/chatbot/telegram/webhook (Público - Chamado pelo Telegram)
 router.post('/telegram/webhook', async (req, res) => {
+  const secretHeader = req.headers['x-telegram-bot-api-secret-token'];
+  const expectedSecret = process.env.TELEGRAM_WEBHOOK_SECRET;
+  if (expectedSecret && secretHeader !== expectedSecret) {
+    console.warn('[Chatbot Telegram Webhook] Segredo do webhook inválido ou ausente');
+    return res.status(403).json({ error: 'Invalid webhook secret' });
+  }
+
   // Telegram espera que respondamos 200 OK imediatamente para não reenviar a mensagem em loop
   res.sendStatus(200);
 
@@ -1167,8 +1174,21 @@ export async function sendDailySummaryToUser(profile, supabase, options = {}) {
   return { success: sent, summaryData };
 }
 
+function checkCronAuth(req, res, next) {
+  const authHeader = req.headers.authorization || '';
+  const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+  const cronSecret = process.env.CRON_SECRET;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  const isAuthorized = (cronSecret && token === cronSecret) || (serviceRoleKey && token === serviceRoleKey);
+  if (!isAuthorized) {
+    return res.status(401).json({ error: 'Unauthorized: invalid cron authorization' });
+  }
+  next();
+}
+
 // 3. POST /api/chatbot/telegram/daily-summary (Executa o resumo diário para todos os usuários elegíveis)
-router.post('/telegram/daily-summary', async (req, res) => {
+router.post('/telegram/daily-summary', checkCronAuth, async (req, res) => {
   try {
     let supabase;
     try {
@@ -1232,7 +1252,7 @@ router.post('/telegram/daily-summary', async (req, res) => {
 });
 
 // GET /api/chatbot/telegram/daily-summary para checagem ou trigger simples via GET
-router.get('/telegram/daily-summary', async (req, res) => {
+router.get('/telegram/daily-summary', checkCronAuth, async (req, res) => {
   req.body = { ...req.query };
   return router.handle({ ...req, method: 'POST' }, res);
 });

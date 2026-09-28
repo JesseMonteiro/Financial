@@ -12,6 +12,15 @@ const receivedEvents = [];
  * Coobre os eventos: item/created, item/updated, transactions/created, transactions/updated, transactions/deleted, etc.
  */
 router.post('/', (req, res) => {
+  const expectedSecret = process.env.PLUGGY_WEBHOOK_SECRET;
+  if (expectedSecret) {
+    const signature = req.headers['x-pluggy-signature'] || req.headers['x-webhook-secret'];
+    if (signature !== expectedSecret) {
+      console.warn('[Pluggy Webhook] Assinatura/segredo de webhook inválido ou ausente');
+      return res.status(403).json({ error: 'Invalid webhook signature' });
+    }
+  }
+
   const payload = req.body;
   console.log('[Pluggy Webhook Event Recebido]', JSON.stringify(payload, null, 2));
 
@@ -39,7 +48,11 @@ router.post('/', (req, res) => {
  * 2. GET /api/webhooks/history (Lista eventos recebidos recentemente)
  */
 router.get('/history', checkAuth, (req, res) => {
-  res.json(receivedEvents);
+  const userItemIds = req.userProfile?.pluggy_item_ids || [];
+  const userEvents = Array.isArray(userItemIds) && userItemIds.length > 0
+    ? receivedEvents.filter(e => !e.itemId || userItemIds.includes(e.itemId))
+    : receivedEvents.filter(e => !e.itemId);
+  res.json(userEvents);
 });
 
 /**

@@ -47,20 +47,20 @@ public struct DashboardMonthOverMonthDTO: Codable, Sendable {
 public struct DashboardSeriesPointDTO: Codable, Sendable {
     public let ym: String
     public let month: String
-    public let value: Double
+    public let value: Decimal
 }
 
 public struct DashboardCashflowPointDTO: Codable, Sendable {
     public let ym: String
     public let month: String
-    public let receita: Double
-    public let despesa: Double
-    public let net: Double
+    public let receita: Decimal
+    public let despesa: Decimal
+    public let net: Decimal
 }
 
 public struct DashboardCategoryExpenseDTO: Codable, Sendable {
     public let name: String
-    public let value: Double
+    public let value: Decimal
     public let color: String?
 }
 

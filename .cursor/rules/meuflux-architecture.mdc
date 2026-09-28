@@ -1,0 +1,52 @@
+---
+description: MeuFlux architecture, coding standards, and parity rules
+globs: src/**,server/**,supabase/**,ios/**
+---
+
+# MeuFlux Architecture Rules
+
+## Business Logic Location
+- Pure client calculations → `src/utils/` (no React, no fetch, no side effects)
+- Server logic → `server/services/` (Gemini, Pluggy, cache, Telegram)
+- Edge Functions → `supabase/functions/pluggy-proxy/` (BFF, webhooks)
+- iOS domain → `ios/Packages/MeuFluxDomain/` (pure Swift, no UIKit/SwiftUI)
+
+## Critical: No Logic in Components
+- React components NEVER compute financial totals
+- Components call `src/utils/*.js` functions with the data they already have
+- Zustand stores are thin wrappers: fetch → store → serve to components
+
+## Parity Rule (Highest Priority)
+- `src/utils/creditBillPeriod.js` and `supabase/functions/pluggy-proxy/creditBillPeriod.ts` MUST be functionally identical
+- Any change to one must be applied to the other in the same commit
+- Verify: `npm run test:fixtures`
+- Same applies to `creditConnectors/profiles.js` ↔ `creditConnectors/profiles.ts`
+
+## AI Services
+- All Gemini API calls go through `server/services/geminiService.js` (server) or `supabase/functions/pluggy-proxy/index.ts` (edge)
+- Never call Gemini directly from React components
+- iOS: use `ios/Packages/MeuFluxIntelligence/` with Foundation Models + Gemini fallback
+
+## Pluggy Integration
+- All Pluggy API calls go through `server/services/pluggyClient.js`
+- Never call Pluggy directly from the frontend
+- Webhook handlers in `server/routes/webhooks.js` and `supabase/functions/pluggy-webhook/`
+
+## Credit Connectors
+- See `docs/connectors/README.md` and individual bank guides before changing any billing logic
+- Never use `account.balance` as open-bill total when it equals `creditLimit − availableCreditLimit`
+- Index by due month, not calendar purchase month
+- Deduplicate installment projections against real PENDING/POSTED with same N/M
+
+## iOS Rules
+- `MeuFluxDomain` package: zero imports outside Foundation (pure Swift)
+- Always use `Decimal` for money values, never `Double`
+- Apple Intelligence: always check `LanguageModel.isAvailable`, always have Gemini fallback
+- Run `swift test` before marking any iOS change as done
+
+## Naming (from CONTEXT.md)
+- Billing cycle → **fatura** (not invoice, bill)
+- Open cycle → **ciclo aberto** (not open bill, current period)  
+- Connector profile → **conector** (not bank adapter)
+- Financial dashboard → **Momento Financeiro** (not overview, dashboard)
+- Manual expense → **transação manual** (not custom transaction)

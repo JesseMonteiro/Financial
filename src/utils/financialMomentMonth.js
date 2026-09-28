@@ -6,10 +6,10 @@ import {
   resolveOfficialBillTotal,
   MONTHS_PT,
   ymAdd,
-} from './creditBillPeriod';
-import { resolveConnectorProfile } from './creditConnectors/profiles';
-import { resolveMonthSalary } from './monthSalary';
-import { automaticDebitsForMonth, isAutomaticDebitPending } from './analytics';
+} from './creditBillPeriod.js';
+import { resolveConnectorProfile } from './creditConnectors/profiles.js';
+import { resolveMonthSalary } from './monthSalary.js';
+import { automaticDebitsForMonth, isAutomaticDebitPending } from './analytics.js';
 
 /** Build rolling 12-month list centered around today (−6 … +5). */
 export function buildFinancialMomentMonthList(baseDate = new Date()) {
@@ -44,11 +44,26 @@ export function cardBillAmountForMonth({
       || creditBillPeriod?.openDueKey
       || ''
   );
-  const matchingBill = cardBills.find(
+  const rawMatchingBill = cardBills.find(
     (b) =>
       String(b.accountId || b.account_id || '') === cardId &&
-      String(b.dueDate || '').startsWith(ym)
+      String(b.dueDate || b.due_date || '').startsWith(ym)
   );
+  const matchingBill = rawMatchingBill
+    ? {
+        ...rawMatchingBill,
+        accountId: rawMatchingBill.accountId || rawMatchingBill.account_id,
+        dueDate: rawMatchingBill.dueDate || rawMatchingBill.due_date,
+        totalAmount:
+          rawMatchingBill.totalAmount != null
+            ? rawMatchingBill.totalAmount
+            : rawMatchingBill.total_amount,
+        isPaid:
+          rawMatchingBill.isPaid != null
+            ? rawMatchingBill.isPaid
+            : rawMatchingBill.is_paid,
+      }
+    : null;
   const periodBill = creditBillPeriod?.bills?.[ym];
   const scoped = (periodBill?.items || []).filter(
     (t) => (!t.accountId || String(t.accountId) === cardId) && !isBillPayment(t)
@@ -73,22 +88,25 @@ export function cardBillAmountForMonth({
       if (cycleAmount > amount + 0.05) amount = cycleAmount;
     }
     if (!(amount <= 0.05 && openKey && ym > openKey)) {
-      let isPaid = isBillSettled(matchingBill, {
-        transactions: cardTransactions.filter(
-          (t) => !t.accountId || String(t.accountId) === cardId
-        ),
-        officialBills: cardBills.filter(
-          (b) => String(b.accountId || b.account_id || '') === cardId
-        ),
-        forecastToDueOffset: creditBillPeriod?.forecastToDueOffset || 0,
-      });
+      let isPaid =
+        matchingBill.isPaid === true ||
+        matchingBill.status === 'PAID' ||
+        isBillSettled(matchingBill, {
+          transactions: cardTransactions.filter(
+            (t) => !t.accountId || String(t.accountId) === cardId
+          ),
+          officialBills: cardBills.filter(
+            (b) => String(b.accountId || b.account_id || '') === cardId
+          ),
+          forecastToDueOffset: creditBillPeriod?.forecastToDueOffset || 0,
+        });
       if (!isPaid && openKey) {
         const unpaidCutoff = ymAdd(openKey, -2);
         if (ym < unpaidCutoff) isPaid = true;
       }
       return {
         amount,
-        dueDate: matchingBill.dueDate,
+        dueDate: matchingBill.dueDate || matchingBill.due_date,
         isPaid,
         isFallback: false,
       };
@@ -141,11 +159,19 @@ export function computeFinancialMomentMonth({
 }) {
   if (!selectedMonth) return null;
 
+  const normalizedCardBills = cardBills.map((b) => ({
+    ...b,
+    accountId: b.accountId || b.account_id,
+    dueDate: b.dueDate || b.due_date,
+    totalAmount: b.totalAmount != null ? b.totalAmount : b.total_amount,
+    isPaid: b.isPaid != null ? b.isPaid : b.is_paid,
+  }));
+
   const creditBillPeriod =
     periodIn ||
     buildCreditCardBills({
       transactions: cardTransactions,
-      officialBills: cardBills,
+      officialBills: normalizedCardBills,
       creditCards,
       selectedCardId: 'all',
     });
@@ -159,21 +185,22 @@ export function computeFinancialMomentMonth({
   let receivablesTotal = 0;
 
   receivables.forEach((r) => {
-    (r.installmentHistory || []).forEach((inst) => {
-      if ((inst.dueDate || '').startsWith(selectedMonth)) {
+    (r.installmentHistory || r.installment_history || []).forEach((inst) => {
+      const due = String(inst.dueDate || inst.due_date || '');
+      if (due.startsWith(selectedMonth)) {
         activeReceivables.push({
           id: r.id,
-          personName: r.personName,
-          personColor: r.personColor,
+          personName: r.personName || r.person_name,
+          personColor: r.personColor || r.person_color,
           description: r.description,
-          amount: inst.amount,
-          installmentNumber: inst.installmentNumber,
-          totalInstallments: r.installments,
-          paidAt: inst.paidAt,
-          ownerUserId: r.ownerUserId || r.userId,
-          ownerLabel: r.ownerLabel,
+          amount: Number(inst.amount) || 0,
+          installmentNumber: inst.installmentNumber ?? inst.installment_number,
+          totalInstallments: r.installments ?? r.total_installments,
+          paidAt: inst.paidAt || inst.paid_at || null,
+          ownerUserId: r.ownerUserId || r.owner_user_id || r.userId || r.user_id,
+          ownerLabel: r.ownerLabel || r.owner_label,
         });
-        receivablesTotal += inst.amount;
+        receivablesTotal += Number(inst.amount) || 0;
       }
     });
   });
@@ -190,7 +217,7 @@ export function computeFinancialMomentMonth({
       transactions: cardTransactions.filter(
         (t) => !t.accountId || String(t.accountId) === cardId
       ),
-      officialBills: cardBills.filter(
+      officialBills: normalizedCardBills.filter(
         (b) => String(b.accountId || b.account_id || '') === cardId
       ),
       creditCards: [card],
@@ -199,28 +226,32 @@ export function computeFinancialMomentMonth({
     const bill = cardBillAmountForMonth({
       card,
       ym: selectedMonth,
-      cardBills,
+      cardBills: normalizedCardBills,
       cardTransactions,
       creditBillPeriod: cardPeriod,
     });
     if (!bill) return;
     activeBills.push({
       cardId: card.id,
-      cardName: card.name,
+      cardName: card.name || card.account_name || card.accountName || 'Cartão',
       dueDate: bill.dueDate,
       amount: bill.amount,
       isPaid: bill.isPaid,
       isFallback: bill.isFallback,
-      ownerUserId: card.ownerUserId,
-      ownerLabel: card.ownerLabel,
+      ownerUserId: card.ownerUserId || card.owner_user_id || card.userId || card.user_id,
+      ownerLabel: card.ownerLabel || card.owner_label,
     });
     creditCardsTotal += bill.amount;
   });
 
+  const isManualTx = (t) => t.isManual === true || t.is_manual === true;
+  const txDateStr = (t) => String(t.date || t.dueDate || t.due_date || '');
+  const isTxPaid = (t) => t.isPaid === true || t.is_paid === true;
+
   const activeManual = transactions.filter(
-    (t) => t.isManual === true && t.date?.startsWith(selectedMonth)
+    (t) => isManualTx(t) && txDateStr(t).startsWith(selectedMonth)
   );
-  const manualExpensesTotal = activeManual.reduce((s, t) => s + Math.abs(t.amount), 0);
+  const manualExpensesTotal = activeManual.reduce((s, t) => s + Math.abs(Number(t.amount) || 0), 0);
 
   const activeAutomaticDebits = automaticDebitsForMonth(transactions, selectedMonth, {
     bankAccountIds,
@@ -233,10 +264,10 @@ export function computeFinancialMomentMonth({
   const automaticDebitsTotal = activeAutomaticDebits.reduce((s, t) => s + t.amountAbs, 0);
 
   const unpaidBills = activeBills.filter((b) => !b.isPaid);
-  const unpaidManual = activeManual.filter((t) => !t.isPaid);
+  const unpaidManual = activeManual.filter((t) => !isTxPaid(t));
   const unpaidAutomaticDebits = activeAutomaticDebits.filter((t) => t.isPending);
   const unpaidCreditTotal = unpaidBills.reduce((s, b) => s + (Number(b.amount) || 0), 0);
-  const unpaidManualTotal = unpaidManual.reduce((s, t) => s + Math.abs(t.amount), 0);
+  const unpaidManualTotal = unpaidManual.reduce((s, t) => s + Math.abs(Number(t.amount) || 0), 0);
   const unpaidAutomaticDebitsTotal = unpaidAutomaticDebits.reduce((s, t) => s + t.amountAbs, 0);
   const accountsPayableTotal = unpaidCreditTotal + unpaidManualTotal + unpaidAutomaticDebitsTotal;
 
@@ -287,6 +318,14 @@ export function computeFinancialMomentMonthsStatus({
   const statuses = {};
   if (skipWhileLoading) return statuses;
 
+  const normalizedCardBills = cardBills.map((b) => ({
+    ...b,
+    accountId: b.accountId || b.account_id,
+    dueDate: b.dueDate || b.due_date,
+    totalAmount: b.totalAmount != null ? b.totalAmount : b.total_amount,
+    isPaid: b.isPaid != null ? b.isPaid : b.is_paid,
+  }));
+
   // One period per card: mixing every joint card into a single buildCreditCardBills
   // collides installment series and drops future projections (iOS surplus too high).
   const periodByCardId = new Map();
@@ -299,7 +338,7 @@ export function computeFinancialMomentMonthsStatus({
         transactions: cardTransactions.filter(
           (t) => !t.accountId || String(t.accountId) === cardId
         ),
-        officialBills: cardBills.filter(
+        officialBills: normalizedCardBills.filter(
           (b) => String(b.accountId || b.account_id || '') === cardId
         ),
         creditCards: [card],
@@ -311,7 +350,7 @@ export function computeFinancialMomentMonthsStatus({
     periodIn ||
     buildCreditCardBills({
       transactions: cardTransactions,
-      officialBills: cardBills,
+      officialBills: normalizedCardBills,
       creditCards,
       selectedCardId: 'all',
     });
@@ -341,7 +380,7 @@ export function computeFinancialMomentMonthsStatus({
       const bill = cardBillAmountForMonth({
         card,
         ym,
-        cardBills,
+        cardBills: normalizedCardBills,
         cardTransactions,
         creditBillPeriod: periodByCardId.get(cardId) || sharedPeriod,
       });
@@ -349,8 +388,8 @@ export function computeFinancialMomentMonthsStatus({
     });
 
     const manualExpensesTotal = transactions
-      .filter((t) => t.isManual === true && t.date?.startsWith(ym))
-      .reduce((s, t) => s + Math.abs(t.amount), 0);
+      .filter((t) => (t.isManual === true || t.is_manual === true) && String(t.date || t.dueDate || t.due_date || '').startsWith(ym))
+      .reduce((s, t) => s + Math.abs(Number(t.amount) || 0), 0);
 
     const automaticDebitsTotal = automaticDebitsForMonth(transactions, ym, {
       bankAccountIds,

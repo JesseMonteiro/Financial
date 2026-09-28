@@ -24,15 +24,16 @@ export function Subscriptions() {
 
   const creditCards = useMemo(() => accounts.filter((a) => a.type === 'CREDIT'), [accounts]);
   const creditIds = useMemo(() => creditCards.map((c) => c.id), [creditCards]);
+  const creditIdsKey = useMemo(() => creditIds.join(','), [creditIds]);
 
   useEffect(() => {
     loadTransactions();
     loadAccounts();
-  }, []);
+  }, [loadTransactions, loadAccounts]);
 
   useEffect(() => {
     if (creditIds.length) loadForAccounts(creditIds);
-  }, [creditIds.join(',')]);
+  }, [creditIdsKey, creditIds, loadForAccounts]);
 
   const allExpenseSources = useMemo(() => {
     const { transactions: cardTxs } = getMerged(creditIds);

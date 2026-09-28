@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useRef } from 'react';
+import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { useJointStore } from '../stores/jointStore';
 import { useCategoryStore } from '../stores/categoryStore';
@@ -28,7 +28,8 @@ import {
   Users,
   Settings,
 } from 'lucide-react';
-import { AccountIcon, accountById } from '../components/AccountIcon';
+import { AccountIcon } from '../components/AccountIcon';
+import { accountById } from '../utils/accountIcons';
 import { MomentBillStrip } from '../components/MomentBillStrip';
 import { MealBenefitMomentCards } from '../components/MealBenefitMomentCards';
 import { ItemDetailSheet } from '../components/ItemDetailSheet';
@@ -211,11 +212,14 @@ export function JointFinancialMoment() {
     };
   }, [selectedMonth, isPageLoading]);
 
-  const resolveCombinedSalary = (ym) =>
-    (members || []).reduce(
-      (sum, m) => sum + resolveMonthSalary(m.monthlySalaries || {}, ym),
-      0
-    );
+  const resolveCombinedSalary = useCallback(
+    (ym) =>
+      (members || []).reduce(
+        (sum, m) => sum + resolveMonthSalary(m.monthlySalaries || {}, ym),
+        0
+      ),
+    [members]
+  );
 
   const activeMonthData = useMemo(
     () =>
@@ -233,7 +237,7 @@ export function JointFinancialMoment() {
       }),
     [
       selectedMonth,
-      members,
+      resolveCombinedSalary,
       receivables,
       allTransactions,
       creditCards,
@@ -261,7 +265,7 @@ export function JointFinancialMoment() {
       }),
     [
       monthList,
-      members,
+      resolveCombinedSalary,
       receivables,
       allTransactions,
       creditCards,

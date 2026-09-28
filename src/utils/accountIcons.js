@@ -432,3 +432,9 @@ export function validateCardFaceFile(file) {
   if (file.type && !ICON_MIME.includes(file.type)) return 'Use PNG, JPG, WEBP ou SVG.';
   return null;
 }
+
+export function accountById(accounts, id) {
+  if (id == null || id === '' || !accounts?.length) return null;
+  const sid = String(id);
+  return accounts.find((acc) => acc.id === id || String(acc.id) === sid) || null;
+}

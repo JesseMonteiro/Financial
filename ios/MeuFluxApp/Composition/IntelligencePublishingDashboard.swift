@@ -39,7 +39,7 @@ struct IntelligencePublishingDashboard: LoadDashboardUseCase {
         let onIndexed = self.onIndexed
         let enrich = self.enrich
 
-        Task.detached(priority: .utility) {
+        Task(priority: .utility) {
             let narrated = await narrator.narrate(immediateSnapshot)
             if narrated.usedOnDeviceModel {
                 var updatedSnapshot = immediateSnapshot
@@ -71,7 +71,7 @@ struct IntelligencePublishingCreditCards: CreditCardsRepository, Sendable {
         let siriPurchases = SiriSnapshotMapper.creditPurchases(from: screen)
         if let snapshot = store.mergeCreditCardsAndPurchases(cards: siriCards, purchases: siriPurchases) {
             if let onIndexed {
-                Task.detached(priority: .utility) {
+                Task(priority: .utility) {
                     await onIndexed(snapshot)
                 }
             }
@@ -89,7 +89,7 @@ struct IntelligencePublishingAccounts: AccountsRepository, Sendable {
         let accounts = try await inner.fetchAccounts(force: force)
         if let snapshot = store.mergeAccounts(SiriSnapshotMapper.accounts(from: accounts)) {
             if let onIndexed {
-                Task.detached(priority: .utility) {
+                Task(priority: .utility) {
                     await onIndexed(snapshot)
                 }
             }

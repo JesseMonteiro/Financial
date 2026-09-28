@@ -11,7 +11,7 @@
 
   --text-primary: #0f172a;
   --text-secondary: #475569;
-  --text-muted: #94a3b8;
+  --text-muted: #64748b;
   --text-inverse: #ffffff;
 
   /* Accent Colors */
@@ -34,11 +34,11 @@
   --cat-transport: #0ea5e9;
   --cat-housing: #8b5cf6;
   --cat-health: #10b981;
-  --cat-education: #eab308;
+  --cat-education: #a16207;
   --cat-leisure: #ec4899;
   --cat-clothing: #14b8a6;
   --cat-services: #3b82f6;
-  --cat-investments: #84cc16;
+  --cat-investments: #4d7c0f;
   --cat-income: #22c55e;
   --cat-others: #64748b;
 
@@ -114,7 +114,7 @@
 
   --text-primary: #f8fafc;
   --text-secondary: #94a3b8;
-  --text-muted: #64748b;
+  --text-muted: #94a3b8;
 
   --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);

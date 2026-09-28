@@ -1,7 +1,7 @@
 /**
  * Reports aggregations — web analytics.js (exclude bill payments).
  */
-import { errorResponse, jsonResponse } from "../middleware/http.ts";
+import { jsonResponse } from "../middleware/http.ts";
 import { type PluggyClient } from "./pluggy.ts";
 import {
   buildIncomeExpenseSeries,

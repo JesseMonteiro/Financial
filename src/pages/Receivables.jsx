@@ -8,18 +8,16 @@ import {
   CheckCircle2, 
   Users, 
   CalendarClock, 
-  Search, 
   User, 
-  Clock, 
-  Tag, 
   Edit2 
 } from 'lucide-react';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { ProgressBar } from '../components/ui/ProgressBar';
-import { IconBusyButton, SavingOverlay } from '../components/ui/Spinner';
+import { IconBusyButton } from '../components/ui/Spinner';
 import { PageLoadingSkeleton } from '../components/ui/Skeleton';
+import { ReceivableModal } from '../components/modals';
 import { useReceivableStore } from '../stores/receivableStore';
 import { useAccountStore } from '../stores/accountStore';
 import { fetchTransactions } from '../services/api';
@@ -27,446 +25,15 @@ import { formatCurrency, formatDate } from '../utils/formatters';
 import { isInitialEmpty } from '../utils/loading';
 import { ItemDetailSheet } from '../components/ItemDetailSheet';
 import { fromReceivable } from '../utils/lineItemDetail';
-
-// ─────────────────────────────────────────────────────────────────────────────
-// HELPERS
-// ─────────────────────────────────────────────────────────────────────────────
-
-function getInitials(name = '') {
-  return name
-    .split(' ')
-    .slice(0, 2)
-    .map(n => n[0]?.toUpperCase())
-    .join('');
-}
-
-function dueKey(installment) {
-  return String(installment?.dueDate || '').slice(0, 10);
-}
-
-function nextPendingDue(installmentHistory = []) {
-  const pending = installmentHistory
-    .filter(i => !i.paidAt)
-    .sort((a, b) => dueKey(a).localeCompare(dueKey(b)));
-  return pending[0]?.dueDate || null;
-}
-
-/**
- * Sort key that puts the closest pending due first and fully settled entries
- * at the end (ordered by their last installment).
- */
-function receivableSortKey(rec) {
-  const pending = nextPendingDue(rec.installmentHistory);
-  if (pending) return `0_${String(pending).slice(0, 10)}`;
-
-  const lastDue = (rec.installmentHistory || [])
-    .map(dueKey)
-    .sort()
-    .pop();
-  return `1_${lastDue || '9999-12-31'}`;
-}
-
-function sortReceivablesByDue(list = []) {
-  return [...list].sort((a, b) => receivableSortKey(a).localeCompare(receivableSortKey(b)));
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// MODAL (Combined Add & Edit)
-// ─────────────────────────────────────────────────────────────────────────────
-
-export function ReceivableModal({ onClose, onSave, creditTransactions, editingReceivable, prefilledPersonName, prefilledTransaction }) {
-  const [personName, setPersonName] = useState('');
-  const [description, setDescription] = useState('');
-  const [type, setType] = useState('avulso'); // 'cartao' | 'avulso'
-  const [txSearch, setTxSearch] = useState('');
-  const [selectedTx, setSelectedTx] = useState(null);
-  const [totalAmount, setTotalAmount] = useState('');
-  
-  // Recurrence type: 'single' | 'parcelado' | 'continuous'
-  const [recurrenceType, setRecurrenceType] = useState('single');
-  const [numParcelas, setNumParcelas] = useState(2);
-  const [firstDueDate, setFirstDueDate] = useState(new Date().toISOString().slice(0, 10));
-  const [notes, setNotes] = useState('');
-  const [txDropdownOpen, setTxDropdownOpen] = useState(false);
-  const [saving, setSaving] = useState(false);
-
-  // Load editing data if editing
-  useEffect(() => {
-    if (editingReceivable) {
-      setPersonName(editingReceivable.personName || '');
-      setDescription(editingReceivable.description || '');
-      
-      const amt = editingReceivable.originalTotalAmount !== undefined 
-        ? editingReceivable.originalTotalAmount 
-        : editingReceivable.totalAmount;
-      setTotalAmount(String(amt || ''));
-      setNotes(editingReceivable.notes || '');
-      
-      if (editingReceivable.installmentHistory?.[0]?.dueDate) {
-        setFirstDueDate(editingReceivable.installmentHistory[0].dueDate);
-      }
-      
-      if (editingReceivable.isContinuous) {
-        setRecurrenceType('continuous');
-      } else if (editingReceivable.installments > 1) {
-        setRecurrenceType('parcelado');
-        setNumParcelas(editingReceivable.installments);
-      } else {
-        setRecurrenceType('single');
-      }
-
-      if (editingReceivable.linkedTransactionId) {
-        setType('cartao');
-        const matched = creditTransactions.find(t => t.id === editingReceivable.linkedTransactionId);
-        if (matched) {
-          setSelectedTx(matched);
-          setTxSearch(matched.description || '');
-        }
-      } else {
-        setType('avulso');
-      }
-    } else if (prefilledTransaction) {
-      setType('cartao');
-      setSelectedTx(prefilledTransaction);
-      setTxSearch(prefilledTransaction.description || '');
-      setDescription(prefilledTransaction.description || '');
-      const amt = Math.abs(Number(prefilledTransaction.amountInAccountCurrency ?? prefilledTransaction.amount) || 0);
-      if (amt) setTotalAmount(String(amt));
-    } else if (prefilledPersonName) {
-      setPersonName(prefilledPersonName);
-    }
-  }, [editingReceivable, prefilledPersonName, prefilledTransaction, creditTransactions]);
-
-  const filteredTxs = useMemo(() => {
-    if (!txSearch) return creditTransactions.slice(0, 20);
-    const q = txSearch.toLowerCase();
-    return creditTransactions
-      .filter(t =>
-        t.description?.toLowerCase().includes(q) ||
-        t.merchant?.businessName?.toLowerCase().includes(q)
-      )
-      .slice(0, 20);
-  }, [creditTransactions, txSearch]);
-
-  const handleSelectTx = (tx) => {
-    setSelectedTx(tx);
-    setTotalAmount(String(Math.abs(tx.amount)));
-    setTxDropdownOpen(false);
-    setTxSearch(tx.description || '');
-  };
-
-  const handleSave = async () => {
-    if (!personName.trim() || !totalAmount || isNaN(parseFloat(totalAmount)) || saving) return;
-    setSaving(true);
-    try {
-      await onSave({
-        personName: personName.trim(),
-        description: description.trim(),
-        totalAmount: parseFloat(totalAmount),
-        isContinuous: recurrenceType === 'continuous',
-        installments: recurrenceType === 'parcelado' ? parseInt(numParcelas, 10) || 1 : 1,
-        firstDueDate,
-        linkedTransactionId: selectedTx?.id || null,
-        linkedBillForecastDate: selectedTx?.creditCardMetadata?.billForecastDate || null,
-        notes: notes.trim(),
-      });
-      onClose();
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const inputStyle = {
-    width: '100%',
-    padding: '0.65rem 0.85rem',
-    borderRadius: 'var(--radius-md)',
-    border: '1px solid var(--border-color)',
-    backgroundColor: 'var(--bg-tertiary)',
-    color: 'var(--text-primary)',
-    fontSize: 'var(--font-size-sm)',
-    outline: 'none',
-    boxSizing: 'border-box',
-  };
-
-  const labelStyle = {
-    fontSize: 'var(--font-size-xs)',
-    fontWeight: 600,
-    color: 'var(--text-muted)',
-    marginBottom: '0.35rem',
-    display: 'block',
-    textTransform: 'uppercase',
-    letterSpacing: '0.05em',
-  };
-
-  return (
-    <div className="modal-overlay" style={{
-      zIndex: 1000,
-      backgroundColor: 'rgba(0,0,0,0.7)',
-      backdropFilter: 'blur(4px)',
-    }}>
-      <div className="modal-content" style={{
-        maxWidth: 540,
-        boxShadow: '0 20px 25px -5px rgba(0,0,0,0.5)',
-        display: 'flex', flexDirection: 'column',
-        maxHeight: '90vh', overflow: 'hidden',
-        padding: 0,
-      }}>
-        {/* Modal Header */}
-        <div style={{
-          padding: '1.25rem 1.5rem',
-          borderBottom: '1px solid var(--border-color)',
-          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        }}>
-          <h3 style={{ fontSize: 'var(--font-size-lg)', fontWeight: 700, margin: 0 }}>
-            {editingReceivable ? 'Editar Lançamento' : 'Novo Lançamento'}
-          </h3>
-          <button
-            onClick={onClose}
-            disabled={saving}
-            style={{ border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: saving ? 'wait' : 'pointer', fontSize: '18px' }}
-          >
-            &times;
-          </button>
-        </div>
-
-        {/* Modal Body */}
-        <div style={{ padding: '1.5rem', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          
-          {/* Nome da pessoa */}
-          <div>
-            <label style={labelStyle}>Nome do Devedor / Amigo *</label>
-            <input
-              type="text"
-              value={personName}
-              onChange={e => setPersonName(e.target.value)}
-              placeholder="Ex: João Silva"
-              disabled={!!prefilledPersonName || !!editingReceivable}
-              style={{ ...inputStyle, opacity: (prefilledPersonName || editingReceivable) ? 0.6 : 1 }}
-            />
-          </div>
-
-          {/* Descrição */}
-          <div>
-            <label style={labelStyle}>Descrição / Identificador *</label>
-            <input
-              type="text"
-              value={description}
-              onChange={e => setDescription(e.target.value)}
-              placeholder="Ex: Ingresso do Show, Almoço de Domingo"
-              style={inputStyle}
-            />
-          </div>
-
-          {/* Tipo de Lançamento */}
-          <div>
-            <label style={labelStyle}>Tipo de Origem</label>
-            <div style={{ display: 'flex', gap: '0.5rem', backgroundColor: 'var(--bg-tertiary)', padding: '0.25rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}>
-              {[
-                { val: 'avulso', lbl: 'Valor Avulso' },
-                { val: 'cartao', lbl: 'Vincular a Compra do Cartão' },
-              ].map(({ val, lbl }) => (
-                <label
-                  key={val}
-                  style={{
-                    flex: 1, textAlign: 'center', padding: '0.45rem',
-                    borderRadius: 'var(--radius-sm)', cursor: 'pointer',
-                    fontSize: 'var(--font-size-xs)', fontWeight: type === val ? 700 : 500,
-                    backgroundColor: type === val ? 'var(--primary)' : 'transparent',
-                    color: type === val ? '#fff' : 'var(--text-secondary)',
-                    transition: 'all 0.15s ease',
-                  }}
-                >
-                  <input
-                    type="radio"
-                    checked={type === val}
-                    onChange={() => { setType(val); setSelectedTx(null); setTxSearch(''); }}
-                    style={{ display: 'none' }}
-                  />
-                  {lbl}
-                </label>
-              ))}
-            </div>
-          </div>
-
-          {/* Busca de transação (quando vinculado ao cartão) */}
-          {type === 'cartao' && (
-            <div style={{ position: 'relative' }}>
-              <label style={labelStyle}>Transação do Cartão</label>
-              <div style={{
-                display: 'flex', alignItems: 'center', gap: '0.5rem',
-                ...inputStyle,
-                padding: '0.5rem 0.85rem',
-              }}>
-                <Search size={14} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
-                <input
-                  type="text"
-                  value={txSearch}
-                  onChange={e => { setTxSearch(e.target.value); setTxDropdownOpen(true); setSelectedTx(null); }}
-                  onFocus={() => setTxDropdownOpen(true)}
-                  placeholder="Buscar compra no cartão..."
-                  style={{ border: 'none', background: 'transparent', outline: 'none', color: 'var(--text-primary)', width: '100%', fontSize: 'var(--font-size-sm)' }}
-                />
-              </div>
-              {txDropdownOpen && filteredTxs.length > 0 && (
-                <div style={{
-                  position: 'absolute', top: '100%', left: 0, right: 0,
-                  backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-color)',
-                  borderRadius: 'var(--radius-md)', zIndex: 10,
-                  maxHeight: 200, overflowY: 'auto',
-                  boxShadow: '0 8px 24px rgba(0,0,0,0.3)',
-                  marginTop: '0.25rem',
-                }}>
-                  {filteredTxs.map(tx => (
-                    <div
-                      key={tx.id}
-                      onClick={() => handleSelectTx(tx)}
-                      style={{
-                        padding: '0.75rem 1rem', cursor: 'pointer',
-                        borderBottom: '1px solid var(--border-color)',
-                        transition: 'background 0.1s',
-                      }}
-                      onMouseEnter={e => e.currentTarget.style.backgroundColor = 'var(--bg-tertiary)'}
-                      onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
-                    >
-                      <p style={{ fontSize: 'var(--font-size-sm)', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>
-                        {tx.description}
-                      </p>
-                      <p style={{ fontSize: '11px', color: 'var(--text-muted)', margin: '0.1rem 0 0' }}>
-                        {formatCurrency(Math.abs(tx.amount))} • {formatDate(tx.date)}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Valor */}
-          <div>
-            <label style={labelStyle}>
-              {recurrenceType === 'continuous' ? 'Valor por Mês (R$) *' : 'Valor Total (R$) *'}
-            </label>
-            <input
-              type="number"
-              value={totalAmount}
-              onChange={e => setTotalAmount(e.target.value)}
-              placeholder="0,00"
-              min="0"
-              step="0.01"
-              style={inputStyle}
-            />
-          </div>
-
-          {/* Recurrence Type Option Selector */}
-          <div>
-            <label style={labelStyle}>Recorrência do Lançamento</label>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', backgroundColor: 'var(--bg-tertiary)', padding: '0.75rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}>
-              {[
-                { val: 'single', lbl: 'Lançamento Único' },
-                { val: 'parcelado', lbl: 'Lançamento Parcelado (parcelas fixas)' },
-                { val: 'continuous', lbl: 'Recorrência Contínua (mensal fixo, ex: aluguel, assinatura)' }
-              ].map(({ val, lbl }) => (
-                <label key={val} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontSize: 'var(--font-size-xs)' }}>
-                  <input
-                    type="radio"
-                    name="recurrence_selection"
-                    checked={recurrenceType === val}
-                    onChange={() => setRecurrenceType(val)}
-                  />
-                  {lbl}
-                </label>
-              ))}
-            </div>
-
-            {/* Custom configurations based on recurrence type */}
-            {recurrenceType === 'parcelado' && (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '0.75rem' }}>
-                <div>
-                  <label style={labelStyle}>Nº de Parcelas</label>
-                  <input
-                    type="number"
-                    min="2"
-                    max="48"
-                    value={numParcelas}
-                    onChange={e => setNumParcelas(e.target.value)}
-                    style={inputStyle}
-                  />
-                </div>
-                <div>
-                  <label style={labelStyle}>Data da 1ª Parcela</label>
-                  <input
-                    type="date"
-                    value={firstDueDate}
-                    onChange={e => setFirstDueDate(e.target.value)}
-                    style={inputStyle}
-                  />
-                </div>
-              </div>
-            )}
-            
-            {recurrenceType === 'continuous' && (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '1rem', marginTop: '0.75rem' }}>
-                <div>
-                  <label style={labelStyle}>Data do Primeiro Recebimento</label>
-                  <input
-                    type="date"
-                    value={firstDueDate}
-                    onChange={e => setFirstDueDate(e.target.value)}
-                    style={inputStyle}
-                  />
-                </div>
-              </div>
-            )}
-
-            {recurrenceType === 'single' && (
-              <div style={{ marginTop: '0.75rem' }}>
-                <label style={labelStyle}>Data de Vencimento</label>
-                <input
-                  type="date"
-                  value={firstDueDate}
-                  onChange={e => setFirstDueDate(e.target.value)}
-                  style={inputStyle}
-                />
-              </div>
-            )}
-          </div>
-
-          {/* Observações */}
-          <div>
-            <label style={labelStyle}>Observações (Opcional)</label>
-            <textarea
-              value={notes}
-              onChange={e => setNotes(e.target.value)}
-              placeholder="Detalhes adicionais..."
-              rows={3}
-              style={{ ...inputStyle, resize: 'vertical', fontFamily: 'inherit' }}
-            />
-          </div>
-        </div>
-
-        {/* Modal Footer */}
-        <div style={{
-          padding: '1rem 1.5rem 1.5rem',
-          display: 'flex', gap: '0.75rem', justifyContent: 'flex-end',
-          borderTop: '1px solid var(--border-color)',
-        }}>
-          <Button variant="outline" onClick={onClose} disabled={saving}>Cancelar</Button>
-          <Button
-            variant="primary"
-            onClick={handleSave}
-            loading={saving}
-            disabled={!personName.trim() || !totalAmount || isNaN(parseFloat(totalAmount))}
-          >
-            Salvar
-          </Button>
-        </div>
-        <SavingOverlay active={saving} />
-      </div>
-    </div>
-  );
-}
+import {
+  getInitials,
+  dueKey,
+  nextPendingDue,
+  receivableProgress,
+  personReceivableTotals,
+  summarizeReceivables,
+  groupReceivablesByPerson,
+} from '../utils/receivables';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PERSON CARD
@@ -476,19 +43,7 @@ function PersonCard({ personName, personColor, receivables, onMarkPaid, onDelete
   const [expanded, setExpanded] = useState(true);
   const [expandedReceivableId, setExpandedReceivableId] = useState(null);
 
-  const totalDue = receivables.reduce((s, r) => {
-    if (r.isContinuous) {
-      // For continuous, we sum only the unpaid installments of the 24 generated ones
-      return s + r.installmentHistory.filter(i => !i.paidAt).reduce((sum, i) => sum + i.amount, 0);
-    }
-    return s + r.totalAmount;
-  }, 0);
-
-  const totalPaid = receivables.reduce((s, r) => {
-    return s + r.installmentHistory.filter(i => i.paidAt).reduce((si, i) => si + i.amount, 0);
-  }, 0);
-
-  const pct = totalDue > 0 ? Math.min(100, Math.round((totalPaid / (totalDue + totalPaid)) * 100)) : 100;
+  const { pending: totalDue, paid: totalPaid, pct } = personReceivableTotals(receivables);
 
   return (
     <div style={{
@@ -566,14 +121,8 @@ function PersonCard({ personName, personColor, receivables, onMarkPaid, onDelete
         <div style={{ padding: '1rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
           {receivables.map(rec => {
             const isExpanded = expandedReceivableId === rec.id;
-            const paid = rec.installmentHistory.filter(i => i.paidAt).length;
-            const total = rec.installmentHistory.length;
+            const { paidCount, totalCount, paidAmount, totalAmount: recTotalAmt, pct: recPct } = receivableProgress(rec);
             const nextDue = nextPendingDue(rec.installmentHistory);
-            const recPaid = rec.installmentHistory.filter(i => i.paidAt).reduce((s, i) => s + i.amount, 0);
-            const recTotalAmt = rec.isContinuous 
-              ? (rec.installmentHistory[0]?.amount * 24) 
-              : rec.totalAmount;
-            const recPct = recTotalAmt > 0 ? Math.min(100, Math.round((recPaid / recTotalAmt) * 100)) : 0;
 
             return (
               <div key={rec.id} style={{
@@ -607,7 +156,7 @@ function PersonCard({ personName, personColor, receivables, onMarkPaid, onDelete
                         {rec.isContinuous ? `${formatCurrency(rec.installmentHistory[0]?.amount)}/mês` : `${formatCurrency(rec.totalAmount)} total`}
                       </span>
                       <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                        {rec.isContinuous ? `${paid} parcelas recebidas` : `${paid}/${total} parcelas pagas`}
+                        {rec.isContinuous ? `${paidCount} parcelas recebidas` : `${paidCount}/${totalCount} parcelas pagas`}
                       </span>
                       {nextDue && (
                         <span style={{ fontSize: '11px', color: 'var(--warning)' }}>
@@ -629,7 +178,7 @@ function PersonCard({ personName, personColor, receivables, onMarkPaid, onDelete
                     onClick={e => e.stopPropagation()}
                   >
                     <span style={{ fontWeight: 700, fontSize: 'var(--font-size-sm)', color: 'var(--text-primary)', marginRight: '0.5rem' }}>
-                      {rec.isContinuous ? `${formatCurrency(rec.installmentHistory[0]?.amount)} /mês` : `${formatCurrency(recPaid)} / ${formatCurrency(rec.totalAmount)}`}
+                      {rec.isContinuous ? `${formatCurrency(rec.installmentHistory[0]?.amount)} /mês` : `${formatCurrency(paidAmount)} / ${formatCurrency(rec.totalAmount)}`}
                     </span>
                     <button
                       onClick={() => onEdit(rec)}
@@ -689,7 +238,7 @@ function PersonCard({ personName, personColor, receivables, onMarkPaid, onDelete
                           tabIndex={0}
                         >
                           <span style={{ fontSize: 'var(--font-size-xs)', fontWeight: 600, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
-                            Parcela {inst.installmentNumber}/{total}
+                            Parcela {inst.installmentNumber}/{totalCount}
                           </span>
                           <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
                             Vence {formatDate(inst.dueDate)}
@@ -749,7 +298,6 @@ export function Receivables() {
   const [editingReceivable, setEditingReceivable] = useState(null);
   const [prefilledPersonName, setPrefilledPersonName] = useState('');
   const [creditTransactions, setCreditTransactions] = useState([]);
-  const [loadingTxs, setLoadingTxs] = useState(false);
   const [selectedItem, setSelectedItem] = useState(null);
   const [sheetBusy, setSheetBusy] = useState(false);
 
@@ -765,7 +313,6 @@ export function Receivables() {
   useEffect(() => {
     async function loadAllCardTxs() {
       if (creditCardAccounts.length === 0) return;
-      setLoadingTxs(true);
       try {
         const aggregated = [];
         for (const card of creditCardAccounts) {
@@ -781,76 +328,19 @@ export function Receivables() {
         setCreditTransactions(aggregated);
       } catch (err) {
         console.warn('[Receivables] error fetching transactions for linking:', err);
-      } finally {
-        setLoadingTxs(false);
       }
     }
     if (accounts.length > 0) loadAllCardTxs();
   }, [creditCardAccounts, accounts.length]);
 
   // ── Metrics ────────────────────────────────────────────────────────────────
-  const totalToReceive = useMemo(() => {
-    return receivables.reduce((s, r) => {
-      const pendingSum = r.installmentHistory
-        .filter(i => !i.paidAt)
-        .reduce((sum, i) => sum + i.amount, 0);
-      return s + pendingSum;
-    }, 0);
-  }, [receivables]);
-
-  const totalReceived = useMemo(() => {
-    return receivables.reduce((s, r) => {
-      const paidSum = r.installmentHistory
-        .filter(i => i.paidAt)
-        .reduce((sum, i) => sum + i.amount, 0);
-      return s + paidSum;
-    }, 0);
-  }, [receivables]);
-
-  const numPeople = useMemo(() => {
-    const names = new Set(receivables.map(r => r.personName.toLowerCase()));
-    return names.size;
-  }, [receivables]);
-
-  const nextDueDate = useMemo(() => {
-    let earliest = null;
-    receivables.forEach(r => {
-      const due = nextPendingDue(r.installmentHistory);
-      if (due) {
-        if (!earliest || due < earliest) {
-          earliest = due;
-        }
-      }
-    });
-    return earliest;
-  }, [receivables]);
+  const { totalToReceive, totalReceived, numPeople, nextDueDate } = useMemo(
+    () => summarizeReceivables(receivables),
+    [receivables]
+  );
 
   // Group by Person Name
-  const byPerson = useMemo(() => {
-    const map = {};
-    receivables.forEach(r => {
-      if (!map[r.personName]) {
-        map[r.personName] = {
-          personName: r.personName,
-          personColor: r.personColor,
-          receivables: [],
-        };
-      }
-      map[r.personName].receivables.push(r);
-    });
-
-    const groups = Object.values(map);
-    groups.forEach(g => {
-      g.receivables = sortReceivablesByDue(g.receivables);
-    });
-
-    // People with the closest pending receipt come first
-    return groups.sort((a, b) => {
-      const keyA = a.receivables[0] ? receivableSortKey(a.receivables[0]) : '2';
-      const keyB = b.receivables[0] ? receivableSortKey(b.receivables[0]) : '2';
-      return keyA.localeCompare(keyB) || a.personName.localeCompare(b.personName);
-    });
-  }, [receivables]);
+  const byPerson = useMemo(() => groupReceivablesByPerson(receivables), [receivables]);
 
   // ── Handlers ───────────────────────────────────────────────────────────────
   const handleSave = useCallback(async (data) => {

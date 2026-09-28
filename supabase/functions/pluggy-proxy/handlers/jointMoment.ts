@@ -34,7 +34,7 @@ type FaceOverlay = {
  * Credit: 1 page/account (projections). Bank: 1 page/account (auto-debits).
  * Skips /items connector round-trips used only for face styling.
  */
-async function loadMemberPluggyBundle(
+export async function loadMemberPluggyBundle(
   profile: {
     pluggy_item_ids?: unknown;
     pluggy_client_id?: string | null;

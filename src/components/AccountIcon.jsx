@@ -111,9 +111,3 @@ export function AccountLabel({ account, size = 16, name, style }) {
     </span>
   );
 }
-
-export function accountById(accounts, id) {
-  if (id == null || id === '' || !accounts?.length) return null;
-  const sid = String(id);
-  return accounts.find((acc) => acc.id === id || String(acc.id) === sid) || null;
-}

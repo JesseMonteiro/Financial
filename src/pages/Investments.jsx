@@ -14,7 +14,8 @@ import { investmentAllocation, investmentByIssuer } from '../utils/analytics';
 import { calculateNetWorth } from '../utils/calculations';
 import { isInitialEmpty } from '../utils/loading';
 import { useIsMobile } from '../hooks/useMediaQuery';
-import { AccountIcon, accountById } from '../components/AccountIcon';
+import { AccountIcon } from '../components/AccountIcon';
+import { accountById } from '../utils/accountIcons';
 
 const SCOPE_OPTIONS = [
   { id: 'personal', label: 'Pessoal' },

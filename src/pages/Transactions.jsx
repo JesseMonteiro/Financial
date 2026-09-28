@@ -14,7 +14,8 @@ import { isInitialEmpty } from '../utils/loading';
 import { ItemDetailSheet } from '../components/ItemDetailSheet';
 import { fromTransaction, categoryOptionsForItem, applyingCategory } from '../utils/lineItemDetail';
 import { fetchCategories } from '../services/api';
-import { AccountIcon, accountById } from '../components/AccountIcon';
+import { AccountIcon } from '../components/AccountIcon';
+import { accountById } from '../utils/accountIcons';
 
 export function Transactions() {
   const { loadTransactions, getFilteredTransactions, transactions: rawTransactions, filters, setFilters, loading, lastUpdated, updateOpenFinanceCategory } = useTransactionStore();

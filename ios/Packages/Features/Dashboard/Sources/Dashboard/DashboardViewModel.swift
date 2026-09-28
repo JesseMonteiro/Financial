@@ -596,12 +596,10 @@ public final class DashboardViewModel {
             let purchases30d = await purchasesTask
             guard generation == loadGeneration else { return }
 
-            recentCreditPurchases = await Task.detached(priority: .userInitiated) {
-                DailyFlowBuilder.creditPurchases(
-                    from: purchases30d,
-                    days: Self.recentCreditPurchaseDays
-                )
-            }.value
+            recentCreditPurchases = DailyFlowBuilder.creditPurchases(
+                from: purchases30d,
+                days: Self.recentCreditPurchaseDays
+            )
 
             await loadDailyFlow(
                 force: force,
@@ -698,20 +696,16 @@ public final class DashboardViewModel {
                 collected.append(contentsOf: batch)
             }
         }
-        let points = await Task.detached(priority: .userInitiated) {
-            DailyFlowBuilder.points(
-                from: collected,
-                recent: snapshotProvided ? [] : recent,
-                purchases: purchases,
-                snapshot: snapshot,
-                days: 30,
-                now: now
-            )
-        }.value
+        let points = DailyFlowBuilder.points(
+            from: collected,
+            recent: snapshotProvided ? [] : recent,
+            purchases: purchases,
+            snapshot: snapshot,
+            days: 30,
+            now: now
+        )
         dailySpend = points
-        todayTransactionCount = await Task.detached(priority: .userInitiated) {
-            DailyFlowBuilder.todayTransactionCount(from: collected, now: now)
-        }.value
+        todayTransactionCount = DailyFlowBuilder.todayTransactionCount(from: collected, now: now)
         if let current = selectedDay, !dailySpend.contains(where: { $0.day == current }) {
             selectedDay = nil
         }
@@ -724,27 +718,23 @@ public final class DashboardViewModel {
         // Same ledger as Cartões — purchaseDate already matches Fluxo Diário.
         if let creditCards,
            let screen = try? await creditCards.fetchScreen(force: force) {
-            let fromCards = await Task.detached(priority: .userInitiated) {
-                DailyFlowBuilder.creditPurchases(
-                    from: screen,
-                    days: days,
-                    now: now,
-                    limit: 100
-                )
-            }.value
+            let fromCards = DailyFlowBuilder.creditPurchases(
+                from: screen,
+                days: days,
+                now: now,
+                limit: 100
+            )
             if !fromCards.isEmpty {
                 return fromCards
             }
         }
 
         if !fallback.isEmpty {
-            let windowed = await Task.detached(priority: .userInitiated) {
-                DailyFlowBuilder.creditPurchases(
-                    from: fallback,
-                    days: days,
-                    now: now
-                )
-            }.value
+            let windowed = DailyFlowBuilder.creditPurchases(
+                from: fallback,
+                days: days,
+                now: now
+            )
             if !windowed.isEmpty {
                 return windowed
             }
@@ -776,14 +766,12 @@ public final class DashboardViewModel {
             }
         }
 
-        return await Task.detached(priority: .userInitiated) {
-            DailyFlowBuilder.creditPurchases(
-                from: collected,
-                creditAccountIds: creditIds,
-                days: days,
-                now: now,
-                limit: 100
-            )
-        }.value
+        return DailyFlowBuilder.creditPurchases(
+            from: collected,
+            creditAccountIds: creditIds,
+            days: days,
+            now: now,
+            limit: 100
+        )
     }
 }

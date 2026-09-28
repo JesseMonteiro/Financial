@@ -141,4 +141,109 @@ const matchedSubPt = selectedCategoryValue(
 );
 assert.equal(matchedSubPt, '07000000');
 
-console.log('✓ All category integration tests passed successfully!');
+// 7. Validate 1:1 Parity between Web categories.js and Edge dashboardAnalytics.ts
+import fs from 'node:fs';
+import path from 'node:path';
+import { allTranslations } from '../src/utils/categories.js';
+
+const edgeAnalyticsContent = fs.readFileSync(
+  path.resolve('supabase/functions/pluggy-proxy/utils/dashboardAnalytics.ts'),
+  'utf-8'
+);
+
+const matchTrans = edgeAnalyticsContent.match(
+  /export const CATEGORY_TRANSLATIONS: Record<string, string> = \{([\s\S]*?)\n\};/
+);
+assert.ok(matchTrans, 'Could not find CATEGORY_TRANSLATIONS in dashboardAnalytics.ts');
+
+// Evaluate clean dictionary from TS file
+const edgeObjStr = `{${matchTrans[1]}}`;
+const edgeTranslations = (new Function(`return ${edgeObjStr};`))();
+
+const webTranslations = allTranslations();
+
+// Assert every key in web has matching translation in edge
+for (const [key, expectedVal] of Object.entries(webTranslations)) {
+  const edgeVal = edgeTranslations[key];
+  assert.equal(
+    edgeVal,
+    expectedVal,
+    `Edge translation mismatch for "${key}": expected "${expectedVal}", got "${edgeVal}"`
+  );
+}
+
+// Assert specific Ticket 05 requirements
+assert.equal(edgeTranslations['Groceries'], 'Supermercados');
+assert.equal(edgeTranslations['Salary'], 'Salário');
+assert.equal(edgeTranslations['Eating out'], 'Restaurantes e bares');
+assert.equal(edgeTranslations['Food delivery'], 'Delivery de comida');
+assert.equal(edgeTranslations['Healthcare'], 'Saúde');
+console.log('✓ Category 1:1 parity between Web and Supabase Edge Function passed');
+
+// 8. Validate Financial Moment Month camelCase vs snake_case schema drift resilience
+import { computeFinancialMomentMonth } from '../src/utils/financialMomentMonth.js';
+
+const camelDataset = {
+  selectedMonth: '2026-10',
+  salary: 10000,
+  receivables: [
+    {
+      id: 'r1',
+      personName: 'Alice',
+      installments: 3,
+      installmentHistory: [
+        { amount: 500, dueDate: '2026-10-15', installmentNumber: 1, paidAt: null },
+      ],
+    },
+  ],
+  creditCards: [{ id: 'card-1', name: 'Nubank' }],
+  cardBills: [
+    { accountId: 'card-1', dueDate: '2026-10-10', totalAmount: 1200, isPaid: false },
+  ],
+  transactions: [
+    { id: 'm1', amount: -200, date: '2026-10-05', isManual: true, isPaid: false },
+    { id: 'm2', amount: -150, date: '2026-10-08', isManual: true, isPaid: true },
+  ],
+};
+
+const snakeDataset = {
+  selectedMonth: '2026-10',
+  salary: 10000,
+  receivables: [
+    {
+      id: 'r1',
+      person_name: 'Alice',
+      total_installments: 3,
+      installment_history: [
+        { amount: 500, due_date: '2026-10-15', installment_number: 1, paid_at: null },
+      ],
+    },
+  ],
+  creditCards: [{ id: 'card-1', account_name: 'Nubank' }],
+  cardBills: [
+    { account_id: 'card-1', due_date: '2026-10-10', total_amount: 1200, is_paid: false },
+  ],
+  transactions: [
+    { id: 'm1', amount: -200, due_date: '2026-10-05', is_manual: true, is_paid: false },
+    { id: 'm2', amount: -150, due_date: '2026-10-08', is_manual: true, is_paid: true },
+  ],
+};
+
+const resCamel = computeFinancialMomentMonth(camelDataset);
+const resSnake = computeFinancialMomentMonth(snakeDataset);
+
+assert.equal(resCamel.entriesTotal, resSnake.entriesTotal);
+assert.equal(resCamel.receivablesTotal, resSnake.receivablesTotal);
+assert.equal(resCamel.manualExpensesTotal, resSnake.manualExpensesTotal);
+assert.equal(resCamel.creditCardsTotal, resSnake.creditCardsTotal);
+assert.equal(resCamel.expensesTotal, resSnake.expensesTotal);
+assert.equal(resCamel.netBalance, resSnake.netBalance);
+assert.equal(resCamel.unpaidManualTotal, 200);
+assert.equal(resSnake.unpaidManualTotal, 200, 'Paid manual expense (is_paid: true) must NOT be counted as unpaid');
+assert.equal(resSnake.unpaidManual.length, 1);
+assert.equal(resCamel.unpaidManual.length, 1);
+assert.equal(resSnake.activeReceivables.length, 1);
+assert.equal(resSnake.activeReceivables[0].personName, 'Alice');
+
+console.log('✓ Financial Moment Month camelCase vs snake_case schema drift resilience passed');
+console.log('✓ All category integration and parity tests passed successfully!');

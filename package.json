@@ -10,11 +10,15 @@
     "build": "vite build",
     "preview": "vite preview",
     "lint": "oxlint .",
+    "test": "vitest run",
+    "test:unit": "vitest",
     "test:fixtures": "node scripts/validate-credit-fixtures.mjs && node --experimental-strip-types scripts/run-credit-bill-parity.mjs && node scripts/test-amazon-purchase-date.mjs",
     "test:budget": "node scripts/run-budget-period.mjs",
     "test:line-item": "node scripts/run-line-item-detail.mjs",
     "test:categories": "node scripts/test-categories-pluggy.mjs",
     "test:merchants": "node scripts/run-merchant-logos.mjs",
+    "test:receivables": "node scripts/test-receivables-utils.mjs",
+    "test:telegram": "node scripts/test-telegram-daily-summary.mjs",
     "test:ios": "cd ios && swift test",
     "ios:secrets": "node scripts/ios-sync-secrets.mjs",
     "summary:telegram": "node scripts/send-daily-telegram-summary.mjs"
@@ -49,6 +53,7 @@
     "concurrently": "^10.0.3",
     "nodemon": "^3.1.14",
     "oxlint": "^1.71.0",
-    "vite": "^8.1.1"
+    "vite": "^8.1.1",
+    "vitest": "^4.1.11"
   }
 }

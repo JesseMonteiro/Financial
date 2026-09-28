@@ -32,6 +32,10 @@ public struct Money: Sendable, Hashable, Codable, Comparable {
     public var isNegative: Bool { amount < 0 }
     public var isZero: Bool { amount == 0 }
 
+    public var doubleValue: Double {
+        NSDecimalNumber(decimal: amount).doubleValue
+    }
+
     public func formatted(locale: Locale = Locale(identifier: "pt_BR")) -> String {
         let formatter = NumberFormatter()
         formatter.numberStyle = .currency

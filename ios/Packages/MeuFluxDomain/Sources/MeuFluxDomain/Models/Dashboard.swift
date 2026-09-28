@@ -128,43 +128,51 @@ public struct DashboardSeriesPoint: Sendable, Hashable, Identifiable {
     public var id: String { ym }
     public var ym: String
     public var month: String
-    public var value: Double
+    public var value: Money
 
-    public init(ym: String, month: String, value: Double) {
+    public init(ym: String, month: String, value: Money) {
         self.ym = ym
         self.month = month
         self.value = value
     }
+
+    public var doubleValue: Double { value.doubleValue }
 }
 
 public struct DashboardCashflowPoint: Sendable, Hashable, Identifiable {
     public var id: String { ym }
     public var ym: String
     public var month: String
-    public var receita: Double
-    public var despesa: Double
-    public var net: Double
+    public var receita: Money
+    public var despesa: Money
+    public var net: Money
 
-    public init(ym: String, month: String, receita: Double, despesa: Double, net: Double) {
+    public init(ym: String, month: String, receita: Money, despesa: Money, net: Money) {
         self.ym = ym
         self.month = month
         self.receita = receita
         self.despesa = despesa
         self.net = net
     }
+
+    public var receitaDouble: Double { receita.doubleValue }
+    public var despesaDouble: Double { despesa.doubleValue }
+    public var netDouble: Double { net.doubleValue }
 }
 
 public struct DashboardCategoryExpense: Sendable, Hashable, Identifiable {
     public var id: String { name }
     public var name: String
-    public var value: Double
+    public var value: Money
     public var colorHex: String
 
-    public init(name: String, value: Double, colorHex: String) {
+    public init(name: String, value: Money, colorHex: String) {
         self.name = name
         self.value = value
         self.colorHex = colorHex
     }
+
+    public var doubleValue: Double { value.doubleValue }
 }
 
 public struct DashboardInsight: Sendable, Hashable, Identifiable {

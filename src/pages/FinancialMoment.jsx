@@ -36,10 +36,11 @@ import {
   Banknote,
   Repeat
 } from 'lucide-react';
-import { AccountIcon, accountById } from '../components/AccountIcon';
+import { AccountIcon } from '../components/AccountIcon';
+import { accountById } from '../utils/accountIcons';
 import { MomentBillStrip } from '../components/MomentBillStrip';
 import { ItemDetailSheet } from '../components/ItemDetailSheet';
-import { ReceivableModal } from './Receivables';
+import { ReceivableModal } from '../components/modals';
 import {
   fromAutomaticDebit,
   fromManualExpense,
@@ -128,11 +129,13 @@ export function FinancialMoment() {
     return map;
   }, [bankAccounts]);
 
+  const cardIdsKey = useMemo(() => cardIds.join(','), [cardIds]);
+
   useEffect(() => {
     if (accountsLoading) return;
     if (!cardIds.length) return;
     loadForAccounts(cardIds);
-  }, [cardIds.join(','), accountsLoading, loadForAccounts]);
+  }, [cardIdsKey, accountsLoading, loadForAccounts]);
 
   const cardBills = useMemo(() => {
     const bills = [];

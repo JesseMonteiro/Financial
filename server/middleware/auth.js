@@ -35,6 +35,11 @@ export async function loadPluggyClient(req, res, next) {
       .eq('id', req.user.id)
       .maybeSingle();
 
+    if (error) {
+      console.error('[Auth Middleware] Erro ao carregar perfil:', error.message);
+      return res.status(500).json({ error: 'Erro ao carregar perfil do usuário' });
+    }
+
     const rawItemIds = profile?.pluggy_item_ids;
     const pluggyItemIds = Array.isArray(rawItemIds)
       ? rawItemIds.filter((id) => typeof id === 'string' && id.length > 0)

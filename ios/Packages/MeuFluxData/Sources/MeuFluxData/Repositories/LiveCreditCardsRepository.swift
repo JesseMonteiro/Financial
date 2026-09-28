@@ -10,8 +10,6 @@ public struct LiveCreditCardsRepository: CreditCardsRepository {
 
     public func fetchScreen(force: Bool) async throws -> CreditCardsScreen {
         let dto = try await bff.getCreditCardsScreen(force: force)
-        return await Task.detached(priority: .userInitiated) {
-            DomainMapper.creditCardsScreen(dto)
-        }.value
+        return DomainMapper.creditCardsScreen(dto)
     }
 }

@@ -9,7 +9,10 @@ export function cacheMiddleware(ttlSeconds = 3600) {
       return next();
     }
 
-    const userId = req.user?.id || 'anonymous';
+    const userId = req.user?.id;
+    if (!userId) {
+      return next();
+    }
     const key = `${userId}:${req.originalUrl || req.url}`;
     const cachedResponse = cache.get(key);
 

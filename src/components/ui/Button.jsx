@@ -21,7 +21,7 @@ export function Button({
       disabled={isDisabled}
       onClick={onClick}
       aria-busy={loading || undefined}
-      className={`btn btn-${variant} ${loading ? 'is-loading' : ''} ${className}`}
+      className={`btn btn-${variant} ${size !== 'md' ? `btn-${size}` : ''} ${loading ? 'is-loading' : ''} ${className}`.trim()}
     >
       {loading ? (
         <Loader2 className="spinner" size={iconSize} aria-hidden />

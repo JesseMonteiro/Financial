@@ -15,6 +15,7 @@ import chatbotRoutes from './routes/chatbot.js';
 import jointRoutes from './routes/joint.js';
 import parseBillRoutes from './routes/parseBill.js';
 import { clearCache } from './middleware/cache.js';
+import { checkAuth } from './middleware/auth.js';
 import { initDailySummaryScheduler } from './services/dailySummaryScheduler.js';
 
 dotenv.config();
@@ -48,7 +49,7 @@ app.use('/api/joint', jointRoutes);
 app.use('/api/parse-bill', parseBillRoutes);
 
 // Cache flush endpoint
-app.post('/api/cache/clear', (req, res) => {
+app.post('/api/cache/clear', checkAuth, (req, res) => {
   clearCache();
   res.json({ success: true, message: 'Cache limpo com sucesso' });
 });

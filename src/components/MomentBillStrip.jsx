@@ -1,6 +1,6 @@
 import React from 'react';
 import { CreditCardFace } from './CreditCardFace';
-import { accountById } from './AccountIcon';
+import { accountById } from '../utils/accountIcons';
 import { formatCurrency } from '../utils/formatters';
 
 export function MomentBillStrip({ bills, accounts }) {

@@ -1,5 +1,6 @@
-import React, { useEffect, useState, useMemo, useId } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { ExpenseFormFields } from '../components/ExpenseFormFields';
 import { useTransactionStore } from '../stores/transactionStore';
 import { useAccountStore } from '../stores/accountStore';
 import { useCategoryStore } from '../stores/categoryStore';
@@ -14,7 +15,8 @@ import { resolveCategoryLabel, resolveCategoryColor, userCategoryOptions } from 
 import { getCategoryColor } from '../utils/colors';
 import { isInitialEmpty } from '../utils/loading';
 import { previewInstallmentSplit, totalFromStoredInstallments } from '../utils/manualAccounts';
-import { AccountIcon, accountById } from '../components/AccountIcon';
+import { AccountIcon } from '../components/AccountIcon';
+import { accountById } from '../utils/accountIcons';
 import { ItemDetailSheet } from '../components/ItemDetailSheet';
 import { fromManualExpense, categoryOptionsForItem, applyingCategory } from '../utils/lineItemDetail';
 import {
@@ -93,181 +95,7 @@ function AmountEditRow({ value, onChange, onSave, onCancel, hint, busy = false }
   );
 }
 
-export function ExpenseFormFields({
-  description,
-  setDescription,
-  amount,
-  setAmount,
-  category,
-  setCategory,
-  date,
-  setDate,
-  isRecurring,
-  setIsRecurring,
-  isContinuous,
-  setIsContinuous,
-  frequency,
-  setFrequency,
-  occurrences,
-  setOccurrences,
-  categoryOptions,
-}) {
-  const radioName = `recurrence_type_${useId()}`;
-  const options = categoryOptions?.length ? categoryOptions : userCategoryOptions();
-  const splitPreview = previewInstallmentSplit(amount, {
-    isRecurring,
-    isContinuous,
-    occurrences,
-  });
 
-  return (
-    <>
-      <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-        <div>
-          <label className="label" style={{ display: 'block', marginBottom: '0.4rem', fontSize: 'var(--font-size-xs)', fontWeight: 600 }}>Descrição</label>
-          <input
-            type="text"
-            placeholder="Ex: Aluguel, Padaria do Zé"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            className="input"
-            required
-            style={{ width: '100%' }}
-          />
-        </div>
-        <div>
-          <label className="label" style={{ display: 'block', marginBottom: '0.4rem', fontSize: 'var(--font-size-xs)', fontWeight: 600 }}>Valor total (R$)</label>
-          <input
-            type="number"
-            step="0.01"
-            placeholder="0,00"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            className="input"
-            required
-            style={{ width: '100%' }}
-          />
-          {splitPreview && (
-            <p style={{ margin: '0.4rem 0 0', fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>
-              {splitPreview.count} parcelas de {formatCurrency(splitPreview.per)}
-              {splitPreview.lastDiffers ? ` · última ${formatCurrency(splitPreview.last)}` : ''}
-            </p>
-          )}
-        </div>
-      </div>
-
-      <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-        <div>
-          <label className="label" style={{ display: 'block', marginBottom: '0.4rem', fontSize: 'var(--font-size-xs)', fontWeight: 600 }}>Categoria</label>
-          <select
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
-            className="input"
-            style={{ width: '100%' }}
-          >
-            {options.map((opt) => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className="label" style={{ display: 'block', marginBottom: '0.4rem', fontSize: 'var(--font-size-xs)', fontWeight: 600 }}>Data da Primeira Ocorrência</label>
-          <input
-            type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            className="input"
-            required
-            style={{ width: '100%' }}
-          />
-        </div>
-      </div>
-
-      <div style={{
-        display: 'flex', flexDirection: 'column', gap: '0.75rem',
-        backgroundColor: 'var(--bg-tertiary)', padding: '1rem', borderRadius: 'var(--radius-md)',
-        border: '1px solid var(--border-color)',
-      }}>
-        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontWeight: 600, fontSize: 'var(--font-size-sm)' }}>
-          <input
-            type="checkbox"
-            checked={isRecurring}
-            onChange={(e) => setIsRecurring(e.target.checked)}
-            style={{ width: '16px', height: '16px', cursor: 'pointer' }}
-          />
-          Despesa Recorrente ou Parcelada?
-        </label>
-
-        {isRecurring && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: '0.5rem', paddingLeft: '1.5rem', borderLeft: '2px solid var(--border-color)' }}>
-            <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer', fontSize: 'var(--font-size-xs)' }}>
-                <input
-                  type="radio"
-                  name={radioName}
-                  checked={!isContinuous}
-                  onChange={() => setIsContinuous(false)}
-                />
-                Parcelas Fixas (ex: Compras parceladas)
-              </label>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer', fontSize: 'var(--font-size-xs)' }}>
-                <input
-                  type="radio"
-                  name={radioName}
-                  checked={isContinuous}
-                  onChange={() => setIsContinuous(true)}
-                />
-                Recorrência Contínua (ex: Aluguel, Assinaturas)
-              </label>
-            </div>
-
-            <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-              <div>
-                <label className="label" style={{ display: 'block', marginBottom: '0.4rem', fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>Frequência</label>
-                <select
-                  value={frequency}
-                  onChange={(e) => setFrequency(e.target.value)}
-                  className="input"
-                  style={{ width: '100%' }}
-                >
-                  <option value="weekly">Semanal</option>
-                  <option value="monthly">Mensal</option>
-                  <option value="yearly">Anual</option>
-                </select>
-              </div>
-
-              {!isContinuous ? (
-                <div>
-                  <label className="label" style={{ display: 'block', marginBottom: '0.4rem', fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>Número de Parcelas</label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="60"
-                    value={occurrences}
-                    onChange={(e) => setOccurrences(e.target.value)}
-                    className="input"
-                    style={{ width: '100%' }}
-                  />
-                  {splitPreview && (
-                    <p style={{ margin: '0.35rem 0 0', fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>
-                      Valor por parcela: {formatCurrency(splitPreview.per)}
-                      {splitPreview.lastDiffers ? ` (última ${formatCurrency(splitPreview.last)})` : ''}
-                    </p>
-                  )}
-                </div>
-              ) : (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', alignSelf: 'center', color: 'var(--text-muted)', fontSize: '11px', marginTop: '1.2rem' }}>
-                  <HelpCircle size={14} />
-                  <span>Gerará recorrência mensal contínua automaticamente nos orçamentos</span>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-    </>
-  );
-}
 
 function blankFormState(accountId = 'manual') {
   return {
@@ -283,78 +111,7 @@ function blankFormState(accountId = 'manual') {
   };
 }
 
-export function PurchaseModal({ account, onClose, onSave, saving }) {
-  const { categories, loadCategories } = useCategoryStore();
-  const [form, setForm] = useState(() => blankFormState(account?.id));
-  const setField = (key) => (value) => setForm((prev) => ({ ...prev, [key]: value }));
-  const categoryOptions = userCategoryOptions(categories);
 
-  useEffect(() => {
-    loadCategories();
-  }, []);
-
-  useEffect(() => {
-    if (!categoryOptions.some((opt) => opt.value === form.category) && categoryOptions[0]) {
-      setForm((prev) => ({ ...prev, category: categoryOptions[0].value }));
-    }
-  }, [categoryOptions, form.category]);
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    if (!form.description || !form.amount || saving) return;
-    onSave({
-      description: form.description,
-      amount: parseFloat(form.amount),
-      category: form.category,
-      date: new Date(`${form.date}T12:00:00.000Z`),
-      isRecurring: form.isRecurring,
-      isContinuous: form.isRecurring && form.isContinuous,
-      frequency: form.frequency,
-      occurrences: parseInt(form.occurrences, 10) || 12,
-      accountId: account.id,
-    });
-  };
-
-  return (
-    <div className="modal-overlay" onClick={() => { if (!saving) onClose(); }}>
-      <SavingScope active={saving}>
-        <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 560 }}>
-          <h2 style={{ fontSize: 'var(--font-size-xl)', fontWeight: 700, marginBottom: '0.35rem' }}>
-            Adicionar compra
-          </h2>
-          <p style={{ color: 'var(--text-muted)', fontSize: 'var(--font-size-sm)', marginBottom: '1rem' }}>
-            {account.name} {account.isManual ? '· Manual' : ''}
-          </p>
-          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            <ExpenseFormFields
-              description={form.description}
-              setDescription={setField('description')}
-              amount={form.amount}
-              setAmount={setField('amount')}
-              category={form.category}
-              setCategory={setField('category')}
-              date={form.date}
-              setDate={setField('date')}
-              isRecurring={form.isRecurring}
-              setIsRecurring={setField('isRecurring')}
-              isContinuous={form.isContinuous}
-              setIsContinuous={setField('isContinuous')}
-              frequency={form.frequency}
-              setFrequency={setField('frequency')}
-              occurrences={form.occurrences}
-              setOccurrences={setField('occurrences')}
-              categoryOptions={categoryOptions}
-            />
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
-              <Button variant="outline" type="button" onClick={onClose} disabled={saving}>Cancelar</Button>
-              <Button type="submit" loading={saving}>Salvar compra</Button>
-            </div>
-          </form>
-        </div>
-      </SavingScope>
-    </div>
-  );
-}
 
 export function ManualExpenses() {
   const {

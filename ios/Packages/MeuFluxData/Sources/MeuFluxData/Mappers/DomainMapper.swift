@@ -818,21 +818,21 @@ public enum DomainMapper {
                 previousExpense: money(dto.monthOverMonth.previousExpense)
             ),
             netWorthSeries: dto.netWorthSeries.map {
-                DashboardSeriesPoint(ym: $0.ym, month: $0.month, value: $0.value)
+                DashboardSeriesPoint(ym: $0.ym, month: $0.month, value: money($0.value))
             },
             incomeExpenseSeries: dto.incomeExpenseSeries.map {
                 DashboardCashflowPoint(
                     ym: $0.ym,
                     month: $0.month,
-                    receita: $0.receita,
-                    despesa: $0.despesa,
-                    net: $0.net
+                    receita: money($0.receita),
+                    despesa: money($0.despesa),
+                    net: money($0.net)
                 )
             },
             categoryExpenses: dto.categoryExpenses.map {
                 DashboardCategoryExpense(
                     name: $0.name,
-                    value: $0.value,
+                    value: money($0.value),
                     colorHex: $0.color ?? "#6366f1"
                 )
             },
@@ -975,8 +975,12 @@ public enum DomainMapper {
         )
     }
 
+    private static func money(_ amount: Decimal) -> Money {
+        Money(amount: amount)
+    }
+
     private static func money(_ amount: Double) -> Money {
-        Money(amount: Decimal(amount))
+        Money(amount: Decimal(string: String(format: "%.2f", amount)) ?? Decimal(amount))
     }
 }
 
