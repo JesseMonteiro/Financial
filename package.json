@@ -18,6 +18,7 @@
     "test:categories": "node scripts/test-categories-pluggy.mjs",
     "test:merchants": "node scripts/run-merchant-logos.mjs",
     "test:receivables": "node scripts/test-receivables-utils.mjs",
+    "test:handlers": "node scripts/test-financial-moment-handlers.mjs",
     "test:telegram": "node scripts/test-telegram-daily-summary.mjs",
     "test:ios": "cd ios && swift test",
     "ios:secrets": "node scripts/ios-sync-secrets.mjs",

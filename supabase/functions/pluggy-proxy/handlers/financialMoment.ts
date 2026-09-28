@@ -506,12 +506,18 @@ export async function handleGetCurrentSalary(
 
 export async function handleSaveSalary(
   client: PluggyClient,
-  req: Request,
+  bodyOrReq: unknown,
 ): Promise<Response> {
   let body: { amount?: number; month?: string };
-  try {
-    body = await req.json();
-  } catch {
+  if (bodyOrReq instanceof Request) {
+    try {
+      body = await bodyOrReq.json();
+    } catch {
+      return errorResponse("JSON inválido", 400);
+    }
+  } else if (bodyOrReq && typeof bodyOrReq === "object") {
+    body = bodyOrReq as { amount?: number; month?: string };
+  } else {
     return errorResponse("JSON inválido", 400);
   }
 
@@ -533,12 +539,18 @@ export async function handleSaveSalary(
 
 export async function handleToggleManualExpensePaid(
   client: PluggyClient,
-  req: Request,
+  bodyOrReq: unknown,
 ): Promise<Response> {
   let body: { expenseId?: string; isPaid?: boolean };
-  try {
-    body = await req.json();
-  } catch {
+  if (bodyOrReq instanceof Request) {
+    try {
+      body = await bodyOrReq.json();
+    } catch {
+      return errorResponse("JSON inválido", 400);
+    }
+  } else if (bodyOrReq && typeof bodyOrReq === "object") {
+    body = bodyOrReq as { expenseId?: string; isPaid?: boolean };
+  } else {
     return errorResponse("JSON inválido", 400);
   }
 

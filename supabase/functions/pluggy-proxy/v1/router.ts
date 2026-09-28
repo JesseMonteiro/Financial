@@ -21,6 +21,12 @@ import { handleAgenda } from "../handlers/agenda.ts";
 import { handleBudgetScreen } from "../handlers/budgetScreen.ts";
 import { handleReports } from "../handlers/reports.ts";
 import { handleSubscriptions } from "../handlers/subscriptions.ts";
+import {
+  handleFinancialMoment,
+  handleGetCurrentSalary,
+  handleSaveSalary,
+  handleToggleManualExpensePaid,
+} from "../handlers/financialMoment.ts";
 import { handleParseBill } from "../handlers/parseBill.ts";
 import { handleJoint } from "../handlers/joint.ts";
 import {
@@ -191,6 +197,19 @@ export async function handleV1(
       case "subscriptions":
         if (method !== "GET") return v1Err("Method not allowed", 405, req);
         legacy = await handleSubscriptions(clientConfig);
+        break;
+      case "financial-moment":
+        if (actionOrId === "salary") {
+          if (method === "GET") legacy = await handleGetCurrentSalary(clientConfig, url);
+          else if (method === "POST") legacy = await handleSaveSalary(clientConfig, body);
+          else return v1Err("Method not allowed", 405, req);
+        } else if (actionOrId === "toggle-manual-expense") {
+          if (method !== "POST") return v1Err("Method not allowed", 405, req);
+          legacy = await handleToggleManualExpensePaid(clientConfig, body);
+        } else {
+          if (method !== "GET") return v1Err("Method not allowed", 405, req);
+          legacy = await handleFinancialMoment(clientConfig, url);
+        }
         break;
       case "connectors":
         legacy = await handleConnectors(clientConfig, url, actionOrId);

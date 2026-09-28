@@ -328,12 +328,12 @@ export async function handleLegacyRequest(
       case "financial-moment":
         if (actionOrId === "salary") {
           if (method === "GET") return await handleGetCurrentSalary(clientConfig, url);
-          if (method === "POST") return await handleSaveSalary(clientConfig, req);
+          if (method === "POST") return await handleSaveSalary(clientConfig, body);
           return errorResponse("Method not allowed", 405);
         }
         if (actionOrId === "toggle-manual-expense") {
           if (method !== "POST") return errorResponse("Method not allowed", 405);
-          return await handleToggleManualExpensePaid(clientConfig, req);
+          return await handleToggleManualExpensePaid(clientConfig, body);
         }
         if (method !== "GET") return errorResponse("Method not allowed", 405);
         return await handleFinancialMoment(clientConfig, url);
