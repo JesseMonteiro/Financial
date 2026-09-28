@@ -33,15 +33,16 @@ function getArgValue(flag) {
 const targetDateStr = getArgValue('--date');
 const targetUserId = getArgValue('--user');
 
-const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
+const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || 'https://tslzhkbxabbhrmbefhrj.supabase.co';
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const cronSecret = process.env.CRON_SECRET;
 
-if (!supabaseUrl || !supabaseKey) {
-  console.error('❌ Erro: VITE_SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY são obrigatórias no .env');
+const hasValidServiceRoleKey = Boolean(supabaseKey && !supabaseKey.includes('your_'));
+
+if (!hasValidServiceRoleKey && !cronSecret) {
+  console.error('❌ Erro: Configure SUPABASE_SERVICE_ROLE_KEY ou CRON_SECRET no ambiente');
   process.exit(1);
 }
-
-const supabaseClient = createClient(supabaseUrl, supabaseKey);
 
 console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 console.log('🤖 MeuFlux — Envio de Resumo Diário do Telegram');
@@ -52,13 +53,39 @@ if (targetUserId) console.log(`👤 Usuário Específico: ${targetUserId}`);
 console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
 async function main() {
-  const result = await runDailySummaryJob({
-    supabaseClient,
-    dryRun,
-    targetDateStr,
-    targetUserId,
-    force,
-  });
+  let result;
+  if (!hasValidServiceRoleKey && cronSecret) {
+    console.log('🌐 Executando via Edge Function com CRON_SECRET...');
+    const endpoint = `${supabaseUrl}/functions/v1/pluggy-proxy/chatbot/telegram/daily-summary`;
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${cronSecret}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        dryRun,
+        force,
+        date: targetDateStr || undefined,
+        userId: targetUserId || undefined,
+      }),
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error(`❌ Falha na chamada da Edge Function (HTTP ${res.status}):`, errText);
+      process.exit(1);
+    }
+    result = await res.json();
+  } else {
+    const supabaseClient = createClient(supabaseUrl, supabaseKey);
+    result = await runDailySummaryJob({
+      supabaseClient,
+      dryRun,
+      targetDateStr,
+      targetUserId,
+      force,
+    });
+  }
 
   if (!result.success) {
     console.error('❌ Falha ao executar o job diário:', result.error);
