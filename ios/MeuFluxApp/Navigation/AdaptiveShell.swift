@@ -31,6 +31,7 @@ struct AdaptiveShell: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
     @State private var selectedTab: AppRoute = .dashboard
     @State private var showAssistant = false
+    @State private var showNotificationHub = false
     @State private var tabBarWindowFrame: CGRect = .zero
     @State private var windowHeight: CGFloat = 0
     @State private var dashboardCache = DashboardViewModelCache()
@@ -76,6 +77,15 @@ struct AdaptiveShell: View {
                     accounts: composition.accountsRepository
                 )
             }
+        }
+        .sheet(isPresented: $showNotificationHub) {
+            NotificationHubSheet(
+                importer: composition.notificationImportService,
+                onOpenReview: { recordId in
+                    showNotificationHub = false
+                    composition.pendingImportReviewId = recordId
+                }
+            )
         }
     }
 
@@ -210,7 +220,8 @@ struct AdaptiveShell: View {
                     transactions: composition.transactionsRepository,
                     accounts: composition.accountsRepository,
                     creditCards: composition.creditCardsRepository,
-                    purchaseCategories: composition.purchaseCategoriesRepository
+                    purchaseCategories: composition.purchaseCategoriesRepository,
+                    notificationImporter: composition.notificationImportService
                 ),
                 accountName: composition.accountDisplayName,
                 accountEmail: composition.accountEmail,
@@ -220,7 +231,8 @@ struct AdaptiveShell: View {
                 onCreditCards: { composition.selectedRoute = .creditCards },
                 onInvestments: { composition.selectedRoute = .investments },
                 onAgenda: { composition.selectedRoute = .agenda },
-                onBudget: { composition.selectedRoute = .budget }
+                onBudget: { composition.selectedRoute = .budget },
+                onNotifications: { showNotificationHub = true }
             )
         case .accounts:
             AccountsView(
@@ -349,10 +361,11 @@ private final class DashboardViewModelCache {
         transactions: (any TransactionsRepository)?,
         accounts: (any AccountsRepository)? = nil,
         creditCards: (any CreditCardsRepository)? = nil,
-        purchaseCategories: (any PurchaseCategoriesRepository)? = nil
+        purchaseCategories: (any PurchaseCategoriesRepository)? = nil,
+        notificationImporter: (any NotificationImporting)? = nil
     ) -> DashboardViewModel {
         let next =
-            "tx:\(transactions != nil)|acc:\(accounts != nil)|cards:\(creditCards != nil)|cats:\(purchaseCategories != nil)"
+            "tx:\(transactions != nil)|acc:\(accounts != nil)|cards:\(creditCards != nil)|cats:\(purchaseCategories != nil)|notif:\(notificationImporter != nil)"
         if let cached, fingerprint == next { return cached }
         fingerprint = next
         let created = DashboardViewModel(
@@ -360,7 +373,8 @@ private final class DashboardViewModelCache {
             transactions: transactions,
             accounts: accounts,
             creditCards: creditCards,
-            purchaseCategories: purchaseCategories
+            purchaseCategories: purchaseCategories,
+            notificationImporter: notificationImporter
         )
         cached = created
         return created

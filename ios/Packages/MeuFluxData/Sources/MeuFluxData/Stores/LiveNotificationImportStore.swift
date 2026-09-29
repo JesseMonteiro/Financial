@@ -39,6 +39,12 @@ public actor LiveNotificationImportStore: NotificationImportStoring {
         encode(records, key: recordsKey)
     }
 
+    public func deleteRecord(id: String) async {
+        var records = await loadRecords()
+        records.removeAll(where: { $0.id == id })
+        encode(records, key: recordsKey)
+    }
+
     public func record(id: String) async -> NotificationImportRecord? {
         await loadRecords().first { $0.id == id }
     }
@@ -99,6 +105,10 @@ public actor InMemoryNotificationImportStore: NotificationImportStoring {
         } else {
             records.insert(record, at: 0)
         }
+    }
+
+    public func deleteRecord(id: String) async {
+        records.removeAll(where: { $0.id == id })
     }
 
     public func record(id: String) async -> NotificationImportRecord? {

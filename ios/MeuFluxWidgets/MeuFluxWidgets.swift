@@ -1,5 +1,6 @@
 import WidgetKit
 import SwiftUI
+import ActivityKit
 
 @main
 struct MeuFluxWidgets: WidgetBundle {
@@ -9,6 +10,7 @@ struct MeuFluxWidgets: WidgetBundle {
         BudgetWidget()
         NetWorthWidget()
         OpenBillsWidget()
+        PurchaseImportLiveActivity()
     }
 }
 

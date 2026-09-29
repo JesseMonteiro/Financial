@@ -8,8 +8,10 @@ import { ChatbotModal } from '../chatbot/ChatbotModal';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useJointStore } from '../../stores/jointStore';
 import { useIsMobile } from '../../hooks/useMediaQuery';
+import { useAutoSync } from '../../hooks/useAutoSync';
 
 export function MainLayout() {
+  useAutoSync();
   const [collapsed, setCollapsed] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const { initTheme } = useSettingsStore();

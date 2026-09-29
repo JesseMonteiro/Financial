@@ -404,11 +404,13 @@ public final class DashboardViewModel {
     private let accounts: (any AccountsRepository)?
     private let creditCards: (any CreditCardsRepository)?
     private let purchaseCategoriesRepository: (any PurchaseCategoriesRepository)?
+    private let notificationImporter: (any NotificationImporting)?
     private var lastLoadedAt: Date?
     private var lastCacheKey: String?
     private var loadGeneration = 0
     public private(set) var categoryOptions: [LineItemCategoryOption] = LineItemCategoryOption.recategorizationOptions()
     public private(set) var purchaseCategories: [PurchaseCategory] = PurchaseCategoryCatalog.defaults
+    public private(set) var pendingNotificationCount: Int = 0
 
     nonisolated public static let recentCreditPurchaseDays = 15
 
@@ -417,13 +419,15 @@ public final class DashboardViewModel {
         transactions: (any TransactionsRepository)? = nil,
         accounts: (any AccountsRepository)? = nil,
         creditCards: (any CreditCardsRepository)? = nil,
-        purchaseCategories: (any PurchaseCategoriesRepository)? = nil
+        purchaseCategories: (any PurchaseCategoriesRepository)? = nil,
+        notificationImporter: (any NotificationImporting)? = nil
     ) {
         self.loadDashboard = loadDashboard
         self.transactions = transactions
         self.accounts = accounts
         self.creditCards = creditCards
         self.purchaseCategoriesRepository = purchaseCategories
+        self.notificationImporter = notificationImporter
         self.selectedMonth = YearMonth(from: Date())
     }
 
@@ -609,6 +613,7 @@ public final class DashboardViewModel {
             )
 
             await categoriesTask
+            await loadPendingNotificationCount()
         } catch {
             guard generation == loadGeneration else { return }
             if Self.isCancellation(error) {
@@ -629,6 +634,19 @@ public final class DashboardViewModel {
                 state = .failed(errorMessage ?? "Erro ao carregar visão geral.")
             }
         }
+    }
+
+    public func loadPendingNotificationCount() async {
+        guard let notificationImporter else { return }
+        let history = await notificationImporter.loadHistory()
+        var count = 0
+        for record in history {
+            let s = record.status
+            if s == .needsReview || s == .needsDestination || s == .queued {
+                count += 1
+            }
+        }
+        self.pendingNotificationCount = count
     }
 
     private static func isCancellation(_ error: Error) -> Bool {

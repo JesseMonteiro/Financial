@@ -484,4 +484,45 @@ export async function checkServerHealth() {
   }
 }
 
+/**
+ * Fetch synchronization status and data freshness.
+ * Cached for 1 minute so fast screen switches don't flood the network.
+ */
+export async function fetchSyncStatus({ force = false } = {}) {
+  const scope = await cacheScope();
+  const key = cacheKey(scope, ['sync', 'status']);
+  return cachedFetch(
+    key,
+    async () => {
+      try {
+        const res = await api.get('/sync/status');
+        return res.data;
+      } catch (err) {
+        console.warn('[API] Falha ao consultar status de sincronização:', err);
+        return {
+          items: [],
+          globalLastSyncedAt: null,
+          freshness: { level: 'never', label: 'nunca sincronizado' },
+          itemCount: 0,
+        };
+      }
+    },
+    { force, ttlMs: 60 * 1000 }
+  );
+}
+
+/**
+ * Trigger on-demand sync from Pluggy to Supabase cache.
+ */
+export async function triggerSyncRefresh(itemId) {
+  try {
+    const res = await api.post('/sync/refresh', itemId ? { itemId } : {});
+    clearApiCache();
+    return res.data;
+  } catch (err) {
+    const data = err.response?.data;
+    throw new Error(data?.message || data?.error || err.message || 'Falha ao sincronizar dados');
+  }
+}
+
 export default api;

@@ -159,6 +159,8 @@ public enum AppRoute: String, CaseIterable, Identifiable, Hashable, Sendable {
 public enum AppDeepLink: Equatable, Sendable {
     case route(AppRoute)
     case importReview(id: String)
+    case importSave(id: String)
+    case importDismiss(id: String)
 
     public static func parse(_ url: URL) -> AppDeepLink? {
         let host: String
@@ -167,14 +169,26 @@ public enum AppDeepLink: Equatable, Sendable {
         } else {
             host = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         }
-        if host == "import-review" {
-            let id = URLComponents(url: url, resolvingAgainstBaseURL: false)?
-                .queryItems?
-                .first(where: { $0.name == "id" })?
-                .value
-            if let id, !id.isEmpty {
+        let queryId = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+            .queryItems?
+            .first(where: { $0.name == "id" })?
+            .value
+
+        switch host {
+        case "import-review":
+            if let id = queryId, !id.isEmpty {
                 return .importReview(id: id)
             }
+        case "import-save":
+            if let id = queryId, !id.isEmpty {
+                return .importSave(id: id)
+            }
+        case "import-dismiss":
+            if let id = queryId, !id.isEmpty {
+                return .importDismiss(id: id)
+            }
+        default:
+            break
         }
         if let route = AppRoute.fromDeepLink(url) {
             return .route(route)

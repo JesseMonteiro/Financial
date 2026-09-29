@@ -15,6 +15,7 @@ import {
   handleWebhooks,
   type PluggyClient,
 } from "../handlers/pluggy.ts";
+import { handleSyncStatus, handleSyncRefresh } from "../handlers/sync.ts";
 import { handleCreditCards } from "../handlers/creditCards.ts";
 import { handleDashboard } from "../handlers/dashboard.ts";
 import { handleAgenda } from "../handlers/agenda.ts";
@@ -219,6 +220,15 @@ export async function handleV1(
         break;
       case "webhooks":
         legacy = await handleWebhooks(clientConfig, url, method, body, actionOrId);
+        break;
+      case "sync":
+        if ((actionOrId === "status" || !actionOrId) && method === "GET") {
+          legacy = await handleSyncStatus(clientConfig);
+        } else if (actionOrId === "refresh" && method === "POST") {
+          legacy = await handleSyncRefresh(clientConfig, body);
+        } else {
+          return v1Err("Rota de sincronização não encontrada", 404, req);
+        }
         break;
       default:
         return null;

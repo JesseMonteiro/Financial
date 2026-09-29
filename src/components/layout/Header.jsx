@@ -6,8 +6,10 @@ import { useTransactionStore } from '../../stores/transactionStore';
 import { useInvestmentStore } from '../../stores/investmentStore';
 import { useCreditDataStore } from '../../stores/creditDataStore';
 import { useChatbotStore } from '../../stores/chatbotStore';
+import { useSyncStore } from '../../stores/syncStore';
 import { clearApiCache } from '../../services/api';
 import { GlassSurface } from '../ui/GlassSurface';
+import { SyncStatusBadge } from '../ui/SyncStatusBadge';
 import { format } from 'date-fns';
 
 export function Header({ onOpenMore, isMobile = false }) {
@@ -17,6 +19,7 @@ export function Header({ onOpenMore, isMobile = false }) {
   const { loadInvestments, loading: invLoading } = useInvestmentStore();
   const clearCreditData = useCreditDataStore((s) => s.clear);
   const openChat = useChatbotStore((s) => s.openChat);
+  const loadSyncStatus = useSyncStore((s) => s.loadSyncStatus);
 
   const isRefreshing = accLoading || txLoading || invLoading;
 
@@ -27,6 +30,7 @@ export function Header({ onOpenMore, isMobile = false }) {
       loadAccounts({ force: true }),
       loadTransactions({ force: true }),
       loadInvestments({ force: true }),
+      loadSyncStatus({ force: true }),
     ]);
     const ids =
       accountIds.length > 0
@@ -66,11 +70,7 @@ export function Header({ onOpenMore, isMobile = false }) {
       )}
 
       <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '0.4rem' : '0.75rem' }}>
-        {!isMobile && lastUpdated && (
-          <span className="hide-mobile header-sync-label">
-            Atualizado às {format(lastUpdated, 'HH:mm')}
-          </span>
-        )}
+        <SyncStatusBadge compact={isMobile} />
 
         <div className="header-cluster">
           <button

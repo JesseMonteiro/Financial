@@ -264,11 +264,11 @@ final class NotificationImportServiceTests: XCTestCase {
             now: now
         )
 
-        guard case .skippedOpenFinance(let record) = outcome else {
-            return XCTFail("expected skippedOpenFinance, got \(outcome)")
+        guard case .needsDestination(let record) = outcome else {
+            return XCTFail("expected needsDestination with provisional TTL, got \(outcome)")
         }
-        XCTAssertEqual(record.status, .skippedOpenFinance)
-        XCTAssertTrue(manuals.expenses.isEmpty, "Nenhuma despesa manual deve ser criada quando banco está conectado")
+        XCTAssertNotNil(record.expiresAt, "Compra de banco conectado ao Open Finance deve ter validade (TTL)")
+        XCTAssertEqual(record.expiresAt, now.addingTimeInterval(10 * 24 * 3600))
     }
 
     func testImportsBankWhenNotConnectedViaOpenFinance() async {
@@ -405,10 +405,10 @@ final class NotificationImportServiceTests: XCTestCase {
             date: now
         )
 
-        guard case .skippedOpenFinance(let record) = outcome else {
-            return XCTFail("expected skippedOpenFinance, got \(outcome)")
+        guard case .needsDestination(let record) = outcome else {
+            return XCTFail("expected needsDestination with provisional TTL, got \(outcome)")
         }
-        XCTAssertEqual(record.status, .skippedOpenFinance)
-        XCTAssertTrue(manuals.expenses.isEmpty, "Não deve criar despesa manual para cartão Nubank conectado ao Open Finance")
+        XCTAssertNotNil(record.expiresAt, "Apple Pay de cartão com Open Finance deve ter validade (TTL)")
+        XCTAssertEqual(record.expiresAt, now.addingTimeInterval(10 * 24 * 3600))
     }
 }

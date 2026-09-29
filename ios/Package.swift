@@ -91,7 +91,7 @@ let package = Package(
         ),
         .testTarget(
             name: "MeuFluxTests",
-            dependencies: ["MeuFluxDomain", "MeuFluxCore", "MeuFluxData", "MeuFluxDesignSystem", "MeuFluxIntelligence", "Dashboard", "CreditCards"],
+            dependencies: ["MeuFluxDomain", "MeuFluxCore", "MeuFluxData", "MeuFluxDesignSystem", "MeuFluxIntelligence", "Dashboard", "CreditCards", "NotificationImport"],
             path: "MeuFluxTests"
         ),
     ]

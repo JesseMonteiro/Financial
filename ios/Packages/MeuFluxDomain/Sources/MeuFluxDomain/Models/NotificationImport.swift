@@ -244,6 +244,8 @@ public enum NotificationImportStatus: String, Sendable, Codable, Hashable {
     case needsReview
     case queued
     case skippedOpenFinance
+    /// Manual purchase was matched and replaced by an Open Finance (Pluggy) transaction.
+    case reconciledOpenFinance
 }
 
 public enum NotificationImportEntityKind: String, Sendable, Codable, Hashable {
@@ -310,6 +312,12 @@ public struct NotificationImportRecord: Sendable, Identifiable, Hashable, Codabl
     public var createdAt: Date
     public var destination: NotificationImportDestination?
     public var ignoreReason: String?
+    /// Expiration date for provisional purchases from banks connected via Open Finance.
+    /// If a matching Pluggy transaction arrives before this date, the manual entry is reconciled.
+    /// If the TTL expires without a match, the purchase becomes permanent (expiresAt set to nil).
+    public var expiresAt: Date?
+    /// ID of the Pluggy transaction that replaced this manual entry during reconciliation.
+    public var reconciledWithTransactionId: String?
 
     public init(
         id: String = UUID().uuidString,
@@ -320,7 +328,9 @@ public struct NotificationImportRecord: Sendable, Identifiable, Hashable, Codabl
         createdEntityKind: NotificationImportEntityKind? = nil,
         createdAt: Date = Date(),
         destination: NotificationImportDestination? = nil,
-        ignoreReason: String? = nil
+        ignoreReason: String? = nil,
+        expiresAt: Date? = nil,
+        reconciledWithTransactionId: String? = nil
     ) {
         self.id = id
         self.fingerprint = fingerprint
@@ -331,6 +341,8 @@ public struct NotificationImportRecord: Sendable, Identifiable, Hashable, Codabl
         self.createdAt = createdAt
         self.destination = destination
         self.ignoreReason = ignoreReason
+        self.expiresAt = expiresAt
+        self.reconciledWithTransactionId = reconciledWithTransactionId
     }
 }
 
@@ -442,6 +454,8 @@ public protocol NotificationImporting: Sendable {
     ) async -> NotificationImportOutcome
     func processQueued(now: Date) async -> [NotificationImportOutcome]
     func undo(recordId: String) async -> NotificationImportOutcome
+    func delete(recordId: String) async -> Bool
+    func ignore(recordId: String) async -> NotificationImportOutcome
     func applyReview(
         recordId: String,
         amount: Decimal,
@@ -478,6 +492,7 @@ public protocol NotificationImportStoring: Sendable {
     func saveRules(_ rules: [NotificationImportRule]) async
     func loadRecords() async -> [NotificationImportRecord]
     func upsertRecord(_ record: NotificationImportRecord) async
+    func deleteRecord(id: String) async
     func record(id: String) async -> NotificationImportRecord?
     func findDuplicate(fingerprint: String, now: Date, window: TimeInterval) async -> NotificationImportRecord?
     func enqueuePending(_ payload: NotificationImportPendingPayload) async

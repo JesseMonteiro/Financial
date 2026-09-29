@@ -23,6 +23,7 @@ public struct DashboardView: View {
     private let onInvestments: (() -> Void)?
     private let onAgenda: (() -> Void)?
     private let onBudget: (() -> Void)?
+    private let onNotifications: (() -> Void)?
 
     public init(
         viewModel: DashboardViewModel,
@@ -34,7 +35,8 @@ public struct DashboardView: View {
         onCreditCards: (() -> Void)? = nil,
         onInvestments: (() -> Void)? = nil,
         onAgenda: (() -> Void)? = nil,
-        onBudget: (() -> Void)? = nil
+        onBudget: (() -> Void)? = nil,
+        onNotifications: (() -> Void)? = nil
     ) {
         self.viewModel = viewModel
         self.accountName = accountName
@@ -46,6 +48,7 @@ public struct DashboardView: View {
         self.onInvestments = onInvestments
         self.onAgenda = onAgenda
         self.onBudget = onBudget
+        self.onNotifications = onNotifications
     }
 
     public init(
@@ -59,7 +62,8 @@ public struct DashboardView: View {
         onCreditCards: (() -> Void)? = nil,
         onInvestments: (() -> Void)? = nil,
         onAgenda: (() -> Void)? = nil,
-        onBudget: (() -> Void)? = nil
+        onBudget: (() -> Void)? = nil,
+        onNotifications: (() -> Void)? = nil
     ) {
         self.init(
             viewModel: DashboardViewModel(
@@ -74,7 +78,8 @@ public struct DashboardView: View {
             onCreditCards: onCreditCards,
             onInvestments: onInvestments,
             onAgenda: onAgenda,
-            onBudget: onBudget
+            onBudget: onBudget,
+            onNotifications: onNotifications
         )
     }
 
@@ -146,6 +151,12 @@ public struct DashboardView: View {
             BrandWordmark(size: 26)
             ProBadge()
             Spacer(minLength: 8)
+            if let onNotifications {
+                NotificationBellButton(
+                    pendingCount: viewModel.pendingNotificationCount,
+                    onTap: onNotifications
+                )
+            }
             ProfileAccountMenu(
                 displayName: menuDisplayName,
                 email: accountEmail,

@@ -262,7 +262,7 @@ public enum AssistantFacts {
         }
 
         // 4. Standalone number representing month only (e.g. "10", "5")
-        if let match = folded.range(of: #"^\s*(0?[1-9]|1[0-2])\s*$"#, options: .regularExpression) {
+        if folded.range(of: #"^\s*(0?[1-9]|1[0-2])\s*$"#, options: .regularExpression) != nil {
             let trimmed = folded.trimmingCharacters(in: .whitespaces)
             if let m = Int(trimmed) {
                 return ParsedMonthFilter(month: m, year: extractedYear)

@@ -377,6 +377,15 @@ public struct BFFClient: Sendable {
         await invalidateCaches(matching: ["bff:"])
     }
 
+    public func getSyncStatus(force: Bool = false) async -> SyncStatusResponse? {
+        do {
+            let data = try await cachedRaw("bff:sync:status", force: force, APIRequest(path: "sync/status"))
+            return try await decode(SyncStatusResponse.self, from: data)
+        } catch {
+            return nil
+        }
+    }
+
     // MARK: - Domain CRUD (`/v1/domain/*`)
 
     func getProfile(force: Bool = false) async throws -> DomainProfileDTO {

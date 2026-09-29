@@ -291,6 +291,7 @@ public struct NotificationImportSetupView: View {
         case .needsReview: return "Revisar"
         case .queued: return "Na fila"
         case .skippedOpenFinance: return "Open Finance (sem duplicidade)"
+        case .reconciledOpenFinance: return "Reconciliada via Open Finance"
         }
     }
 

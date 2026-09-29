@@ -131,6 +131,8 @@ targets:
     dependencies:
       - package: MeuFlux
         product: MeuFluxCore
+      - package: MeuFlux
+        product: MeuFluxDomain
     entitlements:
       path: MeuFluxWidgets/MeuFluxWidgets.entitlements
       properties:

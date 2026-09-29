@@ -232,14 +232,73 @@ export async function handleTransactions(
       method: 'PATCH',
       body: { categoryId },
     });
+
+    try {
+      await client.supabase
+        .from('cached_transactions')
+        .update({
+          category_id: categoryId,
+          data: updated,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('user_id', client.userId)
+        .eq('pluggy_transaction_id', id);
+    } catch (cacheErr) {
+      console.warn('[handleTransactions] Error updating cached_transactions on PATCH:', cacheErr);
+    }
+
     return jsonResponse(updated);
   }
-  if (id) return jsonResponse(await pluggyJson(client, `/transactions/${id}`));
+
+  if (id) {
+    try {
+      const { data: cached } = await client.supabase
+        .from('cached_transactions')
+        .select('data')
+        .eq('user_id', client.userId)
+        .eq('pluggy_transaction_id', id)
+        .maybeSingle();
+      if (cached?.data) {
+        return jsonResponse(cached.data);
+      }
+    } catch (_) {
+      /* fallback */
+    }
+    return jsonResponse(await pluggyJson(client, `/transactions/${id}`));
+  }
+
   const accountId = url.searchParams.get('accountId');
   const from = url.searchParams.get('from') ?? undefined;
   const to = url.searchParams.get('to') ?? undefined;
   const cursor = url.searchParams.get('cursor') ?? undefined;
   if (client.itemIds.length === 0) return jsonResponse({ results: [], total: 0 });
+
+  // 1. Try reading from Supabase cache first
+  try {
+    let q = client.supabase
+      .from('cached_transactions')
+      .select('data, date')
+      .eq('user_id', client.userId)
+      .order('date', { ascending: false });
+
+    if (accountId) {
+      q = q.eq('account_id', accountId);
+    }
+    if (from) {
+      q = q.gte('date', from.slice(0, 10));
+    }
+    if (to) {
+      q = q.lte('date', to.slice(0, 10));
+    }
+
+    const { data: cachedRows, error: cacheErr } = await q.limit(2000);
+    if (!cacheErr && cachedRows && cachedRows.length > 0) {
+      const results = cachedRows.map((r) => r.data);
+      return jsonResponse({ results, total: results.length, source: 'cache' });
+    }
+  } catch (err) {
+    console.warn('[handleTransactions] Supabase cache read failed, falling back to Pluggy API:', err);
+  }
 
   let accountIds = accountId ? [accountId] : [];
   if (!accountId) {

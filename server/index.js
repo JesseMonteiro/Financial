@@ -11,6 +11,7 @@ import billsRoutes from './routes/bills.js';
 import connectorsRoutes from './routes/connectors.js';
 import itemsRoutes from './routes/items.js';
 import webhooksRoutes from './routes/webhooks.js';
+import syncRoutes from './routes/sync.js';
 import chatbotRoutes from './routes/chatbot.js';
 import jointRoutes from './routes/joint.js';
 import parseBillRoutes from './routes/parseBill.js';
@@ -44,9 +45,14 @@ app.use('/api/bills', billsRoutes);
 app.use('/api/connectors', connectorsRoutes);
 app.use('/api/items', itemsRoutes);
 app.use('/api/webhooks', webhooksRoutes);
+app.use('/api/sync', syncRoutes);
 app.use('/api/chatbot', chatbotRoutes);
 app.use('/api/joint', jointRoutes);
 app.use('/api/parse-bill', parseBillRoutes);
+
+// Support reverse-proxy / Pluggy webhook path: https://jessemonteiro.com/Financial/
+app.use('/Financial/api/webhooks', webhooksRoutes);
+app.use('/Financial', webhooksRoutes);
 
 // Cache flush endpoint
 app.post('/api/cache/clear', checkAuth, (req, res) => {

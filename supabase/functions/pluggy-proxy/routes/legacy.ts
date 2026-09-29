@@ -34,6 +34,9 @@ import {
   handleEdgeChatbotMessage,
 } from "../handlers/telegram/botHandler.ts";
 import { handleDailySummaryRequest } from "../handlers/telegram/dailySummary.ts";
+import { handleSyncStatus, handleSyncRefresh } from "../handlers/sync.ts";
+import { processWebhookEvent } from "../handlers/webhookProcessor.ts";
+import { syncItemToCache } from "../services/syncEngine.ts";
 
 function resolvePluggyCredentials(profile?: {
   pluggy_client_id?: string | null;
@@ -130,8 +133,23 @@ export async function handleLegacyRequest(
 
   // 2. Webhook receiver
   if (resource === "webhooks" && method === "POST" && !actionOrId) {
-    verifyPluggyWebhook(req);
-    return jsonResponse({ received: true });
+    if (!verifyPluggyWebhook(req)) {
+      return errorResponse("Assinatura ou segredo de webhook inválido", 403);
+    }
+    try {
+      const payload = await req.json();
+      const bgPromise = processWebhookEvent(serviceRoleClient, payload).catch((err) => {
+        console.error("[legacy webhook] Background processing error:", err);
+      });
+      // @ts-ignore
+      if (typeof EdgeRuntime !== "undefined" && typeof EdgeRuntime.waitUntil === "function") {
+        // @ts-ignore
+        EdgeRuntime.waitUntil(bgPromise);
+      }
+      return jsonResponse({ received: true, status: "processing" });
+    } catch {
+      return jsonResponse({ received: true });
+    }
   }
 
   // 3. Health check
@@ -219,6 +237,24 @@ export async function handleLegacyRequest(
       .upsert({ id: user.id, pluggy_item_ids: newItemIds }, { onConflict: "id" });
 
     if (updateErr) return errorResponse(`Failed to register item: ${updateErr.message}`, 500);
+
+    // Initial background sync to populate cache immediately
+    const clientConfig: PluggyClient = {
+      clientId: credsEarly.clientId,
+      clientSecret: credsEarly.clientSecret,
+      itemIds: newItemIds,
+      userId: user.id,
+      supabase: supabaseClient,
+    };
+    const bgSync = syncItemToCache(clientConfig, resolved.itemId).catch((err) => {
+      console.warn(`[items/register] Initial cache sync failed for ${resolved.itemId}:`, err);
+    });
+    // @ts-ignore
+    if (typeof EdgeRuntime !== "undefined" && typeof EdgeRuntime.waitUntil === "function") {
+      // @ts-ignore
+      EdgeRuntime.waitUntil(bgSync);
+    }
+
     return jsonResponse({
       success: true,
       message: "Item registrado com sucesso no perfil.",
@@ -343,6 +379,14 @@ export async function handleLegacyRequest(
         return await handleItems(clientConfig, url, method, body, actionOrId);
       case "webhooks":
         return await handleWebhooks(clientConfig, url, method, body, actionOrId);
+      case "sync":
+        if ((actionOrId === "status" || !actionOrId) && method === "GET") {
+          return await handleSyncStatus(clientConfig);
+        }
+        if (actionOrId === "refresh" && method === "POST") {
+          return await handleSyncRefresh(clientConfig, body);
+        }
+        return errorResponse("Rota de sincronização não encontrada", 404);
       default:
         return errorResponse(`Route /${resource} not found`, 404);
     }

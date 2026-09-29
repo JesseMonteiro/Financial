@@ -94,6 +94,7 @@ final class AppCompositionRoot {
     let siriSnapshotStore: SiriSnapshotStore
     let notificationImportStore: LiveNotificationImportStore
     let notificationImportService: NotificationImportService
+    let openFinanceReconciler: OpenFinanceReconciler
     let manageMonthlySalary: any ManageMonthlySalaryUseCase
     let toggleManualExpensePaid: any ToggleManualExpensePaidUseCase
     let summarizeOpenBill: any SummarizeOpenBillUseCase
@@ -187,6 +188,12 @@ final class AppCompositionRoot {
             parseAssistant: NotificationParseAssistant(),
             bankChecker: LiveConnectedBankChecker(bankConnections: bankConnectionsRepository)
         )
+        self.openFinanceReconciler = OpenFinanceReconciler.live(
+            store: notificationImportStore,
+            bff: bff,
+            mealBenefits: mealBenefitsRepository,
+            manuals: manualExpensesRepository
+        )
 
         self.loadDashboard = IntelligencePublishingDashboard(
             inner: LiveLoadDashboard(bff: bff),
@@ -252,6 +259,7 @@ final class AppCompositionRoot {
             await refreshWidgetSnapshot()
             await NotificationImportRuntime.shared.register(notificationImportService)
             _ = await notificationImportService.processQueued(now: Date())
+            await openFinanceReconciler.reconcile()
         } else {
             hasJointLink = false
             await NotificationImportRuntime.shared.register(notificationImportService)
@@ -298,6 +306,18 @@ final class AppCompositionRoot {
         switch AppDeepLink.parse(url) {
         case .importReview(let id):
             pendingImportReviewId = id
+        case .importSave(let id):
+            Task {
+                if let record = await notificationImportService.loadRecord(id: id) {
+                    if record.status == .needsDestination || record.status == .needsReview {
+                        pendingImportReviewId = id
+                    }
+                }
+            }
+        case .importDismiss(let id):
+            Task {
+                _ = await notificationImportService.undo(recordId: id)
+            }
         case .route(let route):
             selectedRoute = route
         case nil:

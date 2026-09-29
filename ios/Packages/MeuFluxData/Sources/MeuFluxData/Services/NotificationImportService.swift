@@ -1,6 +1,9 @@
 import Foundation
 import MeuFluxCore
 import MeuFluxDomain
+#if canImport(ActivityKit) && os(iOS)
+import ActivityKit
+#endif
 
 public struct NotificationImportService: NotificationImporting, Sendable {
     private let store: any NotificationImportStoring
@@ -116,28 +119,11 @@ public struct NotificationImportService: NotificationImporting, Sendable {
             }
             enriched.suggestedCategory = suggestion.kind.rawValue
 
-            if enriched.source.isBankSource,
-               let bankChecker,
-               await bankChecker.isConnectedViaOpenFinance(source: enriched.source) {
-                let fingerprint = NotificationImportFingerprint.make(
-                    source: enriched.source,
-                    amount: enriched.amount.amount,
-                    merchant: enriched.merchant,
-                    day: enriched.purchasedAt,
-                    body: enriched.combinedText
-                )
-                logger.info("Notificação de \(enriched.source.displayName) ignorada: banco já conectado via Open Finance", category: .sync)
-                let record = NotificationImportRecord(
-                    fingerprint: fingerprint,
-                    status: .skippedOpenFinance,
-                    parsed: enriched,
-                    createdAt: now
-                )
-                await store.upsertRecord(record)
-                return .skippedOpenFinance(record)
-            }
+            let isConnected = (enriched.source.isBankSource && bankChecker != nil)
+                ? (await bankChecker?.isConnectedViaOpenFinance(source: enriched.source) ?? false)
+                : false
 
-            return await importParsed(enriched, now: now)
+            return await importParsed(enriched, now: now, isProvisional: isConnected)
         }
     }
 
@@ -155,36 +141,9 @@ public struct NotificationImportService: NotificationImporting, Sendable {
         let detectedSource = cardName.isEmpty ? NotificationImportSource.wallet : NotificationImportSource.matching(appName: cardName)
         let resolvedSource = (detectedSource == .generic) ? NotificationImportSource.wallet : detectedSource
 
-        if resolvedSource.isBankSource,
-           let bankChecker,
-           await bankChecker.isConnectedViaOpenFinance(source: resolvedSource) {
-            let fingerprint = NotificationImportFingerprint.make(
-                source: resolvedSource,
-                amount: amount,
-                merchant: displayMerchant,
-                day: InstantDate(from: date),
-                body: "\(amount) em \(displayMerchant) (\(cardName))"
-            )
-            logger.info("Transação do Apple Pay (\(cardName)) ignorada: banco conectado via Open Finance", category: .sync)
-            let record = NotificationImportRecord(
-                fingerprint: fingerprint,
-                status: .skippedOpenFinance,
-                parsed: ParsedPurchase(
-                    amount: Money(amount: amount),
-                    merchant: displayMerchant,
-                    purchasedAt: InstantDate(from: date),
-                    rawTitle: cardName.isEmpty ? "Carteira" : cardName,
-                    rawSubtitle: "",
-                    rawBody: "\(amount) em \(displayMerchant)",
-                    source: resolvedSource,
-                    sourceAppName: cardName.isEmpty ? "Carteira" : cardName,
-                    confidence: 1.0
-                ),
-                createdAt: date
-            )
-            await store.upsertRecord(record)
-            return .skippedOpenFinance(record)
-        }
+        let isConnected = (resolvedSource.isBankSource && bankChecker != nil)
+            ? (await bankChecker?.isConnectedViaOpenFinance(source: resolvedSource) ?? false)
+            : false
 
         var parsed = ParsedPurchase(
             amount: Money(amount: amount),
@@ -208,7 +167,7 @@ public struct NotificationImportService: NotificationImporting, Sendable {
         }
         parsed.suggestedCategory = suggestion.kind.rawValue
 
-        return await importParsed(parsed, now: date)
+        return await importParsed(parsed, now: date, isProvisional: isConnected)
     }
 
     public func processQueued(now: Date = Date()) async -> [NotificationImportOutcome] {
@@ -244,6 +203,30 @@ public struct NotificationImportService: NotificationImporting, Sendable {
             logger.error("Undo import failed: \(error.localizedDescription)", category: .sync)
             return .failed((error as? FinancialError)?.messagePT ?? error.localizedDescription)
         }
+    }
+
+    public func delete(recordId: String) async -> Bool {
+        if let record = await store.record(id: recordId), record.createdEntityId != nil {
+            try? await deleteCreatedEntity(record)
+        }
+        await store.deleteRecord(id: recordId)
+        logger.info("Notificação excluída: \(recordId)", category: .sync)
+        return true
+    }
+
+    public func ignore(recordId: String) async -> NotificationImportOutcome {
+        guard var record = await store.record(id: recordId) else {
+            return .failed("Lançamento não encontrado.")
+        }
+        if record.createdEntityId != nil {
+            try? await deleteCreatedEntity(record)
+        }
+        record.status = .ignored
+        record.ignoreReason = "Ignorada pelo usuário"
+        record.createdEntityId = nil
+        record.createdEntityKind = nil
+        await store.upsertRecord(record)
+        return .ignored(record)
     }
 
     public func applyReview(
@@ -334,7 +317,7 @@ public struct NotificationImportService: NotificationImporting, Sendable {
 
     // MARK: - Private
 
-    private func importParsed(_ parsed: ParsedPurchase, now: Date) async -> NotificationImportOutcome {
+    private func importParsed(_ parsed: ParsedPurchase, now: Date, isProvisional: Bool = false) async -> NotificationImportOutcome {
         let fingerprint = NotificationImportFingerprint.make(
             source: parsed.source,
             amount: parsed.amount.amount,
@@ -350,14 +333,20 @@ public struct NotificationImportService: NotificationImporting, Sendable {
             return .duplicate(duplicate)
         }
 
+        let expiresAt: Date? = isProvisional ? now.addingTimeInterval(10 * 24 * 3600) : nil
+
         if parsed.confidence < NotificationPurchaseParser.autoSaveConfidenceThreshold {
             let record = NotificationImportRecord(
                 fingerprint: fingerprint,
                 status: .needsReview,
                 parsed: parsed,
-                createdAt: now
+                createdAt: now,
+                expiresAt: expiresAt
             )
             await store.upsertRecord(record)
+            #if canImport(ActivityKit) && os(iOS)
+            startLiveActivity(record: record, parsed: parsed)
+            #endif
             return .needsReview(record)
         }
 
@@ -375,7 +364,8 @@ public struct NotificationImportService: NotificationImporting, Sendable {
                 fingerprint: fingerprint,
                 status: .queued,
                 parsed: parsed,
-                createdAt: now
+                createdAt: now,
+                expiresAt: expiresAt
             )
             await store.upsertRecord(record)
             return .queued(record)
@@ -391,9 +381,13 @@ public struct NotificationImportService: NotificationImporting, Sendable {
                 fingerprint: fingerprint,
                 status: .needsDestination,
                 parsed: parsed,
-                createdAt: now
+                createdAt: now,
+                expiresAt: expiresAt
             )
             await store.upsertRecord(record)
+            #if canImport(ActivityKit) && os(iOS)
+            startLiveActivity(record: record, parsed: parsed)
+            #endif
             return .needsDestination(record)
         }
 
@@ -402,18 +396,55 @@ public struct NotificationImportService: NotificationImporting, Sendable {
             status: .imported,
             parsed: parsed,
             createdAt: now,
-            destination: destination
+            destination: destination,
+            expiresAt: expiresAt
         )
         do {
             try await persist(parsed: parsed, destination: destination, onto: &record)
             await store.upsertRecord(record)
-            logger.info("Compra importada: \(parsed.amount.formatted()) em \(parsed.displayMerchant) (\(parsed.source.displayName))", category: .sync)
+            logger.info("Compra importada: \(parsed.amount.formatted()) em \(parsed.displayMerchant) (\(parsed.source.displayName))\(isProvisional ? " [Provisória Open Finance - TTL 10 dias]" : "")", category: .sync)
+            #if canImport(ActivityKit) && os(iOS)
+            startLiveActivity(record: record, parsed: parsed)
+            #endif
             return .imported(record)
         } catch {
             logger.error("Import persist failed: \(error.localizedDescription)", category: .sync)
             return .failed((error as? FinancialError)?.messagePT ?? error.localizedDescription)
         }
     }
+
+    #if canImport(ActivityKit) && os(iOS)
+    private func startLiveActivity(record: NotificationImportRecord, parsed: ParsedPurchase) {
+        #if os(iOS)
+        guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
+        let attributes = PurchaseImportAttributes(
+            recordId: record.id,
+            source: parsed.source.displayName,
+            timestamp: Date()
+        )
+        let state = PurchaseImportAttributes.ContentState(
+            merchant: parsed.displayMerchant,
+            amount: parsed.amount.formatted(),
+            category: parsed.suggestedCategory ?? "Outros",
+            status: .pending
+        )
+        let content = ActivityContent(
+            state: state,
+            staleDate: Date().addingTimeInterval(15 * 60)
+        )
+        do {
+            _ = try Activity.request(
+                attributes: attributes,
+                content: content,
+                pushType: nil
+            )
+            logger.info("Live Activity iniciada para compra: \(parsed.displayMerchant)", category: .sync)
+        } catch {
+            logger.error("Falha ao iniciar Live Activity: \(error.localizedDescription)", category: .sync)
+        }
+        #endif
+    }
+    #endif
 
     private func deleteCreatedEntity(_ record: NotificationImportRecord) async throws {
         guard let entityId = record.createdEntityId, let kind = record.createdEntityKind else { return }

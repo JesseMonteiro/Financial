@@ -43,6 +43,8 @@ import {
 import { calculateNetWorth, sumOpenBillsTotal } from '../utils/calculations';
 import { isInitialEmpty } from '../utils/loading';
 import { Link } from 'react-router-dom';
+import { SyncStatusBadge } from '../components/ui/SyncStatusBadge';
+import { useSyncStore } from '../stores/syncStore';
 import { ItemDetailSheet } from '../components/ItemDetailSheet';
 import { fromTransaction, rowActivateProps, categoryOptionsForItem, applyingCategory } from '../utils/lineItemDetail';
 import { fetchCategories, clearApiCache } from '../services/api';
@@ -84,6 +86,7 @@ export function Dashboard() {
       loadInvestments({ force: true }),
       loadBudgets(),
       loadMealBenefits(),
+      useSyncStore.getState().loadSyncStatus({ force: true }),
     ]);
     const ids =
       accountIds.length > 0
@@ -204,8 +207,9 @@ export function Dashboard() {
           <h1 style={{ fontSize: 'var(--font-size-3xl)', fontWeight: 700, color: 'var(--text-primary)' }}>
             Olá, {displayName}!
           </h1>
-          <p style={{ color: 'var(--text-muted)', fontSize: 'var(--font-size-sm)' }}>
-            Visão consolidada das suas contas sincronizadas via Open Finance.
+          <p style={{ color: 'var(--text-muted)', fontSize: 'var(--font-size-sm)', display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
+            <span>Visão consolidada das suas contas via Open Finance.</span>
+            <SyncStatusBadge compact />
           </p>
         </div>
         <div className="page-header__actions">
@@ -242,9 +246,10 @@ export function Dashboard() {
             </Link>
           </div>
         </div>
-        <p className="dashboard-welcome__subtitle">
-          Visão consolidada das suas contas sincronizadas via Open Finance.
-        </p>
+        <div className="dashboard-welcome__subtitle" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+          <span>Visão consolidada das suas contas via Open Finance.</span>
+          <SyncStatusBadge compact />
+        </div>
       </div>
 
       {/* Desktop view: Dynamic multi-card carousel that fills whitespace to the right */}
