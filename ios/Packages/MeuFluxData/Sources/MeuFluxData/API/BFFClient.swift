@@ -271,7 +271,7 @@ public struct BFFClient: Sendable {
             path: "dashboard",
             queryItems: [URLQueryItem(name: "month", value: month.key)]
         )
-        let data = try await cachedRaw("bff:dashboard:v4:\(month.key)", force: force, request)
+        let data = try await cachedRaw("bff:dashboard:v5:\(month.key)", force: force, request)
         return try await decode(DashboardDTO.self, from: data)
     }
 
@@ -374,6 +374,15 @@ public struct BFFClient: Sendable {
 
     public func syncBankItem(id: String) async throws {
         _ = try await api.sendRaw(APIRequest(path: "items/\(id)", method: .patch, body: Data("{}".utf8)))
+        await invalidateCaches(matching: ["bff:"])
+    }
+
+    public func refreshSync(itemId: String? = nil) async throws {
+        var bodyData: Data?
+        if let itemId {
+            bodyData = try? JSONSerialization.data(withJSONObject: ["itemId": itemId])
+        }
+        _ = try await api.sendRaw(APIRequest(path: "sync/refresh", method: .post, body: bodyData ?? Data("{}".utf8)))
         await invalidateCaches(matching: ["bff:"])
     }
 

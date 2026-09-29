@@ -13,8 +13,7 @@ public struct SyncStatusItem: Codable, Sendable, Identifiable {
     public let ageMs: Int?
 
     public var parsedLastSyncedAt: Date? {
-        guard let lastSyncedAt else { return nil }
-        return ISO8601DateFormatter().date(from: lastSyncedAt)
+        SyncFreshnessFormatter.parseDate(lastSyncedAt)
     }
 
     public var freshness: SyncFreshness {
@@ -34,8 +33,7 @@ public struct SyncStatusResponse: Codable, Sendable {
     }
 
     public var parsedGlobalLastSyncedAt: Date? {
-        guard let globalLastSyncedAt else { return nil }
-        return ISO8601DateFormatter().date(from: globalLastSyncedAt)
+        SyncFreshnessFormatter.parseDate(globalLastSyncedAt)
     }
 
     public var freshness: SyncFreshness {

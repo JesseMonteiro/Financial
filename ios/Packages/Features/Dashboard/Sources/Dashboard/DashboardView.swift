@@ -148,22 +148,31 @@ public struct DashboardView: View {
 
     private var homeTopBar: some View {
         HStack(spacing: 8) {
-            BrandWordmark(size: 26)
-            ProBadge()
-            Spacer(minLength: 8)
-            syncStatusButton
-            if let onNotifications {
-                NotificationBellButton(
-                    pendingCount: viewModel.pendingNotificationCount,
-                    onTap: onNotifications
+            HStack(spacing: 6) {
+                BrandWordmark(size: 24)
+                ProBadge()
+            }
+            .fixedSize(horizontal: true, vertical: false)
+
+            Spacer(minLength: 6)
+
+            HStack(spacing: 8) {
+                syncStatusButton
+                if let onNotifications {
+                    NotificationBellButton(
+                        pendingCount: viewModel.pendingNotificationCount,
+                        onTap: onNotifications
+                    )
+                }
+                ProfileAccountMenu(
+                    displayName: menuDisplayName,
+                    email: accountEmail,
+                    onSignOut: onSignOut
                 )
             }
-            ProfileAccountMenu(
-                displayName: menuDisplayName,
-                email: accountEmail,
-                onSignOut: onSignOut
-            )
+            .fixedSize(horizontal: true, vertical: false)
         }
+        .frame(maxWidth: .infinity)
         .accessibilityElement(children: .contain)
         .zIndex(2)
     }

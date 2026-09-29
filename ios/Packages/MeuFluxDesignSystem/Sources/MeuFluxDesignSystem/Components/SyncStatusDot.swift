@@ -39,6 +39,8 @@ public struct SyncStatusDot: View {
             if let label {
                 Text(label)
                     .font(.caption2)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
                     .foregroundStyle(MeuFluxColors.textSecondary)
             }
         }

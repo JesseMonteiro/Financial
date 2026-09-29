@@ -266,5 +266,6 @@ export async function handleDashboard(
     dailySpend,
     budgetCategories,
     last_synced_at: lastSyncedAt,
+    lastSyncedAt,
   });
 }

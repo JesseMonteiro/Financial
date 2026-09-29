@@ -52,6 +52,39 @@ public enum SyncFreshness: String, Sendable, CaseIterable {
 }
 
 public enum SyncFreshnessFormatter {
+    /// Robust ISO8601 / RFC3339 date parser supporting fractional seconds and space separators.
+    public static func parseDate(_ string: String?) -> Date? {
+        guard let string, !string.isEmpty else { return nil }
+        let s = string.replacingOccurrences(of: " ", with: "T")
+        let f1 = ISO8601DateFormatter()
+        f1.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let d = f1.date(from: s) { return d }
+        let f2 = ISO8601DateFormatter()
+        f2.formatOptions = [.withInternetDateTime]
+        if let d = f2.date(from: s) { return d }
+
+        let df = DateFormatter()
+        df.locale = Locale(identifier: "en_US_POSIX")
+        df.timeZone = TimeZone(secondsFromGMT: 0)
+        let patterns = [
+            "yyyy-MM-dd'T'HH:mm:ss.SSSSSSXXXXX",
+            "yyyy-MM-dd'T'HH:mm:ss.SSSXXXXX",
+            "yyyy-MM-dd'T'HH:mm:ssXXXXX",
+            "yyyy-MM-dd'T'HH:mm:ss.SSSZ",
+            "yyyy-MM-dd'T'HH:mm:ssZ",
+            "yyyy-MM-dd'T'HH:mm:ss",
+            "yyyy-MM-dd HH:mm:ss.SSS",
+            "yyyy-MM-dd HH:mm:ss"
+        ]
+        for pattern in patterns {
+            df.dateFormat = pattern
+            if let d = df.date(from: string) ?? df.date(from: s) {
+                return d
+            }
+        }
+        return nil
+    }
+
     /// Returns human-readable relative time description in pt-BR
     public static func relativeLabel(from date: Date?) -> String {
         guard let date else { return "nunca sincronizado" }

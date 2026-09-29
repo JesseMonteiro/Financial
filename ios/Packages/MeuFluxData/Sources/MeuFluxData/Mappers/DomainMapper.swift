@@ -909,7 +909,7 @@ public enum DomainMapper {
                 )
             },
             calculationVersion: dto.calculationVersion,
-            lastSyncedAt: dto.lastSyncedAt.flatMap { ISO8601DateFormatter().date(from: $0) }
+            lastSyncedAt: SyncFreshnessFormatter.parseDate(dto.lastSyncedAt)
         )
     }
 

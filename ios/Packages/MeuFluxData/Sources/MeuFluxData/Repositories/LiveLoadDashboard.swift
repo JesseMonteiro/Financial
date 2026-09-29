@@ -10,7 +10,17 @@ public struct LiveLoadDashboard: LoadDashboardUseCase {
     }
 
     public func execute(month: YearMonth, force: Bool) async throws -> DashboardSnapshot {
+        if force {
+            _ = try? await bff.refreshSync()
+        }
         let dto = try await bff.getDashboard(month: month, force: force)
-        return DomainMapper.dashboard(dto)
+        var snap = DomainMapper.dashboard(dto)
+        if snap.lastSyncedAt == nil {
+            if let syncStatus = await bff.getSyncStatus(force: force),
+               let parsed = syncStatus.parsedGlobalLastSyncedAt {
+                snap.lastSyncedAt = parsed
+            }
+        }
+        return snap
     }
 }

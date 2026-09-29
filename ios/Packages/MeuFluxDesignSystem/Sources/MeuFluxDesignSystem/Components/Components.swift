@@ -298,6 +298,8 @@ public struct BrandWordmark: View {
         Text("MeuFlux")
             .font(.system(size: size, weight: .bold))
             .tracking(-0.4)
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
             .foregroundStyle(
                 LinearGradient(
                     colors: MeuFluxColors.brandGradient,
@@ -316,6 +318,8 @@ public struct ProBadge: View {
         Text("PRO")
             .font(.system(size: 10, weight: .bold))
             .tracking(0.6)
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
             .padding(.horizontal, 8)
             .padding(.vertical, 3)
             .foregroundStyle(MeuFluxColors.primary)
