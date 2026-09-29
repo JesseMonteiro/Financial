@@ -151,6 +151,7 @@ public struct DashboardView: View {
             BrandWordmark(size: 26)
             ProBadge()
             Spacer(minLength: 8)
+            syncStatusButton
             if let onNotifications {
                 NotificationBellButton(
                     pendingCount: viewModel.pendingNotificationCount,
@@ -165,6 +166,22 @@ public struct DashboardView: View {
         }
         .accessibilityElement(children: .contain)
         .zIndex(2)
+    }
+
+    private var syncStatusButton: some View {
+        Button {
+            Task {
+                await viewModel.load(force: true)
+            }
+        } label: {
+            SyncStatusDot.forFreshness(
+                level: viewModel.syncFreshness.rawValue,
+                label: viewModel.syncRelativeLabel
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Status de sincronização: \(viewModel.syncFreshness.label), \(viewModel.syncRelativeLabel)")
+        .accessibilityHint("Toque para forçar atualização dos dados")
     }
 
     private var menuDisplayName: String {

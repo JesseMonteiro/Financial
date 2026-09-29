@@ -16,6 +16,7 @@ public struct DashboardDTO: Codable, Sendable {
     public let dailySpend: [DashboardDailySpendDTO]?
     public let budgetCategories: [DashboardBudgetCategoryDTO]
     public let calculationVersion: String?
+    public let lastSyncedAt: String?
 }
 
 public struct DashboardSummaryDTO: Codable, Sendable {

@@ -18,6 +18,15 @@ public struct DashboardSnapshot: Sendable, Hashable {
     public var dailySpend: [DashboardDailySpendPoint]
     public var budgetCategories: [DashboardBudgetCategory]
     public var calculationVersion: String?
+    public var lastSyncedAt: Date?
+
+    public var syncFreshness: SyncFreshness {
+        SyncFreshness.classify(lastSyncedAt)
+    }
+
+    public var syncRelativeLabel: String {
+        SyncFreshnessFormatter.relativeLabel(from: lastSyncedAt)
+    }
 
     public init(
         displayName: String,
@@ -34,7 +43,8 @@ public struct DashboardSnapshot: Sendable, Hashable {
         recentCreditPurchases: [DashboardRecentTransaction] = [],
         dailySpend: [DashboardDailySpendPoint] = [],
         budgetCategories: [DashboardBudgetCategory],
-        calculationVersion: String? = nil
+        calculationVersion: String? = nil,
+        lastSyncedAt: Date? = nil
     ) {
         self.displayName = displayName
         self.selectedMonth = selectedMonth
@@ -51,6 +61,7 @@ public struct DashboardSnapshot: Sendable, Hashable {
         self.dailySpend = dailySpend
         self.budgetCategories = budgetCategories
         self.calculationVersion = calculationVersion
+        self.lastSyncedAt = lastSyncedAt
     }
 
     /// Backward-compatible aliases used by older UI stubs.

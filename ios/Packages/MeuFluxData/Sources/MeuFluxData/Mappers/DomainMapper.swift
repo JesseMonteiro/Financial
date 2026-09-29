@@ -908,7 +908,8 @@ public enum DomainMapper {
                     colorHex: $0.color ?? "#6366f1"
                 )
             },
-            calculationVersion: dto.calculationVersion
+            calculationVersion: dto.calculationVersion,
+            lastSyncedAt: dto.lastSyncedAt.flatMap { ISO8601DateFormatter().date(from: $0) }
         )
     }
 

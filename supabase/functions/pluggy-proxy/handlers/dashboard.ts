@@ -210,6 +210,22 @@ export async function handleDashboard(
     },
   );
 
+  let lastSyncedAt: string | null = null;
+  try {
+    const { data: syncRows } = await client.supabase
+      .from("pluggy_sync_items")
+      .select("last_synced_at")
+      .eq("user_id", client.userId)
+      .not("last_synced_at", "is", null)
+      .order("last_synced_at", { ascending: false })
+      .limit(1);
+    if (syncRows && syncRows.length > 0) {
+      lastSyncedAt = syncRows[0].last_synced_at;
+    }
+  } catch {
+    // skip
+  }
+
   return jsonResponse({
     displayName,
     selectedMonth: ym,
@@ -249,5 +265,6 @@ export async function handleDashboard(
     recentCreditPurchases,
     dailySpend,
     budgetCategories,
+    last_synced_at: lastSyncedAt,
   });
 }

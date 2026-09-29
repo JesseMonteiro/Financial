@@ -1,5 +1,6 @@
 import Foundation
 import MeuFluxCore
+import MeuFluxDomain
 
 public struct SyncStatusItem: Codable, Sendable, Identifiable {
     public var id: String { pluggyItemId }

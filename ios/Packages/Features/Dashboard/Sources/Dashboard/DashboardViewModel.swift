@@ -484,6 +484,14 @@ public final class DashboardViewModel {
         return nil
     }
 
+    public var syncFreshness: SyncFreshness {
+        loadedSnapshot?.syncFreshness ?? .never
+    }
+
+    public var syncRelativeLabel: String {
+        loadedSnapshot?.syncRelativeLabel ?? "nunca sincronizado"
+    }
+
     /// Point corresponding to the currently selected day on the chart (if any).
     public var selectedPoint: DailySpendPoint? {
         guard let selectedDay else { return nil }
