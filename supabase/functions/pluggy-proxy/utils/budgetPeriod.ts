@@ -7,12 +7,20 @@ export type BudgetPeriod = (typeof BUDGET_PERIODS)[number];
 /** Categories that should be excluded from budget by default (transfers, income, etc.) */
 export const BUDGET_EXCLUDED_CATEGORIES = [
   'Transferências',
+  'Transferência entre mesma pessoa',
+  'Transferência mesma pessoa - Dinheiro',
+  'Transferência mesma pessoa - PIX',
+  'Transferência mesma pessoa - TED',
   'Pagamento de Fatura',
   'Tarifas Bancárias',
   'Salário & Renda',
   'Investimentos',
   // Pluggy categories in English (before translation)
   'Transfers',
+  'Same person transfer',
+  'Same person transfer - Cash',
+  'Same person transfer - PIX',
+  'Same person transfer - TED',
   'Credit card payment',
   'Bank fees',
   'Salary',
@@ -619,6 +627,7 @@ export function mergeBudgetRows(opts: {
   const addSpent = (cat: string, bank: number, meal: number) => {
     if (!cat) return;
     const canonical = canonicalBudgetCategory(cat);
+    if (BUDGET_EXCLUDED_CATEGORIES.includes(cat) || BUDGET_EXCLUDED_CATEGORIES.includes(canonical)) return;
     const isSub = isSubcategory(canonical);
     if (!rows[canonical]) {
       const parentLabel = isSub ? getParentCategoryLabel(canonical) : null;
@@ -653,6 +662,7 @@ export function mergeBudgetRows(opts: {
     const rawCat = String(b.category || "");
     if (!rawCat) return;
     const cat = canonicalBudgetCategory(rawCat);
+    if (BUDGET_EXCLUDED_CATEGORIES.includes(rawCat) || BUDGET_EXCLUDED_CATEGORIES.includes(cat)) return;
     const isSub = isSubcategory(cat);
     const period = normalizeBudgetPeriod(b.period);
     const periodAmount = Number(b.limit) || 0;

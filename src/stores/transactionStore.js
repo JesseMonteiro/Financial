@@ -9,6 +9,7 @@ import {
 } from '../services/storage';
 import { CACHE_TTL_MS, isFreshTimestamp } from '../services/clientCache';
 import { splitManualTotal } from '../utils/manualAccounts';
+import { isSamePersonTransfer } from '../utils/analytics';
 
 const TX_CATEGORY_OVERRIDES_KEY = 'meuflux_tx_category_overrides';
 
@@ -462,6 +463,7 @@ export const useTransactionStore = create((set, get) => ({
         return false;
       }
       if (filters.type !== 'all') {
+        if (isSamePersonTransfer(t)) return false;
         if (filters.type === 'debit' && t.amount > 0) return false;
         if (filters.type === 'credit' && t.amount < 0) return false;
       }

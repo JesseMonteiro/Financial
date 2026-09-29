@@ -1,4 +1,6 @@
 import { totalReservedBalances } from './reservedBalances.js';
+import { isBillPayment } from './creditBillPeriod.js';
+import { isSamePersonTransfer } from './analytics.js';
 
 export function calculateNetWorth(accounts = [], investments = [], loans = []) {
   let availableBankBalance = 0;
@@ -59,6 +61,7 @@ export function groupTransactionsByCategory(transactions = []) {
   const categoriesMap = {};
   
   transactions.forEach(t => {
+    if (isBillPayment(t) || isSamePersonTransfer(t)) return;
     if (t.amount < 0 || t.type === 'DEBIT') {
       const categoryName = t.category || 'Outros';
       const absAmount = Math.abs(t.amount);
@@ -83,6 +86,7 @@ export function calculateIncomeVsExpense(transactions = []) {
   let expense = 0;
 
   transactions.forEach(t => {
+    if (isBillPayment(t) || isSamePersonTransfer(t)) return;
     const val = Number(t.amount);
     if (val > 0 || t.type === 'CREDIT_INCOME') {
       income += Math.abs(val);

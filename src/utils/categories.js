@@ -147,6 +147,26 @@ export function allTranslations() {
 }
 
 /**
+ * Checks whether a category object or category key represents internal same-person transfers.
+ * @param {Object|string} c
+ * @returns {boolean}
+ */
+export function isSamePersonCategory(c) {
+  if (!c) return false;
+  const k = typeof c === 'string' ? c.toLowerCase() : String(c.key || c.label || '').toLowerCase();
+  const l = typeof c === 'object' && c.label ? String(c.label).toLowerCase() : '';
+  return (
+    k === 'same person transfer' ||
+    k.includes('same person transfer') ||
+    k.includes('mesma pessoa') ||
+    k.includes('mesma titularidade') ||
+    k.includes('mesmo titular') ||
+    l === 'transferência entre mesma pessoa' ||
+    l.includes('mesma pessoa')
+  );
+}
+
+/**
  * Pluggy Level 1 Base Categories.
  * Defined according to official Pluggy documentation (products/transaction-categorization)
  * plus Education and Other as fundamental personal finance categories.

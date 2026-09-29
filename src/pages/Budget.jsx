@@ -45,6 +45,7 @@ import {
   signedTxAmount,
   MONTHS_PT,
 } from '../utils/creditBillPeriod';
+import { isSamePersonTransfer } from '../utils/analytics';
 import { isInitialEmpty } from '../utils/loading';
 import {
   asOfForBudgetMonth,
@@ -204,7 +205,7 @@ export function Budget() {
     const map = {};
     const sub = {};
     allTransactions.forEach(tx => {
-      if (isBillPayment(tx)) return;
+      if (isBillPayment(tx) || isSamePersonTransfer(tx)) return;
       const signed = signedTxAmount(tx);
       if (signed <= 0) return;
 
@@ -239,7 +240,7 @@ export function Budget() {
     const map = {};
 
     allTransactions.forEach(tx => {
-      if (isBillPayment(tx)) return;
+      if (isBillPayment(tx) || isSamePersonTransfer(tx)) return;
       const signed = signedTxAmount(tx);
       if (signed <= 0) return;
       // Use calendar month (purchase date) instead of due month
@@ -353,7 +354,7 @@ export function Budget() {
   const availableMonths = useMemo(() => {
     const months = new Set();
     allTransactions.forEach(tx => {
-      if (isBillPayment(tx)) return;
+      if (isBillPayment(tx) || isSamePersonTransfer(tx)) return;
       const m = String(tx.date || '').slice(0, 7);
       if (m) months.add(m);
     });
@@ -403,7 +404,7 @@ export function Budget() {
     const last6 = availableMonths.slice(-6);
     return last6.map(m => {
       const monthTxs = allTransactions.filter(tx => {
-        if (isBillPayment(tx)) return false;
+        if (isBillPayment(tx) || isSamePersonTransfer(tx)) return false;
         if (signedTxAmount(tx) <= 0) return false;
         return String(tx.date || '').slice(0, 7) === m;
       });

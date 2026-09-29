@@ -40,7 +40,15 @@ public final class TransactionsViewModel {
     }
 
     public var categories: [String] {
-        Array(Set(transactions.compactMap(\.category))).sorted()
+        Array(Set(transactions.compactMap { tx in
+            guard let cat = tx.category else { return nil }
+            if tx.isSamePersonTransfer { return nil }
+            let lower = cat.lowercased()
+            if lower.contains("same person transfer") || lower.contains("mesma pessoa") {
+                return nil
+            }
+            return cat
+        })).sorted()
     }
 
     public var categoryOptions: [LineItemCategoryOption] {
@@ -55,7 +63,10 @@ public final class TransactionsViewModel {
         return transactions.filter { tx in
             if let selectedMonth, tx.date.yearMonth != selectedMonth { return false }
             if let selectedAccountId, tx.accountId != selectedAccountId { return false }
-            if let selectedKind, tx.kind != selectedKind { return false }
+            if let selectedKind {
+                if tx.isSamePersonTransfer { return false }
+                if tx.kind != selectedKind { return false }
+            }
             if let selectedCategory, tx.category != selectedCategory { return false }
             guard !query.isEmpty else { return true }
             return tx.description.lowercased().contains(query)

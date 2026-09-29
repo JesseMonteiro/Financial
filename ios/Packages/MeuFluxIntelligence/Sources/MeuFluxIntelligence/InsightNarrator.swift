@@ -167,6 +167,13 @@ public enum SiriSnapshotMapper {
             expenseLabel: snapshot.cashflow.expense.formatted(),
             netLabel: snapshot.cashflow.net.formatted(),
             categories: snapshot.categoryExpenses
+                .filter {
+                    let l = $0.name.lowercased()
+                    return !l.contains("same person transfer")
+                        && !l.contains("mesma pessoa")
+                        && !l.contains("mesma titularidade")
+                        && !l.contains("mesmo titular")
+                }
                 .sorted { $0.value > $1.value }
                 .prefix(12)
                 .map {

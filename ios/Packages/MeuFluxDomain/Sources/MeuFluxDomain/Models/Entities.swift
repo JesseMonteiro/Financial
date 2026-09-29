@@ -157,6 +157,28 @@ public struct Transaction: Sendable, Identifiable, Hashable, Codable {
         self.billId = billId
         self.billForecastDate = billForecastDate
     }
+
+    public var isSamePersonTransfer: Bool {
+        let cat = (category ?? "").lowercased()
+        if cat == "same person transfer"
+            || cat.hasPrefix("same person transfer")
+            || cat.contains("mesma pessoa")
+            || cat.contains("mesma titularidade")
+            || cat.contains("mesmo titular") {
+            return true
+        }
+        let desc = description.uppercased()
+        let folded = desc.folding(options: .diacriticInsensitive, locale: Locale(identifier: "en"))
+        let needles = [
+            "MESMA TITULARIDADE",
+            "MESMO TITULAR",
+            "CONTAS PROPRIAS",
+            "TRANSF PROPRIA",
+            "TRANSFERENCIA PROPRIA",
+            "ENTRE MINHAS CONTAS"
+        ]
+        return needles.contains { folded.contains($0) }
+    }
 }
 
 public enum BillStatus: String, Sendable, Codable {

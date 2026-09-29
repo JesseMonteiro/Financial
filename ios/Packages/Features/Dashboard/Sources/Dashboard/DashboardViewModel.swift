@@ -73,6 +73,8 @@ enum DailyFlowBuilder {
         let cat = (category ?? "").lowercased()
         if cat.contains("credit card payment")
             || cat == "transfers"
+            || cat.contains("same person transfer")
+            || cat.contains("mesma pessoa")
             || cat.contains("salary")
             || cat.contains("investments")
             || cat.contains("loan") {
@@ -124,6 +126,12 @@ enum DailyFlowBuilder {
             "PAGAMENTO CONTA",
             "PAGAMENTO BOLETO",
             "PAGTO BOLETO",
+            "MESMA TITULARIDADE",
+            "MESMO TITULAR",
+            "CONTAS PROPRIAS",
+            "TRANSF PROPRIA",
+            "TRANSFERENCIA PROPRIA",
+            "ENTRE MINHAS CONTAS",
         ]
         return needles.contains { d.contains($0) }
     }

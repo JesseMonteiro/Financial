@@ -1,5 +1,6 @@
 import { translateCategory } from './categories.js';
 import { isBillPayment } from './creditBillPeriod.js';
+import { isSamePersonTransfer } from './analytics.js';
 
 function merchantName(tx) {
   return (
@@ -12,7 +13,7 @@ function merchantName(tx) {
 }
 
 function isExpenseTx(tx) {
-  if (!tx || isBillPayment(tx)) return false;
+  if (!tx || isBillPayment(tx) || isSamePersonTransfer(tx)) return false;
   if (tx.type === 'CREDIT' || tx.type === 'CREDIT_INCOME') return false;
   return Number(tx.amount) < 0 || tx.type === 'DEBIT';
 }

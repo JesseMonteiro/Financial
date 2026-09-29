@@ -1,5 +1,5 @@
 import { isBillPayment, installmentNumberOf, resolvePurchaseDate } from './creditBillPeriod.js';
-import { translateCategory } from './categories.js';
+import { translateCategory, isSamePersonCategory } from './categories.js';
 import { calculateNetWorth } from './calculations.js';
 import { formatDateRelative } from './formatters.js';
 
@@ -49,14 +49,84 @@ export function merchantName(tx) {
   );
 }
 
+/**
+ * Detects whether a transaction is an internal transfer between the same person's accounts.
+ * These are neither income nor expense (just balance movement between accounts),
+ * and must be excluded from category breakdowns, income/expense totals, and financial cards.
+ * @param {Object} tx
+ * @returns {boolean}
+ */
+export function isSamePersonTransfer(tx) {
+  if (!tx) return false;
+
+  // 1. Category check (raw or translated)
+  const cat = String(tx.category || tx.categoryDescription || '').toLowerCase();
+  if (
+    cat === 'same person transfer' ||
+    cat.startsWith('same person transfer') ||
+    cat.includes('mesma pessoa') ||
+    cat.includes('mesma titularidade') ||
+    cat.includes('mesmo titular')
+  ) {
+    return true;
+  }
+
+  const translated = translateCategory(tx.category || '').toLowerCase();
+  if (
+    translated === 'transferência entre mesma pessoa' ||
+    translated.startsWith('transferência mesma pessoa') ||
+    translated.startsWith('transferencia mesma pessoa') ||
+    translated.includes('mesma pessoa')
+  ) {
+    return true;
+  }
+
+  // 2. Description check
+  const desc = `${tx.description || ''} ${tx.originalDescription || ''}`.toUpperCase();
+  if (
+    desc.includes('MESMA TITULARIDADE') ||
+    desc.includes('MESMO TITULAR') ||
+    desc.includes('CONTAS PROPRIAS') ||
+    desc.includes('CONTAS PRÓPRIAS') ||
+    desc.includes('TRANSF PROPRIA') ||
+    desc.includes('TRANSF PRÓPRIA') ||
+    desc.includes('TRANSFERENCIA PROPRIA') ||
+    desc.includes('TRANSFERÊNCIA PRÓPRIA') ||
+    desc.includes('ENTRE MINHAS CONTAS')
+  ) {
+    return true;
+  }
+
+  // 3. PaymentData check (same document or payer equals receiver)
+  const paymentData = tx.paymentData || tx.data?.paymentData;
+  if (paymentData) {
+    const payerDoc = paymentData.payer?.documentNumber?.value || paymentData.payer?.documentNumber;
+    const receiverDoc = paymentData.receiver?.documentNumber?.value || paymentData.receiver?.documentNumber;
+    if (payerDoc && receiverDoc) {
+      const pClean = String(payerDoc).replace(/\D/g, '');
+      const rClean = String(receiverDoc).replace(/\D/g, '');
+      if (pClean && rClean && pClean === rClean) {
+        return true;
+      }
+    }
+    const payerName = (paymentData.payer?.name || '').trim().toUpperCase();
+    const receiverName = (paymentData.receiver?.name || '').trim().toUpperCase();
+    if (payerName && receiverName && payerName === receiverName) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 export function isExpenseTx(tx) {
-  if (!tx || isBillPayment(tx)) return false;
+  if (!tx || isBillPayment(tx) || isSamePersonTransfer(tx)) return false;
   if (tx.type === 'CREDIT' || tx.type === 'CREDIT_INCOME') return false;
   return Number(tx.amount) < 0 || tx.type === 'DEBIT';
 }
 
 export function isIncomeTx(tx) {
-  if (!tx || isBillPayment(tx)) return false;
+  if (!tx || isBillPayment(tx) || isSamePersonTransfer(tx)) return false;
   if (tx.type === 'DEBIT') return false;
   return Number(tx.amount) > 0 || tx.type === 'CREDIT' || tx.type === 'CREDIT_INCOME';
 }
@@ -488,6 +558,7 @@ export function expensesByCategory(transactions = [], { limit = 7, ym } = {}) {
     if (!isExpenseTx(t)) return;
     if (ym && ymFromDate(t.date) !== ym) return;
     const cat = translateCategory(t.category);
+    if (isSamePersonCategory(cat)) return;
     map[cat] = (map[cat] || 0) + Math.abs(Number(t.amount) || 0);
   });
   return Object.entries(map)

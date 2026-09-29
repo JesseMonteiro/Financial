@@ -10,6 +10,7 @@ import { useAccountStore } from '../stores/accountStore';
 import { useCategoryStore } from '../stores/categoryStore';
 import { formatCurrency, formatDateRelative, formatDate } from '../utils/formatters';
 import { translateCategory } from '../utils/categories';
+import { isSamePersonTransfer } from '../utils/analytics';
 import { isInitialEmpty } from '../utils/loading';
 import { ItemDetailSheet } from '../components/ItemDetailSheet';
 import { fromTransaction, categoryOptionsForItem, applyingCategory } from '../utils/lineItemDetail';
@@ -36,6 +37,9 @@ export function Transactions() {
   const uniqueCategories = useMemo(() => {
     const setCat = new Set();
     rawTransactions.forEach(t => {
+      if (isSamePersonTransfer(t)) return;
+      const catLower = String(t.category || '').toLowerCase();
+      if (catLower.includes('same person transfer') || catLower.includes('mesma pessoa')) return;
       if (t.category) setCat.add(t.category);
     });
     return Array.from(setCat).sort();

@@ -9,7 +9,7 @@ import { CategoryMark } from '../components/CategoryIcon';
 import { resolveLucideIcon } from '../utils/categoryIcons';
 import { useCategoryStore } from '../stores/categoryStore';
 import { isInitialEmpty } from '../utils/loading';
-import { CATEGORY_ICON_OPTIONS } from '../utils/categories';
+import { CATEGORY_ICON_OPTIONS, isSamePersonCategory } from '../utils/categories';
 
 const PRESET_COLORS = [
   '#f97316',
@@ -52,17 +52,22 @@ export function Categories() {
     loadCategories();
   }, []);
 
-  const baseCount = useMemo(
-    () => categories.filter((c) => c.isBase).length,
-    [categories]
-  );
-  const customCount = useMemo(
-    () => categories.filter((c) => !c.isBase).length,
+  const visibleCategories = useMemo(
+    () => categories.filter((c) => !isSamePersonCategory(c)),
     [categories]
   );
 
+  const baseCount = useMemo(
+    () => visibleCategories.filter((c) => c.isBase).length,
+    [visibleCategories]
+  );
+  const customCount = useMemo(
+    () => visibleCategories.filter((c) => !c.isBase).length,
+    [visibleCategories]
+  );
+
   const filteredCategories = useMemo(() => {
-    return categories.filter((c) => {
+    return visibleCategories.filter((c) => {
       if (activeTab === 'base' && !c.isBase) return false;
       if (activeTab === 'custom' && c.isBase) return false;
       if (search.trim()) {
@@ -73,7 +78,7 @@ export function Categories() {
       }
       return true;
     });
-  }, [categories, activeTab, search]);
+  }, [visibleCategories, activeTab, search]);
 
   const openCreate = () => {
     setEditing(null);
@@ -162,7 +167,7 @@ export function Categories() {
               cursor: 'pointer',
             }}
           >
-            Todas ({categories.length})
+            Todas ({visibleCategories.length})
           </button>
           <button
             type="button"

@@ -33,26 +33,35 @@ public final class CategoriesViewModel {
         state.beginLoad(silentIfPossible: true)
         errorMessage = nil
         guard let repository else {
-            categories = PurchaseCategoryCatalog.defaults
+            categories = Self.filterOutSamePerson(PurchaseCategoryCatalog.defaults)
             state = .loaded(categories)
             return
         }
         do {
-            categories = try await repository.fetchCategories(force: force)
-            if categories.isEmpty {
-                categories = PurchaseCategoryCatalog.defaults
-            }
+            let loaded = try await repository.fetchCategories(force: force)
+            categories = Self.filterOutSamePerson(loaded.isEmpty ? PurchaseCategoryCatalog.defaults : loaded)
             state = categories.isEmpty ? .empty : .loaded(categories)
             lastLoadedAt = Date()
             lastCacheKey = cacheKey
         } catch {
             errorMessage = (error as? FinancialError)?.messagePT ?? error.localizedDescription
             if categories.isEmpty {
-                categories = PurchaseCategoryCatalog.defaults
+                categories = Self.filterOutSamePerson(PurchaseCategoryCatalog.defaults)
                 state = .loaded(categories)
             } else if !state.hasContent {
                 state = .failed(errorMessage ?? "Não foi possível carregar.")
             }
+        }
+    }
+
+    private static func filterOutSamePerson(_ list: [PurchaseCategory]) -> [PurchaseCategory] {
+        list.filter {
+            let k = $0.key.lowercased()
+            let l = $0.label.lowercased()
+            return k != "same person transfer"
+                && !k.contains("same person transfer")
+                && !k.contains("mesma pessoa")
+                && !l.contains("mesma pessoa")
         }
     }
 

@@ -829,14 +829,26 @@ public enum DomainMapper {
                     net: money($0.net)
                 )
             },
-            categoryExpenses: dto.categoryExpenses.map {
-                DashboardCategoryExpense(
+            categoryExpenses: dto.categoryExpenses.compactMap {
+                let nameLower = $0.name.lowercased()
+                if nameLower.contains("same person transfer")
+                    || nameLower.contains("mesma pessoa")
+                    || nameLower.contains("mesma titularidade")
+                    || nameLower.contains("mesmo titular") {
+                    return nil
+                }
+                return DashboardCategoryExpense(
                     name: $0.name,
                     value: money($0.value),
                     colorHex: $0.color ?? "#6366f1"
                 )
             },
-            insights: dto.insights.map {
+            insights: dto.insights.filter {
+                let textLower = $0.text.lowercased()
+                return !textLower.contains("transferência entre mesma pessoa")
+                    && !textLower.contains("same person transfer")
+                    && !textLower.contains("mesma pessoa")
+            }.map {
                 DashboardInsight(id: $0.id, type: $0.type, text: $0.text)
             },
             weeklyRecap: DashboardWeeklyRecap(
