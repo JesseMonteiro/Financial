@@ -15,7 +15,7 @@ import { ptBR } from 'date-fns/locale';
  * - >= 1 hour: Stale (red dot, "dados podem estar desatualizados")
  */
 export function SyncStatusBadge({ compact = false }) {
-  const { globalLastSyncedAt, items, loading, loadSyncStatus } = useSyncStore();
+  const { globalLastSyncedAt, items, loading, refreshing, loadSyncStatus, refreshSync } = useSyncStore();
   const [currentFreshness, setCurrentFreshness] = useState(() => cacheFreshness(globalLastSyncedAt));
   const [isTooltipOpen, setIsTooltipOpen] = useState(false);
 
@@ -107,7 +107,7 @@ export function SyncStatusBadge({ compact = false }) {
           }}
         />
         <span style={{ fontWeight: 500 }}>
-          {loading ? 'Verificando…' : relTime}
+          {refreshing ? 'Sincronizando…' : loading ? 'Verificando…' : relTime}
         </span>
         {currentFreshness.level === 'stale' && (
           <AlertTriangle size={12} style={{ color: 'var(--danger, #ef4444)' }} />
@@ -139,9 +139,36 @@ export function SyncStatusBadge({ compact = false }) {
             <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-primary, #f8fafc)' }}>
               Sincronização Pluggy
             </span>
-            <span style={{ fontSize: '0.7rem', color: dotColor, fontWeight: 600 }}>
-              {currentFreshness.label}
-            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: '0.7rem', color: dotColor, fontWeight: 600 }}>
+                {currentFreshness.label}
+              </span>
+              <button
+                type="button"
+                onClick={async (e) => {
+                  e.stopPropagation();
+                  try {
+                    await refreshSync();
+                  } catch (err) {
+                    console.error('[SyncStatusBadge] Erro ao sincronizar:', err);
+                  }
+                }}
+                disabled={loading || refreshing}
+                style={{
+                  background: 'rgba(255, 255, 255, 0.08)',
+                  border: '1px solid rgba(255, 255, 255, 0.15)',
+                  borderRadius: 6,
+                  padding: '2px 8px',
+                  fontSize: '0.65rem',
+                  color: 'var(--text-primary, #fff)',
+                  cursor: (loading || refreshing) ? 'not-allowed' : 'pointer',
+                  fontWeight: 600,
+                  transition: 'background 0.2s',
+                }}
+              >
+                {refreshing ? 'Sincronizando…' : 'Sincronizar'}
+              </button>
+            </div>
           </div>
 
           <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary, #cbd5e1)', lineHeight: 1.4 }}>

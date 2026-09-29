@@ -64,7 +64,39 @@ export async function handleSyncStatus(client: PluggyClient): Promise<Response> 
       };
     });
 
-    const validDates = items
+    const existingIds = new Set((rows || []).map((r) => r.pluggy_item_id));
+    const missingIds = client.itemIds.filter((id) => !existingIds.has(id));
+
+    if (missingIds.length > 0) {
+      // Trigger background sync for items not yet in pluggy_sync_items
+      const bgPromise = Promise.all(
+        missingIds.map((itemId) =>
+          syncItemToCache(client, itemId).catch((err) =>
+            console.warn(`[syncHandler] Initial sync failed for ${itemId}:`, err)
+          )
+        )
+      );
+      // @ts-ignore
+      if (typeof EdgeRuntime !== "undefined" && typeof EdgeRuntime.waitUntil === "function") {
+        // @ts-ignore
+        EdgeRuntime.waitUntil(bgPromise);
+      }
+    }
+
+    const pendingItems = missingIds.map((id) => ({
+      pluggyItemId: id,
+      connectorName: "Banco",
+      status: "PENDING",
+      executionStatus: "INITIALIZING",
+      errorMessage: null,
+      lastSyncedAt: null,
+      ageMs: null,
+      freshness: classifyFreshness(null),
+    }));
+
+    const allItems = [...items, ...pendingItems];
+
+    const validDates = allItems
       .map((i) => (i.lastSyncedAt ? new Date(i.lastSyncedAt).getTime() : null))
       .filter((t): t is number => typeof t === "number" && Number.isFinite(t));
 
@@ -78,10 +110,10 @@ export async function handleSyncStatus(client: PluggyClient): Promise<Response> 
     const globalFreshness = classifyFreshness(globalAgeMs);
 
     return jsonResponse({
-      items,
+      items: allItems,
       globalLastSyncedAt,
       freshness: globalFreshness,
-      itemCount: items.length,
+      itemCount: allItems.length,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

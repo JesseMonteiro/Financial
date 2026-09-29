@@ -20,12 +20,19 @@ export function Header({ onOpenMore, isMobile = false }) {
   const clearCreditData = useCreditDataStore((s) => s.clear);
   const openChat = useChatbotStore((s) => s.openChat);
   const loadSyncStatus = useSyncStore((s) => s.loadSyncStatus);
+  const refreshSync = useSyncStore((s) => s.refreshSync);
+  const syncRefreshing = useSyncStore((s) => s.refreshing);
 
-  const isRefreshing = accLoading || txLoading || invLoading;
+  const isRefreshing = accLoading || txLoading || invLoading || syncRefreshing;
 
   const handleRefresh = async () => {
     clearApiCache();
     const accountIds = useAccountStore.getState().accounts.map((a) => a.id);
+    try {
+      await refreshSync();
+    } catch (e) {
+      console.warn('[Header] Falha ao sincronizar conexões:', e);
+    }
     await Promise.all([
       loadAccounts({ force: true }),
       loadTransactions({ force: true }),

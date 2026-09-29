@@ -74,12 +74,18 @@ export function Dashboard() {
   const [pluggyCategories, setPluggyCategories] = useState([]);
   const [showAllInsights, setShowAllInsights] = useState(false);
 
-  const isRefreshing = accLoading || txLoading || invLoading;
+  const syncRefreshing = useSyncStore((s) => s.refreshing);
+  const isRefreshing = accLoading || txLoading || invLoading || syncRefreshing;
   const lastUpdated = accAt || txAt;
 
   const handleRefresh = async () => {
     clearApiCache();
     const accountIds = useAccountStore.getState().accounts.map((a) => a.id);
+    try {
+      await useSyncStore.getState().refreshSync();
+    } catch (e) {
+      console.warn('[Dashboard] Falha ao sincronizar conexões:', e);
+    }
     await Promise.all([
       loadAccounts({ force: true }),
       loadTransactions({ force: true }),
