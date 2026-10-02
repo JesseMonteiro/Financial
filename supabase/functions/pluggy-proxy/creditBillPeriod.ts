@@ -456,7 +456,7 @@ export function countSimilarInstallment(transactions, sample, n) {
     
     const tNum = Number(installmentNumberOf(t)) || 0;
     const tTot = Number(installmentTotalOf(t)) || 0;
-    const isMissingMeta = t.status === 'PENDING' && (!tNum || !tTot);
+    const isMissingMeta = !tNum || !tTot;
     if (!isMissingMeta) {
       if (tNum !== Number(n)) continue;
       if (tTot !== total) continue;
