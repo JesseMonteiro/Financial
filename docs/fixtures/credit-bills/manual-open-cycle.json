@@ -6,7 +6,7 @@
   "officialBills": [],
   "expected": {
     "summarizeCardOpenBill": {
-      "openDueKey": "2026-09",
+      "openDueKey": "2026-10",
       "openTotal": 350.0,
       "lastPaidKey": null
     }

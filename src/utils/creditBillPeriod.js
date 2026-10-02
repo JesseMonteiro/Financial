@@ -1086,6 +1086,7 @@ export function resolveOpenDueMonthKey({
   officialBills = [],
   forecastToDueOffset = 0,
   today = new Date(),
+  profile,
 } = {}) {
   const billMap = billMapFromList(officialBills);
   const todayIso = today.toISOString().slice(0, 10);
@@ -1133,7 +1134,7 @@ export function resolveOpenDueMonthKey({
       const total = installmentTotalOf(t);
       return !(Number(total) > 1) || Number(num) === 1;
     });
-    if (laterHasNewPurchase) {
+    if (laterHasNewPurchase && (profile?.slideProjectionToOpen || forecastToDueOffset !== 0)) {
       const openFromFc = ymAdd(laterFc, forecastToDueOffset);
       if (
         openFromFc &&
@@ -1255,6 +1256,7 @@ export function buildCreditCardBills({
       officialBills: acctBills,
       forecastToDueOffset: offset,
       today,
+      profile: profileByAccount[accountId],
     });
     openKey = ensureOpenNotSettled(openKey, acctBills, settleOpts);
     openByAccount[accountId] = openKey;
