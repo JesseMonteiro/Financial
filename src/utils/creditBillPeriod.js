@@ -589,7 +589,7 @@ export function resolveOfficialBillTotal(official, cycleItems = [], {
 } = {}) {
   const officialAmt = Number(official?.totalAmount) || 0;
   const cycleSum = sumCycleCharges(cycleItems, {
-    includeProjected: true,
+    includeProjected: includeProjectedInOfficialTotal,
     chargeSumMode,
   });
   if (ignoreUnbackedOfficial && cycleSum <= 0.05) return 0;
