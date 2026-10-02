@@ -453,8 +453,15 @@ export function countSimilarInstallment(transactions, sample, n) {
   for (const t of transactions) {
     if (isBillPayment(t)) continue;
     if (acct && t.accountId && t.accountId !== acct) continue;
-    if (Number(installmentNumberOf(t)) !== Number(n)) continue;
-    if (Number(installmentTotalOf(t)) !== total) continue;
+    
+    const tNum = Number(installmentNumberOf(t)) || 0;
+    const tTot = Number(installmentTotalOf(t)) || 0;
+    const isMissingMeta = t.status === 'PENDING' && (!tNum || !tTot);
+    if (!isMissingMeta) {
+      if (tNum !== Number(n)) continue;
+      if (tTot !== total) continue;
+    }
+
     const tKey = installmentSeriesKey(t);
     if (sampleKey && tKey && sampleKey === tKey) continue;
     const desc = normalizeInstallmentDesc(t.description);
