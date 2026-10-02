@@ -466,8 +466,9 @@ export function countSimilarInstallment(transactions, sample, n) {
     if (sampleKey && tKey && sampleKey === tKey) continue;
     const desc = normalizeInstallmentDesc(t.description);
     const prefixOk =
-      prefix.length >= 8 &&
-      (desc.startsWith(prefix) || sampleDesc.startsWith(desc.slice(0, 14)));
+      desc === sampleDesc ||
+      (prefix.length >= 8 &&
+        (desc.startsWith(prefix) || sampleDesc.startsWith(desc.slice(0, 14))));
     if (!prefixOk) continue;
     const amt = Math.abs(txBillingAmount(t));
     if (!(amt > 0 && Math.abs(amt - sampleAmt) <= tol)) continue;
