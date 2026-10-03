@@ -28,9 +28,7 @@ import { formatCurrency } from '../utils/formatters';
 import {
   allTranslations,
   translateCategory,
-  resolveBudgetCategoryKey,
   canonicalBudgetCategory,
-  isSubcategory,
   getParentCategory,
   matchesBudgetCategory,
   CATEGORY_HIERARCHY,
@@ -53,6 +51,7 @@ import {
   BUDGET_PERIOD_LABELS,
   BUDGET_PERIOD_UNIT,
   BUDGET_PERIODS,
+  budgetIndexKeys,
   mergeBudgetRows,
   periodProgressLabel,
 } from '../utils/budgetPeriod';
@@ -214,13 +213,11 @@ export function Budget() {
       if (txCalendarMonth !== selectedMonth) return;
 
       const raw = String(tx.category || '');
-      const baseKey = resolveBudgetCategoryKey(raw);
+      const indexKeys = budgetIndexKeys(raw);
+      const baseKey = indexKeys[0];
       if (!baseKey) return;
-      map[baseKey] = (map[baseKey] || 0) + signed;
-
-      const canonicalSub = canonicalBudgetCategory(raw);
-      if (isSubcategory(canonicalSub)) {
-        map[canonicalSub] = (map[canonicalSub] || 0) + signed;
+      for (const key of indexKeys) {
+        map[key] = (map[key] || 0) + signed;
       }
 
       const subLabel = translateCategory(raw);
@@ -247,9 +244,9 @@ export function Budget() {
       const txCalendarMonth = String(tx.date || '').slice(0, 7);
       if (txCalendarMonth !== selectedMonth) return;
       const raw = String(tx.category || '');
-      const baseKey = resolveBudgetCategoryKey(raw);
+      const indexKeys = budgetIndexKeys(raw);
+      const baseKey = indexKeys[0];
       if (!baseKey) return;
-      if (!map[baseKey]) map[baseKey] = [];
       const account = accounts.find(a => a.id === tx.accountId);
       const subLabel = translateCategory(raw);
       const canonicalSub = canonicalBudgetCategory(raw);
@@ -262,12 +259,11 @@ export function Budget() {
         accountName: account?.name || 'Conta',
         subCategoryLabel: subLabel,
       };
-      map[baseKey].push(item);
-      if (isSubcategory(canonicalSub)) {
-        if (!map[canonicalSub]) map[canonicalSub] = [];
-        map[canonicalSub].push(item);
+      for (const key of indexKeys) {
+        if (!map[key]) map[key] = [];
+        map[key].push(item);
       }
-      if (subLabel && subLabel !== baseKey && subLabel !== canonicalSub) {
+      if (subLabel && subLabel !== baseKey && subLabel !== canonicalSub && !indexKeys.includes(subLabel)) {
         if (!map[subLabel]) map[subLabel] = [];
         map[subLabel].push(item);
       }
@@ -280,9 +276,9 @@ export function Budget() {
       if (!String(p.purchasedAt || '').startsWith(selectedMonth)) return;
       const benefit = benefitsById[p.benefitId];
       const rawCategory = p.category || defaultMealCategoryForKind(benefit?.kind);
-      const baseKey = resolveBudgetCategoryKey(rawCategory);
+      const indexKeys = budgetIndexKeys(rawCategory);
+      const baseKey = indexKeys[0];
       if (!baseKey) return;
-      if (!map[baseKey]) map[baseKey] = [];
       const subLabel = translateCategory(rawCategory);
       const canonicalSub = canonicalBudgetCategory(rawCategory);
       const item = {
@@ -294,12 +290,11 @@ export function Budget() {
         accountName: benefit?.label || (benefit?.kind === 'VR' ? 'VR' : 'VA'),
         subCategoryLabel: subLabel,
       };
-      map[baseKey].push(item);
-      if (isSubcategory(canonicalSub)) {
-        if (!map[canonicalSub]) map[canonicalSub] = [];
-        map[canonicalSub].push(item);
+      for (const key of indexKeys) {
+        if (!map[key]) map[key] = [];
+        map[key].push(item);
       }
-      if (subLabel && subLabel !== baseKey && subLabel !== canonicalSub) {
+      if (subLabel && subLabel !== baseKey && subLabel !== canonicalSub && !indexKeys.includes(subLabel)) {
         if (!map[subLabel]) map[subLabel] = [];
         map[subLabel].push(item);
       }
@@ -317,12 +312,11 @@ export function Budget() {
     const sub = {};
     Object.entries(rawMealMap).forEach(([cat, amount]) => {
       const amt = Number(amount || 0);
-      const baseKey = resolveBudgetCategoryKey(cat);
-      map[baseKey] = (map[baseKey] || 0) + amt;
-
-      const canonicalSub = canonicalBudgetCategory(cat);
-      if (isSubcategory(canonicalSub)) {
-        map[canonicalSub] = (map[canonicalSub] || 0) + amt;
+      const indexKeys = budgetIndexKeys(cat);
+      const baseKey = indexKeys[0];
+      if (!baseKey) return;
+      for (const key of indexKeys) {
+        map[key] = (map[key] || 0) + amt;
       }
 
       const subLabel = translateCategory(cat);

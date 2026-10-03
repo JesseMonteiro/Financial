@@ -502,6 +502,21 @@ public enum BudgetCategoryCatalog {
         return subCategoryToParent[canonical] != nil
     }
 
+    /// Buckets that should receive one purchase.
+    /// Always the level-1 key. Also the subcategory key when it names a different bucket.
+    /// Groceries is both a base key and a child of Food and drinks; indexing both
+    /// would list and total the same purchase twice.
+    public static func budgetIndexKeys(_ raw: String?) -> [String] {
+        let baseKey = resolveBudgetCategoryKey(raw)
+        guard !baseKey.isEmpty else { return [] }
+        var keys = [baseKey]
+        let canonicalSub = canonicalBudgetCategoryKey(raw)
+        if isSubcategory(canonicalSub), canonicalSub != baseKey {
+            keys.append(canonicalSub)
+        }
+        return keys
+    }
+
     /// Returns the Level 1 Parent Category Key for a subcategory (e.g. "Groceries" -> "Food and drinks").
     public static func parentBaseKey(forSubcategory keyOrLabel: String?) -> String? {
         guard let keyOrLabel, !keyOrLabel.isEmpty else { return nil }

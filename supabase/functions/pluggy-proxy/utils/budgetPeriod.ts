@@ -489,6 +489,23 @@ export function isSubcategory(keyOrLabel: string | null | undefined): boolean {
   return Boolean(SUBCATEGORY_TO_PARENT[canonical]);
 }
 
+/**
+ * Buckets that should receive one purchase.
+ * Always the level-1 key. Also the subcategory key when it names a different bucket.
+ * Groceries is both a base key and a child of Food and drinks; indexing both
+ * would list and total the same purchase twice.
+ */
+export function budgetIndexKeys(rawCategory: string | null | undefined): string[] {
+  const baseKey = resolveBudgetCategoryKey(rawCategory);
+  if (!baseKey) return [];
+  const keys = [baseKey];
+  const canonicalSub = canonicalBudgetCategory(rawCategory);
+  if (isSubcategory(canonicalSub) && canonicalSub !== baseKey) {
+    keys.push(canonicalSub);
+  }
+  return keys;
+}
+
 export function getParentCategoryKey(keyOrLabel: string | null | undefined): string | null {
   if (!keyOrLabel) return null;
   const canonical = canonicalBudgetCategory(keyOrLabel);

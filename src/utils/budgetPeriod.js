@@ -117,6 +117,23 @@ export function allowance(amount, period, ym, asOfDate) {
   return Number(((Number(amount) || 0) * startedPeriods(period, ym, asOfDate)).toFixed(2));
 }
 
+/**
+ * Buckets that should receive one purchase.
+ * Always the level-1 key. Also the subcategory key when it names a different bucket.
+ * Groceries is both a base key and a child of Food and drinks; indexing both
+ * would list and total the same purchase twice.
+ */
+export function budgetIndexKeys(rawCategory) {
+  const baseKey = resolveBudgetCategoryKey(rawCategory);
+  if (!baseKey) return [];
+  const keys = [baseKey];
+  const canonicalSub = canonicalBudgetCategory(rawCategory);
+  if (isSubcategory(canonicalSub) && canonicalSub !== baseKey) {
+    keys.push(canonicalSub);
+  }
+  return keys;
+}
+
 export function monthCap(amount, period, ym) {
   return Number(((Number(amount) || 0) * periodCount(period, ym)).toFixed(2));
 }

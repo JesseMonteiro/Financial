@@ -237,6 +237,24 @@ public final class BudgetViewModel {
         }
     }
 
+    /// Indexes one purchase under its level-1 key and, only when different, its subcategory key.
+    private static func append(
+        _ item: BudgetTransactionItem,
+        rawCategory: String?,
+        to map: inout [String: [BudgetTransactionItem]]
+    ) {
+        let indexKeys = BudgetCategoryCatalog.budgetIndexKeys(rawCategory)
+        guard let baseKey = indexKeys.first else { return }
+        let canonicalSub = BudgetCategoryCatalog.canonicalBudgetCategoryKey(rawCategory)
+        for key in indexKeys {
+            map[key, default: []].append(item)
+        }
+        if let subLabel = item.subCategoryLabel, !subLabel.isEmpty,
+           subLabel != baseKey, subLabel != canonicalSub, !indexKeys.contains(subLabel) {
+            map[subLabel, default: []].append(item)
+        }
+    }
+
     /// Builds the per-category transaction list shown when a budget row is expanded.
     ///
     /// Uses **calendar month** (purchase date) for filtering. Budget totals are also
@@ -313,9 +331,7 @@ public final class BudgetViewModel {
                 guard calendarMonth == selectedMonth.key else { continue }
                 guard tx.kind == .debit else { continue }
                 guard !Self.isBillPayment(tx.description) else { continue }
-                let baseKey = BudgetCategoryCatalog.resolveBudgetCategoryKey(tx.category)
                 let subLabel = BudgetCategoryCatalog.translateCategory(tx.category)
-                let canonicalSub = BudgetCategoryCatalog.canonicalBudgetCategoryKey(tx.category)
                 let accountName = accountsById[tx.accountId]?.name ?? "Conta"
                 let item = BudgetTransactionItem(
                     id: tx.id,
@@ -326,13 +342,7 @@ public final class BudgetViewModel {
                     accountName: accountName,
                     subCategoryLabel: subLabel
                 )
-                map[baseKey, default: []].append(item)
-                if BudgetCategoryCatalog.isSubcategory(canonicalSub) {
-                    map[canonicalSub, default: []].append(item)
-                }
-                if subLabel != baseKey {
-                    map[subLabel, default: []].append(item)
-                }
+                Self.append(item, rawCategory: tx.category, to: &map)
             }
         }
 
@@ -343,9 +353,7 @@ public final class BudgetViewModel {
                     let rawCategory = purchase.category.isEmpty
                         ? benefit.kind.defaultBudgetCategory
                         : purchase.category
-                    let baseKey = BudgetCategoryCatalog.resolveBudgetCategoryKey(rawCategory)
                     let subLabel = BudgetCategoryCatalog.translateCategory(rawCategory)
-                    let canonicalSub = BudgetCategoryCatalog.canonicalBudgetCategoryKey(rawCategory)
                     let description = purchase.description.isEmpty
                         ? (benefit.kind == .vr ? "VR — compra" : "VA — compra")
                         : purchase.description
@@ -361,13 +369,7 @@ public final class BudgetViewModel {
                         accountName: accountName,
                         subCategoryLabel: subLabel
                     )
-                    map[baseKey, default: []].append(item)
-                    if BudgetCategoryCatalog.isSubcategory(canonicalSub) {
-                        map[canonicalSub, default: []].append(item)
-                    }
-                    if subLabel != baseKey {
-                        map[subLabel, default: []].append(item)
-                    }
+                    Self.append(item, rawCategory: rawCategory, to: &map)
                 }
             }
         }

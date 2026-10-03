@@ -108,5 +108,20 @@ final class BudgetPeriodTests: XCTestCase {
         XCTAssertEqual(subLimit.parentCategoryLabel, "Alimentação")
         XCTAssertEqual(subLimit.displayLabel, "Supermercados")
     }
+
+    func testGroceriesIsIndexedOnce() {
+        XCTAssertEqual(BudgetCategoryCatalog.budgetIndexKeys("Groceries"), ["Groceries"])
+        XCTAssertEqual(BudgetCategoryCatalog.budgetIndexKeys("Supermercados"), ["Groceries"])
+        XCTAssertEqual(BudgetCategoryCatalog.budgetIndexKeys("Supermercado & Alimentação"), ["Groceries"])
+
+        XCTAssertEqual(
+            BudgetCategoryCatalog.budgetIndexKeys("Eating out"),
+            ["Food and drinks", "Eating out"]
+        )
+        XCTAssertEqual(
+            BudgetCategoryCatalog.budgetIndexKeys("Restaurantes & Bares"),
+            ["Food and drinks", "Eating out"]
+        )
+    }
 }
 

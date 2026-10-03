@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import {
   allowance,
   asOfForBudgetMonth,
+  budgetIndexKeys,
   mergeBudgetRows,
   monthCap,
   periodCount,
@@ -90,5 +91,40 @@ const resto = rows.find((r) => r.category === 'Eating out' || r.category === 'Re
 assert.ok(resto);
 assert.equal(resto.spentMeal, 45);
 assert.equal(resto.allowance, 280);
+
+assert.deepEqual(budgetIndexKeys('Groceries'), ['Groceries']);
+assert.deepEqual(budgetIndexKeys('Supermercados'), ['Groceries']);
+assert.deepEqual(budgetIndexKeys('Supermercado & Alimentação'), ['Groceries']);
+assert.deepEqual(budgetIndexKeys('Eating out'), ['Food and drinks', 'Eating out']);
+assert.deepEqual(budgetIndexKeys('Restaurantes & Bares'), ['Food and drinks', 'Eating out']);
+
+function spendByIndex(entries) {
+  const map = {};
+  const lists = {};
+  for (const entry of entries) {
+    for (const key of budgetIndexKeys(entry.category)) {
+      map[key] = (map[key] || 0) + entry.amount;
+      if (!lists[key]) lists[key] = [];
+      lists[key].push(entry.id);
+    }
+  }
+  return { map, lists };
+}
+
+const jesseGroceries = spendByIndex([
+  { id: 'jim', category: 'Groceries', amount: 34.5 },
+  { id: 'assai-card', category: 'Groceries', amount: 54.08 },
+  { id: 'assai-va', category: 'Supermercado & Alimentação', amount: 234 },
+]);
+assert.equal(Number(jesseGroceries.map.Groceries.toFixed(2)), 322.58);
+assert.deepEqual(jesseGroceries.lists.Groceries, ['jim', 'assai-card', 'assai-va']);
+assert.equal(jesseGroceries.map['Food and drinks'], undefined);
+
+const eatingOut = spendByIndex([
+  { id: 'lunch', category: 'Eating out', amount: 40 },
+]);
+assert.equal(eatingOut.map['Food and drinks'], 40);
+assert.equal(eatingOut.map['Eating out'], 40);
+assert.deepEqual(eatingOut.lists['Eating out'], ['lunch']);
 
 console.log('OK budget period + VA/VR mapping');

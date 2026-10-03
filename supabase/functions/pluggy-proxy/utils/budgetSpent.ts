@@ -11,10 +11,8 @@ import {
 import { translateCategory } from "./dashboardAnalytics.ts";
 import {
   asOfForBudgetMonth,
-  canonicalBudgetCategory,
-  isSubcategory,
+  budgetIndexKeys,
   mergeBudgetRows,
-  resolveBudgetCategoryKey,
   BASE_KEY_TO_LABEL,
   type BudgetInput,
   type BudgetTransactionRow,
@@ -72,12 +70,11 @@ export function spendingByCategoryForMonth(
     const txMonth = String(tx.date || "").slice(0, 7);
     if (txMonth !== ym) return;
     const raw = String(tx.category || "");
-    const baseKey = resolveBudgetCategoryKey(raw);
-    byKey[baseKey] = (byKey[baseKey] || 0) + signed;
-
-    const canonicalSub = canonicalBudgetCategory(raw);
-    if (isSubcategory(canonicalSub)) {
-      byKey[canonicalSub] = (byKey[canonicalSub] || 0) + signed;
+    const indexKeys = budgetIndexKeys(raw);
+    const baseKey = indexKeys[0];
+    if (!baseKey) return;
+    for (const key of indexKeys) {
+      byKey[key] = (byKey[key] || 0) + signed;
     }
 
     const subLabel = translateCategory(raw);
@@ -87,7 +84,6 @@ export function spendingByCategoryForMonth(
       subSpend[baseKey][subLabel] = (subSpend[baseKey][subLabel] || 0) + signed;
     }
 
-    if (!txsByKey[baseKey]) txsByKey[baseKey] = [];
     const acc = accountsById[String(tx.accountId || "")];
     const accountName = acc?.name || acc?.marketingName || "Conta";
     const item: BudgetTransactionRow = {
@@ -99,10 +95,9 @@ export function spendingByCategoryForMonth(
       accountName,
       subCategoryLabel: subLabel,
     };
-    txsByKey[baseKey].push(item);
-    if (isSubcategory(canonicalSub)) {
-      if (!txsByKey[canonicalSub]) txsByKey[canonicalSub] = [];
-      txsByKey[canonicalSub].push(item);
+    for (const key of indexKeys) {
+      if (!txsByKey[key]) txsByKey[key] = [];
+      txsByKey[key].push(item);
     }
   });
   return { byKey, subSpend, txsByKey };
@@ -136,11 +131,11 @@ export function buildBudgetRows(
 
   Object.entries(rawMealMap).forEach(([cat, amount]) => {
     const amt = Number(amount || 0);
-    const baseKey = resolveBudgetCategoryKey(cat);
-    spentMealMap[baseKey] = (spentMealMap[baseKey] || 0) + amt;
-    const canonicalSub = canonicalBudgetCategory(cat);
-    if (isSubcategory(canonicalSub)) {
-      spentMealMap[canonicalSub] = (spentMealMap[canonicalSub] || 0) + amt;
+    const indexKeys = budgetIndexKeys(cat);
+    const baseKey = indexKeys[0];
+    if (!baseKey) return;
+    for (const key of indexKeys) {
+      spentMealMap[key] = (spentMealMap[key] || 0) + amt;
     }
     const subLabel = translateCategory(cat);
     const baseLabel = BASE_KEY_TO_LABEL[baseKey] || baseKey;
@@ -156,9 +151,7 @@ export function buildBudgetRows(
     if (!pDate.slice(0, 7).startsWith(ym)) return;
     const benefit = benefitsById[String(p.benefitId || "")];
     const rawCategory = String(p.category || (benefit?.kind === "VR" ? "Restaurantes & Bares" : "Supermercado & Alimentação"));
-    const baseKey = resolveBudgetCategoryKey(rawCategory);
-    const canonicalSub = canonicalBudgetCategory(rawCategory);
-    if (!txsByKey[baseKey]) txsByKey[baseKey] = [];
+    const indexKeys = budgetIndexKeys(rawCategory);
     const subLabel = translateCategory(rawCategory);
     const accountName = benefit?.label || (benefit?.kind === "VR" ? "VR" : "VA");
     const item: BudgetTransactionRow = {
@@ -170,10 +163,9 @@ export function buildBudgetRows(
       accountName,
       subCategoryLabel: subLabel,
     };
-    txsByKey[baseKey].push(item);
-    if (isSubcategory(canonicalSub)) {
-      if (!txsByKey[canonicalSub]) txsByKey[canonicalSub] = [];
-      txsByKey[canonicalSub].push(item);
+    for (const key of indexKeys) {
+      if (!txsByKey[key]) txsByKey[key] = [];
+      txsByKey[key].push(item);
     }
   });
 
