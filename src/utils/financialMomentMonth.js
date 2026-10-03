@@ -2,6 +2,7 @@ import {
   buildCreditCardBills,
   isBillPayment,
   isBillSettled,
+  isClosedOfficialStatement,
   sumCycleCharges,
   resolveOfficialBillTotal,
   MONTHS_PT,
@@ -77,6 +78,7 @@ export function cardBillAmountForMonth({
       liftOfficialToCycleCharges: Boolean(profile.liftOfficialToCycleCharges),
       includeProjectedInOfficialTotal: profile.includeProjectedInOfficialTotal !== false,
       ignoreUnbackedOfficial: Boolean(openKey) && ym > openKey,
+      statementClosed: isClosedOfficialStatement(matchingBill),
     });
     // Future leftover official totals (Inter 50.67 with 0 txs) must not hide
     // pending/projected cycle charges for that due month.

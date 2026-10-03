@@ -30,6 +30,8 @@
 - Pluggy também pode **pular o meio da série** (ex.: Globoplay 4/12 e 7/12 sem 5–6). Preencher o buraco relativo à maior parcela conhecida e só nos ciclos ≥ aberto — caso validado (Lucas, set/2026): Globoplay 6/12, Samsung **21/24**, Vivoeasy **12/12**; CSV do app **R$ 521,74**.
 - **Não** aplicar `projectionAnchorDue` (slide para a aberta). Nubank não publica a fatura oficial até o fechamento — o slide joga na aberta parcelas já cobradas no ciclo pago (ex.: Rede Pharma 4/4 → MeuFlux **R$ 524,06** vs app **R$ 521,74**).
 - Não projetar `N/M` se já existir transação real com o mesmo `N/M`.
+- PENDING futuro pode vir com `purchaseDate` igual à data da própria parcela (`…T00:00:00.001Z`), não da compra original. `seriesPurchaseDate` volta N−1 meses; senão cada parcela vira uma série e a aberta ganha um 1/N fantasma por parcela (Lucas out/2026: 11× Vivo R$ 20 + Samsung 22/24 → **R$ 637,14** vs PDF **R$ 295,97**).
+- Fatura já fechada (`billClosingDate` ≤ hoje) usa o `totalAmount` oficial. Não somar projeções em cima — o PDF já as inclui.
 
 ## Armadilhas
 

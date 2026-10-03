@@ -5,6 +5,7 @@ import {
   buildCreditCardBills,
   isBillPayment,
   isBillSettled,
+  isClosedOfficialStatement,
   sumCycleCharges,
   resolveOfficialBillTotal,
   ymAdd,
@@ -97,6 +98,7 @@ export function cardBillAmountForMonth({
       liftOfficialToCycleCharges: Boolean(profile.liftOfficialToCycleCharges),
       includeProjectedInOfficialTotal: profile.includeProjectedInOfficialTotal !== false,
       ignoreUnbackedOfficial: Boolean(openKey) && ym > openKey,
+      statementClosed: isClosedOfficialStatement(matchingBill),
     });
     if (openKey && ym > openKey) {
       const cycleAmount = sumCycleCharges(scoped, {

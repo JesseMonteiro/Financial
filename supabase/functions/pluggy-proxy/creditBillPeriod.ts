@@ -241,6 +241,8 @@ export function installmentPurchaseDate(tx) {
   if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
   const utcDay = raw.slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(utcDay)) return '';
+  // Midnight UTC is how Pluggy sends a calendar date, not a 21:00 BRT purchase.
+  if (/T00:00:00(?:\.0+)?Z$/.test(raw)) return utcDay;
   const hour = Number(raw.slice(11, 13));
   // America/Sao_Paulo is UTC−3 year-round. 03:00–23:59 UTC stay on that calendar day.
   // Avoid Intl here: this runs per transaction inside the edge worker.
@@ -248,6 +250,28 @@ export function installmentPurchaseDate(tx) {
   const ms = Date.parse(raw);
   if (Number.isNaN(ms)) return utcDay;
   return new Date(ms - 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
+/**
+ * Purchase day used in the series key.
+ * Nubank stamps each future PENDING parcel with purchaseDate ≈ that parcel's
+ * own date (`…T00:00:00.001Z`). Treating that as the original purchase splits
+ * one 12× plan into 12 series, and each series projects a phantom 1/N onto
+ * the open bill (Lucas out/2026: 11× Vivo R$ 20 + Samsung). When installment
+ * N>1 and the purchase day is the posting day, walk back N−1 months.
+ */
+export function seriesPurchaseDate(tx) {
+  const pd = installmentPurchaseDate(tx);
+  if (!pd) return '';
+  const n = Number(installmentNumberOf(tx)) || 0;
+  const posted = String(tx?.date || '').slice(0, 10);
+  if (n > 1 && /^\d{4}-\d{2}-\d{2}$/.test(posted)) {
+    const gapDays = Math.round(
+      (Date.parse(`${posted}T00:00:00Z`) - Date.parse(`${pd}T00:00:00Z`)) / 86400000,
+    );
+    if (Math.abs(gapDays) <= 1) return String(shiftIsoMonths(posted, -(n - 1)) || '').slice(0, 10);
+  }
+  return pd;
 }
 
 export function installmentSeriesKey(tx) {
@@ -261,7 +285,7 @@ export function installmentSeriesKey(tx) {
   // Inter (and similar) omit purchaseId but send purchaseDate. Overlapping
   // same-merchant same-amount buys (Lucas Nuuvem 16,66 6×) share one key
   // without it, so only one parcel lands on the open bill.
-  const purchased = installmentPurchaseDate(tx);
+  const purchased = seriesPurchaseDate(tx);
   const pdPart = purchased ? `|pd:${purchased}` : '';
   return `${acct}|${normalizeInstallmentDesc(tx.description)}|${total}|${amt}${pdPart}`;
 }
@@ -438,7 +462,7 @@ export function hasSimilarInstallment(transactions, sample, n) {
  * Count cross-purchase / truncated-desc rows that look like installment n of sample.
  * Same series key is excluded (use countInstallmentNumber).
  */
-export function countSimilarInstallment(transactions, sample, n) {
+export function countSimilarInstallment(transactions, sample, n, { allowMissingMeta = true } = {}) {
   const total = Number(installmentTotalOf(sample));
   if (!total || !n) return 0;
   const sampleAmt = Math.abs(txBillingAmount(sample));
@@ -456,10 +480,17 @@ export function countSimilarInstallment(transactions, sample, n) {
     
     const tNum = Number(installmentNumberOf(t)) || 0;
     const tTot = Number(installmentTotalOf(t)) || 0;
-    const isMissingMeta = !tNum || !tTot;
+    const isMissingMeta = allowMissingMeta && (!tNum || !tTot);
     if (!isMissingMeta) {
       if (tNum !== Number(n)) continue;
       if (tTot !== total) continue;
+    } else if (installmentPurchaseDate(sample)) {
+      // A row that lost N/M can only stand in for this plan when it carries
+      // the same purchase day. Otherwise every ~R$ 121 Amazon purchase blocks
+      // or duplicates the real 9/21 (Lucas out/2026).
+      const pdS = installmentPurchaseDate(sample);
+      const pdT = installmentPurchaseDate(t);
+      if (pdS !== pdT) continue;
     }
 
     const tKey = installmentSeriesKey(t);
@@ -570,6 +601,24 @@ export function sumProjectedCharges(items = [], { chargeSumMode = 'signed_net' }
 }
 
 /**
+ * True when the bank has already closed this statement.
+ * A closed `totalAmount` is the PDF. Projected parcels that Pluggy never sent
+ * as transactions are already inside that number — adding them again is how
+ * Amazon out/2026 became R$ 4.395,92 against a fatura of R$ 3.119,34, and
+ * Nubank R$ 637,14 against R$ 295,97.
+ */
+export function isClosedOfficialStatement(official, today = new Date()) {
+  const close = official?.billClosingDate || official?.bill_closing_date;
+  if (!close) return false;
+  const closeIso = String(close).slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(closeIso)) return false;
+  const todayIso = today instanceof Date
+    ? today.toISOString().slice(0, 10)
+    : String(today).slice(0, 10);
+  return closeIso <= todayIso;
+}
+
+/**
  * Total for a due month that already has an official Pluggy bill.
  * Starts from official `totalAmount` + app-projected parcels in this bucket
  * (Amazon/Bradesco drafts omit installments). Inter already publishes future
@@ -580,14 +629,23 @@ export function sumProjectedCharges(items = [], { chargeSumMode = 'signed_net' }
  * POSTED/PENDING txs already match the bank PDF.
  * `ignoreUnbackedOfficial` drops leftover future `totalAmount` when the cycle
  * has no posted/pending/projected charges (Jesse Inter Nov/2026: 50.67, 0 txs).
+ * `statementClosed` trusts the bank total: never add projections, and lift
+ * only when non-projected charges themselves exceed `totalAmount`.
  */
 export function resolveOfficialBillTotal(official, cycleItems = [], {
   chargeSumMode = 'signed_net',
   liftOfficialToCycleCharges = false,
   includeProjectedInOfficialTotal = true,
   ignoreUnbackedOfficial = false,
+  statementClosed = false,
 } = {}) {
   const officialAmt = Number(official?.totalAmount) || 0;
+  if (statementClosed) {
+    const realSum = sumCycleCharges(cycleItems, { includeProjected: false, chargeSumMode });
+    if (ignoreUnbackedOfficial && realSum <= 0.05) return 0;
+    if (liftOfficialToCycleCharges && realSum > officialAmt + 0.05) return realSum;
+    return officialAmt;
+  }
   const cycleSum = sumCycleCharges(cycleItems, {
     includeProjected: includeProjectedInOfficialTotal,
     chargeSumMode,
@@ -641,6 +699,10 @@ export function installmentSeriesAreAmountDriftTwins(a, b) {
   ) {
     return false;
   }
+  // Opening parcel often drifts (121,50 vs 121,42) and is the only row on that
+  // amount key, while later parcels share the other key. Same purchase day
+  // means it is that plan's parcela 1, not a second buy.
+  if (pdA && pdB && pdA === pdB && Math.min(a.maxNum, b.maxNum) <= 1) return true;
   return ahead.maxNum - behind.maxNum <= 2;
 }
 
@@ -1220,6 +1282,54 @@ function offsetForAccount(accountId, transactions, officialBills, cache, creditC
   return offset;
 }
 
+/**
+ * Pluggy sometimes posts the same parcel twice under two descriptions
+ * (Lucas Inter out/2026: "parcela shopping inter" and "cp parc shopping inter",
+ * both 7/10 R$ 159,70 on 2026-09-09). Same card, purchase, posting day, N/M
+ * and amount is one charge. Keep the description that looks like a merchant.
+ */
+export function dedupeMirrorParcels(transactions = []) {
+  const kept = [];
+  const indexByKey = new Map();
+  for (const t of transactions) {
+    const n = Number(installmentNumberOf(t)) || 0;
+    const total = Number(installmentTotalOf(t)) || 0;
+    if (!n || !total || isBillPayment(t) || t?.isProjected) {
+      kept.push(t);
+      continue;
+    }
+    const meta = t.creditCardMetadata || {};
+    const day = String(t.date || '').slice(0, 10);
+    const pd = seriesPurchaseDate(t);
+    const amt = Math.round(Math.abs(txBillingAmount(t)) * 100);
+    const key = [
+      t.accountId || '',
+      meta.cardNumber || '',
+      pd,
+      day,
+      n,
+      total,
+      amt,
+    ].join('|');
+    const prevIdx = indexByKey.get(key);
+    if (prevIdx == null) {
+      indexByKey.set(key, kept.length);
+      kept.push(t);
+      continue;
+    }
+    if (merchantDescScore(t) > merchantDescScore(kept[prevIdx])) {
+      kept[prevIdx] = t;
+    }
+  }
+  return kept;
+}
+
+function merchantDescScore(tx) {
+  const desc = normalizeInstallmentDesc(tx?.description);
+  if (!desc) return 0;
+  return desc.length - (desc.startsWith('PARCELA ') ? 30 : 0);
+}
+
 export function buildCreditCardBills({
   transactions = [],
   officialBills = [],
@@ -1227,6 +1337,7 @@ export function buildCreditCardBills({
   selectedCardId = 'all',
   today = new Date(),
 } = {}) {
+  transactions = dedupeMirrorParcels(transactions);
   const billMap = billMapFromList(officialBills);
   const offsetCache = {};
   const globalOffset = inferForecastToDueOffset(transactions, officialBills);
@@ -1510,12 +1621,9 @@ export function buildCreditCardBills({
       } else {
         const prevDue = ymAdd(futureDue, -1);
         if (prevDue && prevDue !== 'Outros' && map[prevDue]) {
-          sources = countPresentInstallments(
-            map[prevDue].items,
-            sample,
-            seriesKey,
-            n - 1,
-          );
+          sources =
+            (seriesKey ? countInstallmentNumber(map[prevDue].items, seriesKey, n - 1) : 0) +
+            countSimilarInstallment(map[prevDue].items, sample, n - 1, { allowMissingMeta: false });
         }
         // Settled months / antecipações leave no N−1 on prev due (DUO Gourmet,
         // Shopping Inter). Fall back to one slot from the series frontier.
@@ -1615,6 +1723,7 @@ export function buildCreditCardBills({
           liftOfficialToCycleCharges: Boolean(profile?.liftOfficialToCycleCharges),
           includeProjectedInOfficialTotal: profile?.includeProjectedInOfficialTotal !== false,
           ignoreUnbackedOfficial: dueYm > cardOpenKey,
+          statementClosed: isClosedOfficialStatement(official, today),
         });
         hasOfficial = true;
         dueDate = String(official.dueDate).slice(0, 10);
