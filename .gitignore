@@ -14,6 +14,7 @@ node_modules
 dist
 dist-ssr
 .build/
+publish/
 
 # Environment variables & secrets (CRITICAL FOR SECURITY)
 .env

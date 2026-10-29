@@ -1,0 +1,11 @@
+name = "meuflux"
+account_id = "684276a3ba5292bf08aa53f2d1efc3c5"
+main = "worker/index.js"
+compatibility_date = "2026-10-29"
+workers_dev = true
+
+[assets]
+directory = "./publish"
+binding = "ASSETS"
+html_handling = "auto-trailing-slash"
+not_found_handling = "none"
