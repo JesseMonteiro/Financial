@@ -28,6 +28,7 @@ public final class AccountsViewModel {
     public var statusIsError = false
     public private(set) var accounts: [Account] = []
     public private(set) var isSyncing = false
+    public private(set) var isActionInProgress = false
 
     public var renameTarget: Account?
     public var renameText = ""
@@ -96,6 +97,7 @@ public final class AccountsViewModel {
     }
 
     public func sync() async {
+        guard !isSyncing && !isActionInProgress else { return }
         isSyncing = true
         statusMessage = "Atualizando saldos…"
         statusIsError = false
@@ -116,9 +118,12 @@ public final class AccountsViewModel {
     }
 
     public func saveRename() async {
+        guard !isActionInProgress else { return }
         guard let repository, let account = renameTarget else { return }
         let name = renameText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else { return }
+        isActionInProgress = true
+        defer { isActionInProgress = false }
         do {
             try await repository.renameAccount(id: account.id, name: name)
             renameTarget = nil
@@ -206,7 +211,10 @@ public final class AccountsViewModel {
     }
 
     public func deleteManual(_ account: Account) async {
+        guard !isActionInProgress else { return }
         guard let repository, account.isManual else { return }
+        isActionInProgress = true
+        defer { isActionInProgress = false }
         do {
             try await repository.deleteManualAccount(id: account.id)
             pendingDelete = nil

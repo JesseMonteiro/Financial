@@ -39,6 +39,13 @@ public struct GoalsView: View {
             }
         }
         .animation(reduceMotion ? nil : MotionTokens.stateTransition, value: viewModel.state.stage)
+        .overlay {
+            if viewModel.isActionInProgress {
+                ActionLoadingOverlay(message: "Processando...")
+                    .transition(.opacity)
+                    .animation(.easeInOut(duration: MotionTokens.normal), value: viewModel.isActionInProgress)
+            }
+        }
         .meuFluxPageTitle("Metas")
         .refreshable { await viewModel.load(force: true) }
         .task { await viewModel.load() }
@@ -67,6 +74,7 @@ public struct GoalsView: View {
                                 showEditor = false
                             }
                         }
+                        .disabled(viewModel.isActionInProgress)
                     }
                 }
             }

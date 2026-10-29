@@ -53,6 +53,13 @@ public struct AccountsView: View {
             }
             .animation(reduceMotion ? nil : MotionTokens.stateTransition, value: viewModel.state.stage)
         }
+        .overlay {
+            if viewModel.isSyncing || viewModel.isActionInProgress {
+                ActionLoadingOverlay(message: viewModel.isSyncing ? "Sincronizando contas..." : "Processando...")
+                    .transition(.opacity)
+                    .animation(.easeInOut(duration: MotionTokens.normal), value: viewModel.isSyncing || viewModel.isActionInProgress)
+            }
+        }
         .meuFluxPageTitle("Contas & Saldos")
         .refreshable { await viewModel.load(force: true) }
         .task { await viewModel.load() }

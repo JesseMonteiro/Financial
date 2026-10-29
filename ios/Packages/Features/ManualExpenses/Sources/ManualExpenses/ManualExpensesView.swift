@@ -49,6 +49,13 @@ public struct ManualExpensesView: View {
             }
             .animation(MotionTokens.stateTransition, value: viewModel.state.stage)
         }
+        .overlay {
+            if viewModel.isActionInProgress {
+                ActionLoadingOverlay(message: "Processando...")
+                    .transition(.opacity)
+                    .animation(.easeInOut(duration: MotionTokens.normal), value: viewModel.isActionInProgress)
+            }
+        }
         .meuFluxPageTitle("Despesas Manuais")
         .refreshable { await viewModel.load(force: true) }
         .task { await viewModel.load() }
@@ -69,6 +76,7 @@ public struct ManualExpensesView: View {
         .sheet(item: $selectedDetail) { item in
             LineItemDetailSheet(
                 item: item,
+                isBusy: viewModel.isActionInProgress,
                 categoryOptions: LineItemCategoryOption.manualOptions(viewModel.purchaseCategories),
                 onTogglePaid: {
                     guard let expense = viewModel.expense(id: item.sourceId) else { return }
@@ -430,6 +438,7 @@ public struct ManualExpensesView: View {
         .labelsHidden()
         .tint(MeuFluxColors.success)
         .accessibilityLabel(expense.isPaid ? "Marcado como pago" : "Marcar como pago")
+        .disabled(viewModel.isActionInProgress)
     }
 
     private func categoryBadge(_ category: String?) -> some View {

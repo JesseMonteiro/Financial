@@ -43,12 +43,20 @@ public struct AgendaView: View {
             }
         }
         .animation(MotionTokens.stateTransition, value: viewModel.state.stage)
+        .overlay {
+            if viewModel.isActionInProgress {
+                ActionLoadingOverlay(message: "Processando...")
+                    .transition(.opacity)
+                    .animation(.easeInOut(duration: MotionTokens.normal), value: viewModel.isActionInProgress)
+            }
+        }
         .meuFluxPageTitle("Agenda")
         .refreshable { await viewModel.load(force: true) }
         .task(id: viewModel.selectedMonth.key) { await viewModel.load() }
         .sheet(item: $selectedDetail) { item in
             LineItemDetailSheet(
                 item: item,
+                isBusy: viewModel.isActionInProgress,
                 onTogglePaid: {
                     if let agenda = viewModel.filtered.first(where: { $0.id == item.id })
                         ?? viewModel.items.first(where: { $0.id == item.id }) {

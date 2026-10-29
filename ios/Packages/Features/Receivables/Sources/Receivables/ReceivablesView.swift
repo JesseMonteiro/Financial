@@ -36,6 +36,13 @@ public struct ReceivablesView: View {
             }
             .animation(reduceMotion ? nil : MotionTokens.stateTransition, value: viewModel.state.stage)
         }
+        .overlay {
+            if viewModel.isActionInProgress {
+                ActionLoadingOverlay(message: "Processando...")
+                    .transition(.opacity)
+                    .animation(.easeInOut(duration: MotionTokens.normal), value: viewModel.isActionInProgress)
+            }
+        }
         .meuFluxPageTitle("Valores a Receber")
         .refreshable { await viewModel.load(force: true) }
         .task { await viewModel.load() }
@@ -56,6 +63,7 @@ public struct ReceivablesView: View {
         .sheet(item: $selectedDetail) { item in
             LineItemDetailSheet(
                 item: item,
+                isBusy: viewModel.isActionInProgress,
                 onTogglePaid: {
                     if let number = item.installmentNumber {
                         Task {
@@ -471,6 +479,7 @@ public struct ReceivablesView: View {
                 }
                 .font(.caption.weight(.semibold))
                 .buttonStyle(.bordered)
+                .disabled(viewModel.isActionInProgress)
             }
         }
         .padding(.horizontal, 12)

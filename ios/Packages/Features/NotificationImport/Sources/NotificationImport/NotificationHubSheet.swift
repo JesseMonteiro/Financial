@@ -92,6 +92,13 @@ public struct NotificationHubSheet: View {
                 await viewModel.load()
             }
         }
+        .overlay {
+            if viewModel.isActionInProgress {
+                ActionLoadingOverlay(message: viewModel.isDeletingAllIgnored ? "Excluindo notificações..." : "Processando...")
+                    .transition(.opacity)
+                    .animation(.easeInOut(duration: MotionTokens.normal), value: viewModel.isActionInProgress)
+            }
+        }
     }
     
     private var filterScrollView: some View {

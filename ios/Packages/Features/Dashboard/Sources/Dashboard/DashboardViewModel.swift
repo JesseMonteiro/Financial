@@ -400,6 +400,7 @@ public final class DashboardViewModel {
     public private(set) var state: FeatureLoadState<DashboardSnapshot> = .idle
     public private(set) var selectedMonth: YearMonth
     public var errorMessage: String?
+    public private(set) var isActionInProgress = false
 
     public private(set) var dailySpend: [DailySpendPoint] = []
     public private(set) var recentCreditPurchases: [DashboardRecentTransaction] = []
@@ -685,7 +686,10 @@ public final class DashboardViewModel {
     }
 
     public func changeCategory(id: String, option: LineItemCategoryOption) async {
+        guard !isActionInProgress else { return }
         guard let transactions else { return }
+        isActionInProgress = true
+        defer { isActionInProgress = false }
         do {
             try await transactions.updateCategory(id: id, categoryId: option.id)
             await load(force: true)

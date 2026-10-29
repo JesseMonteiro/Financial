@@ -46,6 +46,13 @@ public struct MealVouchersView: View {
             }
         }
         .animation(MotionTokens.stateTransition, value: viewModel.state.stage)
+        .overlay {
+            if viewModel.isActionInProgress {
+                ActionLoadingOverlay(message: "Processando...")
+                    .transition(.opacity)
+                    .animation(.easeInOut(duration: MotionTokens.normal), value: viewModel.isActionInProgress)
+            }
+        }
         .meuFluxPageTitle("VA / VR")
         .refreshable { await viewModel.load(force: true) }
         .task { await viewModel.load() }
@@ -186,6 +193,7 @@ public struct MealVouchersView: View {
                             showEditor = false
                         }
                     }
+                    .disabled(viewModel.isActionInProgress)
                 }
             }
         }
@@ -218,6 +226,7 @@ public struct MealVouchersView: View {
                             showPurchase = false
                         }
                     }
+                    .disabled(viewModel.isActionInProgress)
                 }
             }
         }

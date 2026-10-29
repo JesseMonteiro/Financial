@@ -11,6 +11,7 @@ public final class SettingsViewModel {
     public var errorMessage: String?
     public var lastInviteCode: String?
     public var telegramURL: URL?
+    public private(set) var isActionInProgress = false
 
     private let jointRepository: (any JointFinanceRepository)?
     private let settingsRepository: (any SettingsRepository)?
@@ -78,6 +79,9 @@ public final class SettingsViewModel {
     }
 
     public func linkTelegram() async {
+        guard !isActionInProgress else { return }
+        isActionInProgress = true
+        defer { isActionInProgress = false }
         guard let settingsRepository else {
             settings.telegramLinked = true
             return
@@ -85,20 +89,23 @@ public final class SettingsViewModel {
         do {
             let token = try await settingsRepository.createTelegramLinkToken()
             telegramURL = URL(string: "https://t.me/FinancialJesse_bot?start=\(token)")
-        settings.telegramLinked = true
+            settings.telegramLinked = true
         } catch {
             errorMessage = (error as? FinancialError)?.messagePT ?? error.localizedDescription
         }
     }
 
     public func disconnectTelegram() async {
+        guard !isActionInProgress else { return }
+        isActionInProgress = true
+        defer { isActionInProgress = false }
         guard let settingsRepository else {
             settings.telegramLinked = false
             return
         }
         do {
             try await settingsRepository.disconnectTelegram()
-        settings.telegramLinked = false
+            settings.telegramLinked = false
             telegramURL = nil
         } catch {
             errorMessage = (error as? FinancialError)?.messagePT ?? error.localizedDescription
@@ -106,10 +113,13 @@ public final class SettingsViewModel {
     }
 
     public func createJointInvite() async {
+        guard !isActionInProgress else { return }
         guard let jointRepository else {
             lastInviteCode = String((0..<6).map { _ in String(Int.random(in: 0...9)) }.joined())
             return
         }
+        isActionInProgress = true
+        defer { isActionInProgress = false }
         do {
             lastInviteCode = try await jointRepository.createInvite()
             errorMessage = nil
@@ -119,12 +129,15 @@ public final class SettingsViewModel {
     }
 
     public func acceptJointInvite(_ code: String) async {
+        guard !isActionInProgress else { return }
         guard code.count == 6 else { return }
         guard let jointRepository else {
             settings.hasJointLink = true
             settings.partnerName = "Parceiro"
             return
         }
+        isActionInProgress = true
+        defer { isActionInProgress = false }
         do {
             try await jointRepository.acceptInvite(token: code)
             await load(force: true)
@@ -134,11 +147,14 @@ public final class SettingsViewModel {
     }
 
     public func unlinkJoint() async {
+        guard !isActionInProgress else { return }
         guard let jointRepository else {
             settings.hasJointLink = false
             settings.partnerName = nil
             return
         }
+        isActionInProgress = true
+        defer { isActionInProgress = false }
         do {
             try await jointRepository.unlink()
             await load(force: true)

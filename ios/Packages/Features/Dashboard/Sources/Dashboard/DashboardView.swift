@@ -133,6 +133,7 @@ public struct DashboardView: View {
         .sheet(item: $selectedDetail) { item in
             LineItemDetailSheet(
                 item: item,
+                isBusy: viewModel.isActionInProgress,
                 categoryOptions: viewModel.categoryOptions,
                 onChangeCategory: { option in
                     Task {

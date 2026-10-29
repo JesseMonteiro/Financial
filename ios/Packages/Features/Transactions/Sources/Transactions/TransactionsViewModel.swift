@@ -17,6 +17,7 @@ public final class TransactionsViewModel {
     public var selectedCategory: String?
     public var errorMessage: String?
     public var csvURL: URL?
+    public private(set) var isActionInProgress = false
 
     private let transactionsRepository: (any TransactionsRepository)?
     private let accountsRepository: (any AccountsRepository)?
@@ -142,7 +143,10 @@ public final class TransactionsViewModel {
     }
 
     public func changeCategory(transactionId: String, option: LineItemCategoryOption) async {
+        guard !isActionInProgress else { return }
         guard let transactionsRepository else { return }
+        isActionInProgress = true
+        defer { isActionInProgress = false }
         do {
             try await transactionsRepository.updateCategory(id: transactionId, categoryId: option.id)
             if let index = transactions.firstIndex(where: { $0.id == transactionId }) {

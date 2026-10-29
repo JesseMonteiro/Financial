@@ -136,7 +136,7 @@ public struct NotificationImportService: NotificationImporting, Sendable {
         guard amount > 0 else {
             return .failed("Valor da transação inválido.")
         }
-        let cleanMerchant = merchant.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanMerchant = NotificationPurchaseParser.walletMerchantName(merchant)
         let displayMerchant = cleanMerchant.isEmpty ? "Compra no Apple Pay" : cleanMerchant
         let detectedSource = cardName.isEmpty ? NotificationImportSource.wallet : NotificationImportSource.matching(appName: cardName)
         let resolvedSource = (detectedSource == .generic) ? NotificationImportSource.wallet : detectedSource

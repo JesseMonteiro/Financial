@@ -31,6 +31,8 @@ public final class CreditCardsViewModel {
     public var parsedBill: ParsedBill?
     public var includedPurchaseIDs: Set<String> = []
     public var parseError: String?
+    public private(set) var isParsingPDF = false
+    public private(set) var isActionInProgress = false
 
     public init(
         repository: any CreditCardsRepository = StubCreditCardsRepository(),
@@ -224,7 +226,10 @@ public final class CreditCardsViewModel {
     public func retry() async { await load(force: true) }
 
     public func changeCategory(id: String, option: LineItemCategoryOption) async {
+        guard !isActionInProgress else { return }
         guard let transactions else { return }
+        isActionInProgress = true
+        defer { isActionInProgress = false }
         do {
             try await transactions.updateCategory(id: id, categoryId: option.id)
             await load(force: true)
@@ -253,9 +258,12 @@ public final class CreditCardsViewModel {
     }
 
     public func createReceivable(from line: CreditBillLine, person: String) async {
+        guard !isActionInProgress else { return }
         guard let receivables else { return }
         let name = person.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else { return }
+        isActionInProgress = true
+        defer { isActionInProgress = false }
         let due = InstantDate(from: Date())
         let item = Receivable(
             id: UUID().uuidString,
@@ -313,6 +321,7 @@ public final class CreditCardsViewModel {
     }
 
     public func addPurchase() async {
+        guard !isActionInProgress else { return }
         guard let manuals else {
             errorMessage = "Não é possível lançar compra neste ambiente."
             return
@@ -323,6 +332,8 @@ public final class CreditCardsViewModel {
             errorMessage = "Informe descrição e valor."
             return
         }
+        isActionInProgress = true
+        defer { isActionInProgress = false }
         let accountId = isAllCards ? cards.first?.id : selectedCardId
         let expense = ManualExpense(
             id: UUID().uuidString,
@@ -343,10 +354,13 @@ public final class CreditCardsViewModel {
     }
 
     public func parsePDF(data: Data, mimeType: String = "application/pdf") async {
+        guard !isParsingPDF && !isActionInProgress else { return }
         guard let parseBillUseCase else {
             parseError = "Leitura de PDF indisponível."
             return
         }
+        isParsingPDF = true
+        defer { isParsingPDF = false }
         parseError = nil
         do {
             let bill = try await parseBillUseCase.execute(base64: data.base64EncodedString(), mimeType: mimeType)
@@ -358,7 +372,10 @@ public final class CreditCardsViewModel {
     }
 
     public func confirmParsedPurchases() async {
+        guard !isActionInProgress else { return }
         guard let manuals, let parsedBill else { return }
+        isActionInProgress = true
+        defer { isActionInProgress = false }
         let accountId = isAllCards ? cards.first?.id : selectedCardId
         do {
             for purchase in parsedBill.purchases where includedPurchaseIDs.contains(purchase.id) {

@@ -50,6 +50,13 @@ public struct SettingsView: View {
             }
         }
         .animation(MotionTokens.stateTransition, value: viewModel.state.stage)
+        .overlay {
+            if viewModel.isActionInProgress {
+                ActionLoadingOverlay(message: "Processando...")
+                    .transition(.opacity)
+                    .animation(.easeInOut(duration: MotionTokens.normal), value: viewModel.isActionInProgress)
+            }
+        }
         .meuFluxPageTitle("Configurações")
         .task { await viewModel.load() }
         .confirmationDialog("Desvincular conta conjunta?", isPresented: $showUnlinkConfirm) {

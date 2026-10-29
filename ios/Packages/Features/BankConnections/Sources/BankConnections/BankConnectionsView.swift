@@ -42,6 +42,13 @@ public struct BankConnectionsView: View {
             }
         }
         .animation(MotionTokens.stateTransition, value: viewModel.state.stage)
+        .overlay {
+            if viewModel.isActionInProgress {
+                ActionLoadingOverlay(message: !viewModel.syncingIDs.isEmpty ? "Sincronizando conexão..." : "Processando...")
+                    .transition(.opacity)
+                    .animation(.easeInOut(duration: MotionTokens.normal), value: viewModel.isActionInProgress)
+            }
+        }
         .meuFluxPageTitle("Conexões Bancárias")
         .refreshable { await viewModel.load(force: true) }
         .task { await viewModel.load() }

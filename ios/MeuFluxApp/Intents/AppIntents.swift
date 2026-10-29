@@ -50,7 +50,7 @@ public struct SyncBanksIntent: AppIntent {
 struct ImportPurchaseFromNotificationIntent: AppIntent {
     static let title: LocalizedStringResource = "Importar compra da notificação"
     static let description = IntentDescription(
-        "Lê o texto de uma notificação de compra e lança no VA/VR ou em uma conta manual."
+        "Lê título, subtítulo e corpo em texto. Se o gatilho for a Transação da Carteira, use Importar transação da Carteira."
     )
     static let supportedModes: IntentModes = [.background, .foreground(.dynamic)]
 
@@ -99,7 +99,7 @@ struct ImportWalletTransactionIntent: AppIntent {
     // Title/description must not contain "Apple" (App Store Connect error 90626).
     static let title: LocalizedStringResource = "Importar transação da Carteira"
     static let description = IntentDescription(
-        "Lança uma compra a partir da variável Transação da Carteira no MeuFlux."
+        "Lança uma compra da Carteira. Passe Valor, Comerciante e Cartão ou Tíquete — não a Transação inteira."
     )
     static let supportedModes: IntentModes = [.background, .foreground(.dynamic)]
 

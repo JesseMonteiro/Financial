@@ -26,9 +26,13 @@ public enum NotificationPurchaseParser {
             return .ignored(reason: "Nenhum valor de compra encontrado.")
         }
 
-        let hasPurchaseSignal = containsPurchaseSignal(folded)
         var merchant = extractMerchant(from: combined, source: source)
+        if merchant == nil {
+            merchant = passNotificationMerchant(title: title, subtitle: subtitle, body: body, source: source)
+        }
         merchant = sanitizeMerchant(merchant)
+        let hasPurchaseSignal = containsPurchaseSignal(folded)
+            || (merchant != nil && isPassAmountLayout(subtitle: subtitle, body: body))
 
         var confidence = 0.4
         if hasPurchaseSignal { confidence += 0.3 }
@@ -121,6 +125,85 @@ public enum NotificationPurchaseParser {
         let integer = ns.substring(with: match.range(at: 1)).replacingOccurrences(of: ".", with: "").replacingOccurrences(of: ",", with: "")
         let fraction = ns.substring(with: match.range(at: 2))
         return Decimal(string: "\(integer).\(fraction)")
+    }
+
+    /// Carteira pass notifications look like "Assaí Atacadista. Cabedelo, PB".
+    /// The store name is the part before the city suffix.
+    public static func walletMerchantName(_ raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return trimmed }
+        return stripCitySuffix(trimmed)
+    }
+
+    /// Wallet shows the pass name, the store (often with city), and an amount on its own line.
+    private static func passNotificationMerchant(
+        title: String,
+        subtitle: String,
+        body: String,
+        source: NotificationImportSource
+    ) -> String? {
+        let acceptsPassLayout = source == .wallet || source.isMealBenefitSource
+        guard acceptsPassLayout else { return nil }
+        let subtitleTrimmed = subtitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        let bodyTrimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
+        let merchantLine: String
+        if isAmountOnly(bodyTrimmed), !subtitleTrimmed.isEmpty, !isAmountOnly(subtitleTrimmed) {
+            merchantLine = subtitleTrimmed
+        } else if isAmountOnly(subtitleTrimmed), !bodyTrimmed.isEmpty, !isAmountOnly(bodyTrimmed), extractAmount(from: bodyTrimmed) == nil {
+            merchantLine = bodyTrimmed
+        } else if subtitleTrimmed.isEmpty,
+                  bodyHasStandaloneAmount(bodyTrimmed),
+                  let fromBody = merchantLineInBody(bodyTrimmed, excluding: title) {
+            merchantLine = fromBody
+        } else {
+            return nil
+        }
+        let cleaned = stripCitySuffix(merchantLine)
+        return cleaned.isEmpty ? nil : cleaned
+    }
+
+    private static func isPassAmountLayout(subtitle: String, body: String) -> Bool {
+        let subtitleTrimmed = subtitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        let bodyTrimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
+        return (isAmountOnly(bodyTrimmed) && !subtitleTrimmed.isEmpty && !isAmountOnly(subtitleTrimmed))
+            || (isAmountOnly(subtitleTrimmed) && !bodyTrimmed.isEmpty && !isAmountOnly(bodyTrimmed))
+    }
+
+    private static func isAmountOnly(_ text: String) -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        return trimmed.range(
+            of: #"^R\$\s*\d{1,3}(?:\.\d{3})*,\d{2}$"#,
+            options: .regularExpression
+        ) != nil
+    }
+
+    private static func bodyHasStandaloneAmount(_ body: String) -> Bool {
+        body.split(whereSeparator: \.isNewline)
+            .contains { isAmountOnly(String($0)) }
+    }
+
+    private static func merchantLineInBody(_ body: String, excluding title: String) -> String? {
+        let titleFolded = title.notificationImportFolded
+        let lines = body
+            .split(whereSeparator: \.isNewline)
+            .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty && !isAmountOnly($0) }
+            .filter { $0.notificationImportFolded != titleFolded }
+        guard let line = lines.first(where: { $0.contains(".") }) ?? lines.last else { return nil }
+        return line
+    }
+
+    private static func stripCitySuffix(_ value: String) -> String {
+        guard let regex = try? NSRegularExpression(pattern: #"\.\s+[^.]{2,60},\s*[A-Za-z]{2}\s*$"#) else {
+            return value
+        }
+        let ns = value as NSString
+        let range = NSRange(location: 0, length: ns.length)
+        guard let match = regex.firstMatch(in: value, options: [], range: range), match.range.location > 0 else {
+            return value
+        }
+        return ns.substring(to: match.range.location).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     // MARK: - Merchant

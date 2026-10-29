@@ -12,6 +12,10 @@ public final class BankConnectionsViewModel {
     public var connectToken: String?
     public var isConnecting = false
     public var syncingIDs: Set<String> = []
+    public private(set) var isDeleting = false
+    public var isActionInProgress: Bool {
+        !syncingIDs.isEmpty || isConnecting || isDeleting
+    }
 
     private let repository: (any BankConnectionsRepository)?
     private var lastLoadedAt: Date?
@@ -77,6 +81,7 @@ public final class BankConnectionsViewModel {
     }
 
     public func sync(_ item: BankConnectionItem) async {
+        guard !isActionInProgress else { return }
         guard let repository else { return }
         syncingIDs.insert(item.id)
         defer { syncingIDs.remove(item.id) }
@@ -89,10 +94,13 @@ public final class BankConnectionsViewModel {
     }
 
     public func delete(_ item: BankConnectionItem) async {
+        guard !isActionInProgress else { return }
         guard let repository else { return }
+        isDeleting = true
+        defer { isDeleting = false }
         do {
             try await repository.deleteItem(id: item.id)
-        await load(force: true)
+            await load(force: true)
         } catch {
             errorMessage = (error as? FinancialError)?.messagePT ?? error.localizedDescription
         }

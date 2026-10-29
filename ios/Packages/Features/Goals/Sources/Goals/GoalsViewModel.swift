@@ -13,6 +13,7 @@ public final class GoalsViewModel {
     public var draftTarget = ""
     public var draftCurrent = ""
     public var draftDeadline = Date().addingTimeInterval(86_400 * 180)
+    public private(set) var isActionInProgress = false
 
     private let repository: (any GoalsRepository)?
     private var lastLoadedAt: Date?
@@ -52,6 +53,7 @@ public final class GoalsViewModel {
     public func retry() async { await load(force: true) }
 
     public func saveDraft() async {
+        guard !isActionInProgress else { return }
         guard let repository else { return }
         let name = draftName.trimmingCharacters(in: .whitespacesAndNewlines)
         let target = Decimal(string: draftTarget.replacingOccurrences(of: ",", with: ".")) ?? 0
@@ -59,6 +61,8 @@ public final class GoalsViewModel {
             errorMessage = "Informe nome e valor da meta."
             return
         }
+        isActionInProgress = true
+        defer { isActionInProgress = false }
         let current = Decimal(string: draftCurrent.replacingOccurrences(of: ",", with: ".")) ?? 0
         let goal = Goal(
             id: UUID().uuidString,
@@ -79,10 +83,13 @@ public final class GoalsViewModel {
     }
 
     public func delete(_ goal: Goal) async {
+        guard !isActionInProgress else { return }
         guard let repository else { return }
+        isActionInProgress = true
+        defer { isActionInProgress = false }
         do {
             try await repository.deleteGoal(id: goal.id)
-        await load(force: true)
+            await load(force: true)
         } catch {
             errorMessage = (error as? FinancialError)?.messagePT ?? error.localizedDescription
         }

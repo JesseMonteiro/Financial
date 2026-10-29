@@ -73,6 +73,13 @@ public struct JointFinanceView: View {
             }
             .animation(reduceMotion ? nil : MotionTokens.stateTransition, value: viewModel.state)
         }
+        .overlay {
+            if viewModel.isActionInProgress {
+                ActionLoadingOverlay(message: !viewModel.savingMemberIds.isEmpty ? "Salvando salário..." : "Processando...")
+                    .transition(.opacity)
+                    .animation(.easeInOut(duration: MotionTokens.normal), value: viewModel.isActionInProgress)
+            }
+        }
         .meuFluxPageTitle("Conta conjunta")
         .refreshable { await viewModel.load(force: true) }
         .task(id: viewModel.selectedMonth.key) { await viewModel.load() }
@@ -890,12 +897,22 @@ private struct JointPaidCheckbox: View {
         Button {
             onToggle(!checked)
         } label: {
-            Image(systemName: checked ? "checkmark.square.fill" : "square")
-                .foregroundStyle(checked ? MeuFluxColors.success : MeuFluxColors.textSecondary)
-                .font(.system(size: 18))
+            Group {
+                if busy {
+                    ProgressView()
+                        .progressViewStyle(.circular)
+                        .tint(MeuFluxColors.success)
+                        .scaleEffect(0.85)
+                } else {
+                    Image(systemName: checked ? "checkmark.square.fill" : "square")
+                        .foregroundStyle(checked ? MeuFluxColors.success : MeuFluxColors.textSecondary)
+                        .font(.system(size: 18))
+                }
+            }
+            .frame(width: 24, height: 24)
         }
         .disabled(busy)
-        .opacity(busy ? 0.6 : 1)
+        .accessibilityLabel(busy ? "Processando..." : (checked ? "Marcado como pago" : "Marcar como pago"))
     }
 }
 

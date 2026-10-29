@@ -18,6 +18,7 @@ public final class MealVouchersViewModel {
     public var draftOpening = ""
     public var draftShowInMoment = false
     public var editingBenefitId: String?
+    public private(set) var isActionInProgress = false
 
     public var purchaseBenefitId: String?
     public var draftPurchaseDescription = ""
@@ -85,12 +86,15 @@ public final class MealVouchersViewModel {
     }
 
     public func saveDraft() async {
+        guard !isActionInProgress else { return }
         guard let repository else { return }
         let monthly = Decimal(string: draftMonthly.replacingOccurrences(of: ",", with: ".")) ?? 0
         guard monthly > 0 else {
             errorMessage = "Informe o valor mensal do benefício."
             return
         }
+        isActionInProgress = true
+        defer { isActionInProgress = false }
         let opening = Decimal(string: draftOpening.replacingOccurrences(of: ",", with: ".")) ?? 0
         let day = min(31, max(1, Int(draftCreditDay) ?? 1))
         let benefit = MealBenefit(
@@ -113,7 +117,10 @@ public final class MealVouchersViewModel {
     }
 
     public func toggleShowInMoment(_ benefit: MealBenefit, on: Bool) async {
+        guard !isActionInProgress else { return }
         guard let repository else { return }
+        isActionInProgress = true
+        defer { isActionInProgress = false }
         var next = benefit
         next.showInMoment = on
         do {
@@ -125,7 +132,10 @@ public final class MealVouchersViewModel {
     }
 
     public func delete(_ benefit: MealBenefit) async {
+        guard !isActionInProgress else { return }
         guard let repository else { return }
+        isActionInProgress = true
+        defer { isActionInProgress = false }
         do {
             try await repository.deleteBenefit(id: benefit.id)
             await load(force: true)
@@ -143,12 +153,15 @@ public final class MealVouchersViewModel {
     }
 
     public func savePurchase() async {
+        guard !isActionInProgress else { return }
         guard let repository, let benefitId = purchaseBenefitId else { return }
         let amount = Decimal(string: draftPurchaseAmount.replacingOccurrences(of: ",", with: ".")) ?? 0
         guard amount > 0 else {
             errorMessage = "Informe o valor da compra."
             return
         }
+        isActionInProgress = true
+        defer { isActionInProgress = false }
         let purchase = MealBenefitPurchase(
             id: UUID().uuidString,
             benefitId: benefitId,
@@ -167,7 +180,10 @@ public final class MealVouchersViewModel {
     }
 
     public func deletePurchase(_ purchase: MealBenefitPurchase) async {
+        guard !isActionInProgress else { return }
         guard let repository else { return }
+        isActionInProgress = true
+        defer { isActionInProgress = false }
         do {
             try await repository.deletePurchase(id: purchase.id)
             await load(force: true)

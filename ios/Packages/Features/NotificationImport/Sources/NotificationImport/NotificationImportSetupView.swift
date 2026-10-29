@@ -158,7 +158,10 @@ public struct NotificationImportSetupView: View {
                         Text("• Campo Estabelecimento: toque nele, selecione Transação e escolha Comerciante.")
                             .font(.caption)
                             .foregroundStyle(MeuFluxColors.textSecondary)
-                        Text("• Campo Nome do Cartão: toque nele, selecione Transação e escolha Cartão.")
+                        Text("• Campo Nome do Cartão: toque nele, selecione Transação e escolha Cartão ou Tíquete.")
+                            .font(.caption)
+                            .foregroundStyle(MeuFluxColors.textSecondary)
+                        Text("Não solte a Transação inteira num campo de texto. O Atalhos mostra “não conseguiu converter de Transação para Texto”.")
                             .font(.caption)
                             .foregroundStyle(MeuFluxColors.textSecondary)
                     }
@@ -181,7 +184,7 @@ public struct NotificationImportSetupView: View {
                     numberedStep(3, "No campo “A notificação contém”, digite “compra” ou “R$”.")
                     numberedStep(4, "Marque Executar Imediatamente e avance.")
                     numberedStep(5, "Adicione a ação do MeuFlux: “Importar compra da notificação”.")
-                    numberedStep(6, "No campo Corpo, selecione a variável Texto da notificação da entrada do atalho.")
+                    numberedStep(6, "Título, Subtítulo e Corpo precisam ser texto da notificação. Se o gatilho for a Carteira ao aproximar o cartão, use “Importar transação da Carteira” no lugar desta ação.")
                 }
 
                 Button {

@@ -71,6 +71,13 @@ public struct CreditCardsView: View {
             }
             .animation(reduceMotion ? nil : MotionTokens.stateTransition, value: viewModel.state.stage)
         }
+        .overlay {
+            if viewModel.isParsingPDF || viewModel.isActionInProgress {
+                ActionLoadingOverlay(message: viewModel.isParsingPDF ? "Lendo fatura com IA..." : "Processando...")
+                    .transition(.opacity)
+                    .animation(.easeInOut(duration: MotionTokens.normal), value: viewModel.isParsingPDF || viewModel.isActionInProgress)
+            }
+        }
         .meuFluxPageTitle("Cartões de Crédito")
         .refreshable { await viewModel.load(force: true) }
         .task { await viewModel.load() }
@@ -172,6 +179,7 @@ public struct CreditCardsView: View {
             )
             LineItemDetailSheet(
                 item: detail,
+                isBusy: viewModel.isActionInProgress,
                 categoryOptions: viewModel.categoryOptions,
                 onCreateReceivable: {
                     receivablePerson = ""

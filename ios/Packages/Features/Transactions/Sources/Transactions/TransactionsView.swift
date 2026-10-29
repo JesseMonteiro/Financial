@@ -52,6 +52,13 @@ public struct TransactionsView: View {
             }
             .animation(reduceMotion ? nil : MotionTokens.stateTransition, value: viewModel.state.stage)
         }
+        .overlay {
+            if viewModel.isActionInProgress {
+                ActionLoadingOverlay(message: "Processando...")
+                    .transition(.opacity)
+                    .animation(.easeInOut(duration: MotionTokens.normal), value: viewModel.isActionInProgress)
+            }
+        }
         .meuFluxPageTitle("Transações")
         .searchable(text: $viewModel.searchText, prompt: "Buscar descrição ou categoria")
         .refreshable { await viewModel.load(force: true) }
@@ -112,6 +119,7 @@ public struct TransactionsView: View {
         .sheet(item: $selectedDetail) { item in
             LineItemDetailSheet(
                 item: item,
+                isBusy: viewModel.isActionInProgress,
                 categoryOptions: viewModel.categoryOptions,
                 onChangeCategory: { option in
                     Task {

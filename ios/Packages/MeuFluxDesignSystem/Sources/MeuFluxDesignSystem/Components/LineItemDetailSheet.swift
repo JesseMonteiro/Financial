@@ -70,11 +70,11 @@ public struct LineItemDetailSheet: View {
         .background(MeuFluxColors.bgPrimary)
         .overlay {
             if isBusy {
-                ProgressView()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(.ultraThinMaterial)
+                ActionLoadingOverlay(message: "Processando...")
+                    .transition(.opacity)
             }
         }
+        .interactiveDismissDisabled(isBusy)
         .confirmationDialog(
             "Excluir este lançamento?",
             isPresented: $confirmDelete,
@@ -170,6 +170,7 @@ public struct LineItemDetailSheet: View {
                 }
                 .pickerStyle(.menu)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .disabled(isBusy)
                 .onChange(of: selectedCategoryId) { _, newValue in
                     guard newValue != lastCommittedCategoryId,
                           let option = categoryOptions.first(where: { $0.id == newValue }) else { return }
@@ -195,22 +196,25 @@ public struct LineItemDetailSheet: View {
                     .buttonStyle(.borderedProminent)
                     .tint(item.kind == .receivable ? MeuFluxColors.success : MeuFluxColors.primary)
                     .frame(maxWidth: .infinity)
-                    .disabled(item.kind == .receivable && item.isPaid)
+                    .disabled(isBusy || (item.kind == .receivable && item.isPaid))
             }
             if item.capabilities.contains(.createReceivable), onCreateReceivable != nil {
                 Button("Criar valor a receber") { onCreateReceivable?() }
                     .buttonStyle(.bordered)
                     .frame(maxWidth: .infinity)
+                    .disabled(isBusy)
             }
             if item.capabilities.contains(.edit), onEdit != nil {
                 Button("Editar") { onEdit?() }
                     .buttonStyle(.bordered)
                     .frame(maxWidth: .infinity)
+                    .disabled(isBusy)
             }
             if item.capabilities.contains(.delete), onDelete != nil {
                 Button("Excluir", role: .destructive) { confirmDelete = true }
                     .buttonStyle(.bordered)
                     .frame(maxWidth: .infinity)
+                    .disabled(isBusy)
             }
         }
         .padding(.top, 4)

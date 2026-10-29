@@ -13,6 +13,7 @@ public final class CategoriesViewModel {
     public var draftColor = PurchaseCategoryCatalog.presetColors[0]
     public var draftIcon = CategoryIconCatalog.defaultIconId(for: .other)
     public var editingID: String?
+    public private(set) var isActionInProgress = false
 
     private let repository: (any PurchaseCategoriesRepository)?
     private var lastLoadedAt: Date?
@@ -83,12 +84,15 @@ public final class CategoriesViewModel {
     }
 
     public func saveDraft() async {
+        guard !isActionInProgress else { return }
         guard let repository else { return }
         let label = draftLabel.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !label.isEmpty else {
             errorMessage = "Informe o nome da categoria."
             return
         }
+        isActionInProgress = true
+        defer { isActionInProgress = false }
 
         let category: PurchaseCategory
         if let editingID, let existing = categories.first(where: { $0.id == editingID }) {
@@ -124,7 +128,10 @@ public final class CategoriesViewModel {
     }
 
     public func delete(_ category: PurchaseCategory) async {
+        guard !isActionInProgress else { return }
         guard let repository else { return }
+        isActionInProgress = true
+        defer { isActionInProgress = false }
         do {
             try await repository.deleteCategory(id: category.id)
             await load(force: true)

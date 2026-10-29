@@ -53,6 +53,13 @@ public struct BudgetView: View {
             }
         }
         .animation(reduceMotion ? nil : MotionTokens.stateTransition, value: viewModel.state.stage)
+        .overlay {
+            if viewModel.isActionInProgress {
+                ActionLoadingOverlay(message: "Processando...")
+                    .transition(.opacity)
+                    .animation(.easeInOut(duration: MotionTokens.normal), value: viewModel.isActionInProgress)
+            }
+        }
         .meuFluxPageTitle("Orçamento")
         .refreshable { await viewModel.load(force: true) }
         .task(id: viewModel.selectedMonth.key) { await viewModel.load() }
@@ -162,6 +169,7 @@ public struct BudgetView: View {
                             }
                         }
                     }
+                    .disabled(viewModel.isActionInProgress)
                 }
             }
         }

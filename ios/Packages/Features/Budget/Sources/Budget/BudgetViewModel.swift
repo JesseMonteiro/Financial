@@ -34,6 +34,7 @@ public final class BudgetViewModel {
     public private(set) var editingCategory: String?
     /// Expanded category for showing transactions
     public var expandedCategory: String?
+    public private(set) var isActionInProgress = false
 
     private let repository: (any BudgetRepository)?
     private let transactionsRepository: (any TransactionsRepository)?
@@ -679,6 +680,7 @@ public final class BudgetViewModel {
     public func retry() async { await load(force: true) }
 
     public func saveDraft() async {
+        guard !isActionInProgress else { return }
         guard let repository else { return }
         let rawCategory = (editingCategory ?? draftCategory)
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -687,6 +689,8 @@ public final class BudgetViewModel {
             errorMessage = "Informe categoria e valor da meta."
             return
         }
+        isActionInProgress = true
+        defer { isActionInProgress = false }
         let category = BudgetCategoryCatalog.canonicalBudgetCategoryKey(rawCategory)
         let isSub = BudgetCategoryCatalog.isSubcategory(category)
         let parentLabel = BudgetCategoryCatalog.parentLabel(forSubcategory: category)
@@ -716,6 +720,7 @@ public final class BudgetViewModel {
     }
 
     public func delete(_ limit: BudgetLimit) async {
+        guard !isActionInProgress else { return }
         guard limit.hasLimit else { return }
         guard let repository else { return }
         // Prefer UUID id from budget-screen; never DELETE with category label as path.
@@ -724,6 +729,8 @@ public final class BudgetViewModel {
             errorMessage = "Não foi possível excluir esta meta. Atualize a tela e tente de novo."
             return
         }
+        isActionInProgress = true
+        defer { isActionInProgress = false }
         do {
             try await repository.deleteLimit(id: id, category: limit.category)
             await load(force: true)

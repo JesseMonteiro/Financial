@@ -18,6 +18,10 @@ public final class NotificationHubViewModel {
     public private(set) var state: FeatureLoadState<[NotificationImportRecord]> = .idle
     public var selectedFilter: NotificationHubFilter = .all
     public private(set) var busyRecordId: String?
+    public private(set) var isDeletingAllIgnored = false
+    public var isActionInProgress: Bool {
+        busyRecordId != nil || isDeletingAllIgnored
+    }
     
     private let importer: any NotificationImporting
     
@@ -64,6 +68,7 @@ public final class NotificationHubViewModel {
     }
     
     public func undoImport(_ record: NotificationImportRecord) async {
+        guard !isActionInProgress else { return }
         busyRecordId = record.id
         defer { busyRecordId = nil }
         _ = await importer.undo(recordId: record.id)
@@ -71,6 +76,7 @@ public final class NotificationHubViewModel {
     }
 
     public func deleteRecord(_ record: NotificationImportRecord) async {
+        guard !isActionInProgress else { return }
         busyRecordId = record.id
         defer { busyRecordId = nil }
         _ = await importer.delete(recordId: record.id)
@@ -78,6 +84,7 @@ public final class NotificationHubViewModel {
     }
 
     public func ignoreRecord(_ record: NotificationImportRecord) async {
+        guard !isActionInProgress else { return }
         busyRecordId = record.id
         defer { busyRecordId = nil }
         _ = await importer.ignore(recordId: record.id)
@@ -85,6 +92,9 @@ public final class NotificationHubViewModel {
     }
 
     public func deleteAllIgnored() async {
+        guard !isActionInProgress else { return }
+        isDeletingAllIgnored = true
+        defer { isDeletingAllIgnored = false }
         let ignoredRecords = records.filter {
             $0.status == .ignored || $0.status == .skippedOpenFinance || $0.status == .reconciledOpenFinance
         }

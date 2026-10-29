@@ -112,6 +112,7 @@ public final class ManualExpensesViewModel {
     public private(set) var groups: [ManualExpenseGroup] = []
     public private(set) var accounts: [Account] = []
     public private(set) var isSaving = false
+    public private(set) var isActionInProgress = false
     public var errorMessage: String?
     public var expandedGroupIDs: Set<String> = []
     public var pendingDelete: ManualExpenseGroup?
@@ -307,6 +308,9 @@ public final class ManualExpensesViewModel {
     }
 
     public func setPaid(_ expense: ManualExpense, isPaid: Bool) async {
+        guard !isActionInProgress else { return }
+        isActionInProgress = true
+        defer { isActionInProgress = false }
         do {
             if let togglePaid {
                 try await togglePaid.execute(expenseId: expense.id, isPaid: isPaid)
@@ -338,6 +342,9 @@ public final class ManualExpensesViewModel {
               var expense = expenses.first(where: { $0.id == id }) else { return }
         let amount = parseMoney(editingAmountDraft)
         guard amount >= 0 else { return }
+        guard !isActionInProgress else { return }
+        isActionInProgress = true
+        defer { isActionInProgress = false }
         expense.amount = Money(amount: amount)
         do {
             try await repository.updateExpense(expense)
@@ -350,6 +357,7 @@ public final class ManualExpensesViewModel {
 
     public func updateCategory(expenseId: String, category: String) async {
         guard let repository else { return }
+        guard !isActionInProgress else { return }
         let targets: [ManualExpense]
         if let group = group(containingExpenseID: expenseId) {
             targets = group.installments
@@ -358,6 +366,8 @@ public final class ManualExpensesViewModel {
         } else {
             return
         }
+        isActionInProgress = true
+        defer { isActionInProgress = false }
         do {
             for var item in targets {
                 item.category = category
@@ -371,6 +381,9 @@ public final class ManualExpensesViewModel {
 
     public func deleteGroup(_ group: ManualExpenseGroup) async {
         guard let repository else { return }
+        guard !isActionInProgress else { return }
+        isActionInProgress = true
+        defer { isActionInProgress = false }
         do {
             try await repository.deleteExpenses(ids: group.installments.map(\.id))
             pendingDelete = nil

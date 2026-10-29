@@ -31,6 +31,9 @@ public final class JointFinanceViewModel {
     public var salaryInputs: [String: String] = [:]
     public var savingMemberIds: Set<String> = []
     public var pendingManualIds: Set<String> = []
+    public var isActionInProgress: Bool {
+        !pendingManualIds.isEmpty || !savingMemberIds.isEmpty
+    }
     public var errorMessage: String?
     public private(set) var purchaseCategories: [PurchaseCategory] = PurchaseCategoryCatalog.defaults
 

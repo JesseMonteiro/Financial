@@ -95,6 +95,39 @@ final class NotificationPurchaseParserTests: XCTestCase {
         XCTAssertEqual(parsed.source, .wallet)
     }
 
+    func testCarteiraPassNotificationUsesSubtitleAsMerchant() {
+        let result = NotificationPurchaseParser.parse(
+            title: "Pluxee Alimentação",
+            subtitle: "Assaí Atacadista. Cabedelo, PB",
+            body: "R$ 98,34",
+            sourceApp: "Carteira",
+            now: now
+        )
+        guard case .purchase(let parsed) = result else {
+            return XCTFail("expected purchase, got \(result)")
+        }
+        XCTAssertEqual(parsed.amount.amount, Decimal(string: "98.34"))
+        XCTAssertEqual(parsed.merchant, "Assaí Atacadista")
+        XCTAssertEqual(parsed.source, .wallet)
+        XCTAssertGreaterThanOrEqual(parsed.confidence, NotificationPurchaseParser.autoSaveConfidenceThreshold)
+    }
+
+    func testCarteiraPassNotificationKeepsStoreWhenSourceIsPluxee() {
+        let result = NotificationPurchaseParser.parse(
+            title: "Pluxee Alimentação",
+            subtitle: "Forte Frutos Oceania - Hortifruti. João Pessoa, PB",
+            body: "R$ 53,25",
+            sourceApp: "Pluxee",
+            now: now
+        )
+        guard case .purchase(let parsed) = result else {
+            return XCTFail("expected purchase, got \(result)")
+        }
+        XCTAssertEqual(parsed.amount.amount, Decimal(string: "53.25"))
+        XCTAssertEqual(parsed.merchant, "Forte Frutos Oceania - Hortifruti")
+        XCTAssertEqual(parsed.source, .pluxee)
+    }
+
     func testIfoodBeneficios() {
         let result = NotificationPurchaseParser.parse(
             title: "iFood Benefícios",

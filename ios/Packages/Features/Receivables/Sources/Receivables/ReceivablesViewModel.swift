@@ -50,6 +50,7 @@ public final class ReceivablesViewModel {
     public private(set) var receivables: [Receivable] = []
     public private(set) var personGroups: [ReceivablePersonGroup] = []
     public private(set) var isSaving = false
+    public private(set) var isActionInProgress = false
     public var errorMessage: String?
     public var expandedPersonIDs: Set<String> = []
     public var expandedReceivableIDs: Set<String> = []
@@ -232,10 +233,14 @@ public final class ReceivablesViewModel {
     }
 
     public func markInstallmentPaid(receivableID: String, number: Int) async {
+        guard !isActionInProgress else { return }
         guard let repository,
               var receivable = receivables.first(where: { $0.id == receivableID }) else { return }
         guard let index = receivable.installmentHistory.firstIndex(where: { $0.installmentNumber == number }),
               !receivable.installmentHistory[index].isPaid else { return }
+
+        isActionInProgress = true
+        defer { isActionInProgress = false }
 
         receivable.installmentHistory[index].paidAt = InstantDate(from: Date())
         receivable.paidInstallments = receivable.installmentHistory.filter(\.isPaid).count
@@ -251,7 +256,10 @@ public final class ReceivablesViewModel {
     }
 
     public func delete(_ receivable: Receivable) async {
+        guard !isActionInProgress else { return }
         guard let repository else { return }
+        isActionInProgress = true
+        defer { isActionInProgress = false }
         do {
             try await repository.deleteReceivable(id: receivable.id)
             pendingDelete = nil

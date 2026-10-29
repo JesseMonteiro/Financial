@@ -18,6 +18,7 @@ public final class AgendaViewModel {
     public private(set) var items: [AgendaItem] = []
     public var selectedMonth: YearMonth = YearMonth(from: Date())
     public var filter: Filter = .all
+    public private(set) var isActionInProgress = false
     public var errorMessage: String?
 
     private let repository: (any AgendaRepository)?
@@ -77,7 +78,10 @@ public final class AgendaViewModel {
     public func retry() async { await load(force: true) }
 
     public func toggleCustomPaid(_ item: AgendaItem) async {
+        guard !isActionInProgress else { return }
         guard item.kind == .custom, let togglePaid else { return }
+        isActionInProgress = true
+        defer { isActionInProgress = false }
         do {
             try await togglePaid.execute(
                 expenseId: LineItemDetail.agendaSourceId(item),
