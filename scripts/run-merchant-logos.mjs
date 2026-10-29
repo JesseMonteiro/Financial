@@ -9,6 +9,10 @@ import {
   getMerchantLogoUrl,
   normalizeMerchantText,
 } from '../src/utils/merchantLogos.js';
+import {
+  brandNameMatchesQuery,
+  merchantLogoQueryKey,
+} from '../src/utils/merchantLogoQuery.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -97,5 +101,20 @@ assert.equal(matchMerchantLogo(null), null);
 // 9. Test URL resolver
 const url = getMerchantLogoUrl(ifood);
 assert.equal(url, '/merchant-logos/ifood.png');
+
+assert.equal(merchantLogoQueryKey('IFOOD *RESTAURANTE SAO PAULO'), null);
+assert.equal(merchantLogoQueryKey('PAGAMENTO DE SALARIO'), null);
+assert.equal(merchantLogoQueryKey('TED RECEBIDA JOAO SILVA'), null);
+assert.equal(merchantLogoQueryKey('PIX JOAO'), null);
+assert.equal(merchantLogoQueryKey('PAGAMENTO DE FATURA'), null);
+assert.equal(merchantLogoQueryKey('RENDIMENTO POUPANCA'), null);
+assert.equal(merchantLogoQueryKey(''), null);
+assert.equal(merchantLogoQueryKey(null), null);
+assert.equal(merchantLogoQueryKey('Padaria Bella Vista'), 'padaria bella vista');
+assert.equal(merchantLogoQueryKey('PG *REDEPHARMA 123'), 'redepharma');
+assert.equal(merchantLogoQueryKey('FATURA ENEL'), 'enel');
+assert.equal(brandNameMatchesQuery('redepharma', 'Redepharma'), true);
+assert.equal(brandNameMatchesQuery('otica rocha', 'Óticas Rocha'), true);
+assert.equal(brandNameMatchesQuery('padaria bella', 'Stripe'), false);
 
 console.log(`merchantLogos tests passed successfully (${MERCHANT_CATALOG.length} merchants checked).`);

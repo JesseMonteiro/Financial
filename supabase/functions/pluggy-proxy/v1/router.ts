@@ -35,6 +35,7 @@ import {
   handleEdgeChatbotMessage,
 } from "../handlers/telegram/botHandler.ts";
 import { handleDailySummaryRequest } from "../handlers/telegram/dailySummary.ts";
+import { handleMerchantLogosResolve } from "../handlers/merchantLogos.ts";
 
 export interface V1Context {
   requestId: string;
@@ -118,6 +119,11 @@ export async function handleV1(
 
   if ((resource === "parse-bill" || resource === "parsebill") && method === "POST") {
     const legacy = await handleParseBill(body);
+    return await wrapLegacyJsonAsV1(legacy, req);
+  }
+
+  if (resource === "merchant-logos" && actionOrId === "resolve" && method === "POST") {
+    const legacy = await handleMerchantLogosResolve(body);
     return await wrapLegacyJsonAsV1(legacy, req);
   }
 

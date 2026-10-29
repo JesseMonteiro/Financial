@@ -224,6 +224,30 @@ final class AppCompositionRoot {
                 "Secrets.xcconfig incompleto: defina SUPABASE_URL, SUPABASE_ANON_KEY e API_BASE_URL."
             authViewModel.configurationHint = configurationWarning
         }
+
+        let logoClient = bff
+        MerchantLogoCache.shared.resolver = { queries in
+            let entries = try await logoClient.resolveMerchantLogos(queries: queries)
+            var mapped: [String: MerchantLogoResolution] = [:]
+            mapped.reserveCapacity(entries.count)
+            for (key, entry) in entries {
+                let status: MerchantLogoResolution.Status
+                switch entry.status {
+                case "found":
+                    status = .found
+                case "pending":
+                    status = .pending
+                default:
+                    status = .miss
+                }
+                mapped[key] = MerchantLogoResolution(
+                    status: status,
+                    name: entry.name,
+                    url: entry.url.flatMap { URL(string: $0) }
+                )
+            }
+            return mapped
+        }
     }
 
     func bootstrap() async {

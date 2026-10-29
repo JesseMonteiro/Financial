@@ -37,6 +37,7 @@ import { handleDailySummaryRequest } from "../handlers/telegram/dailySummary.ts"
 import { handleSyncStatus, handleSyncRefresh } from "../handlers/sync.ts";
 import { processWebhookEvent } from "../handlers/webhookProcessor.ts";
 import { syncItemToCache } from "../services/syncEngine.ts";
+import { handleMerchantLogosResolve } from "../handlers/merchantLogos.ts";
 
 function resolvePluggyCredentials(profile?: {
   pluggy_client_id?: string | null;
@@ -193,6 +194,10 @@ export async function handleLegacyRequest(
 
   if ((resource === "parse-bill" || resource === "parsebill") && method === "POST") {
     return await handleParseBill(body);
+  }
+
+  if (resource === "merchant-logos" && actionOrId === "resolve" && method === "POST") {
+    return await handleMerchantLogosResolve(body);
   }
 
   const { data: profile } = await supabaseClient

@@ -672,15 +672,9 @@ public struct TransactionRow: View {
         return isCredit ? MeuFluxColors.success : MeuFluxColors.danger
     }
 
-    private var merchantMatch: MerchantEntry? {
-        MerchantLogoCatalog.match(text: title)
-    }
-
     public var body: some View {
         let row = HStack(spacing: 12) {
-            if let merchant = merchantMatch {
-                MerchantLogoView(entry: merchant, size: 36)
-            } else {
+            PurchaseMerchantMark(text: title, size: 36) {
                 let tint = leadingTint
                 Image(systemName: leadingIcon)
                     .font(.subheadline.weight(.semibold))

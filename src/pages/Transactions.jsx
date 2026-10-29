@@ -17,6 +17,7 @@ import { fromTransaction, categoryOptionsForItem, applyingCategory } from '../ut
 import { fetchCategories } from '../services/api';
 import { AccountIcon } from '../components/AccountIcon';
 import { accountById } from '../utils/accountIcons';
+import { useMerchantLogos } from '../hooks/useMerchantLogos';
 
 export function Transactions() {
   const { loadTransactions, getFilteredTransactions, transactions: rawTransactions, filters, setFilters, loading, lastUpdated, updateOpenFinanceCategory } = useTransactionStore();
@@ -33,6 +34,7 @@ export function Transactions() {
   }, []);
 
   const filteredTransactions = getFilteredTransactions();
+  const resolvedLogos = useMerchantLogos(filteredTransactions);
 
   const uniqueCategories = useMemo(() => {
     const setCat = new Set();
@@ -182,6 +184,7 @@ export function Transactions() {
                       isCredit={isIncome}
                       title={tx.description}
                       merchant={tx.merchant}
+                      resolvedLogos={resolvedLogos}
                       size={38}
                     />
                     <div style={{ minWidth: 0 }}>

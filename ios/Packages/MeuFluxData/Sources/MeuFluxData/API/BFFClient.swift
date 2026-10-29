@@ -2,6 +2,20 @@ import Foundation
 import MeuFluxCore
 import MeuFluxDomain
 
+public struct MerchantLogoResolveEntry: Decodable, Sendable {
+    public let status: String
+    public let name: String?
+    public let url: String?
+}
+
+private struct MerchantLogoResolveResponse: Decodable, Sendable {
+    let results: [String: MerchantLogoResolveEntry]
+}
+
+private struct MerchantLogoResolveRequest: Encodable, Sendable {
+    let queries: [String]
+}
+
 /// Talks to the existing Edge Function using the same legacy paths as the web app.
 /// Response caching mirrors web `cachedFetch` / `CACHE_TTL_MS` (1 hour).
 public struct BFFClient: Sendable {
@@ -246,6 +260,15 @@ public struct BFFClient: Sendable {
             APIRequest(path: "parse-bill", method: .post, body: body),
             as: ParsedBillDTO.self
         )
+    }
+
+    public func resolveMerchantLogos(queries: [String]) async throws -> [String: MerchantLogoResolveEntry] {
+        let body = try JSONEncoder.financial.encode(MerchantLogoResolveRequest(queries: queries))
+        let response = try await api.send(
+            APIRequest(path: "merchant-logos/resolve", method: .post, body: body),
+            as: MerchantLogoResolveResponse.self
+        )
+        return response.results
     }
 
     public func createTelegramLinkToken() async throws -> String {

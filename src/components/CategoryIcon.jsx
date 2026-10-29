@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { getCategoryIconId, getCategoryTint } from '../utils/categories';
 import { matchMerchantLogo, getMerchantLogoUrl } from '../utils/merchantLogos';
+import { merchantLogoQueryKeyFromFields } from '../utils/merchantLogoQuery';
 import { resolveLucideIcon } from '../utils/categoryIcons';
 
 function hexToRgba(hex, alpha = 0.14) {
@@ -35,6 +36,8 @@ export function CategoryIcon({
   title,
   description,
   merchant,
+  /** Cached logo.dev hits keyed by merchantLogoQueryKey. */
+  resolvedLogos,
   style,
 }) {
   const [imgError, setImgError] = React.useState(false);
@@ -47,8 +50,12 @@ export function CategoryIcon({
     ? matchMerchantLogo(title || description, merchant)
     : null;
   const merchantLogoUrl = merchantMatch ? getMerchantLogoUrl(merchantMatch) : null;
+  const remoteKey = !isPayment && !imgError && !merchantLogoUrl
+    ? merchantLogoQueryKeyFromFields({ title, description, merchant })
+    : null;
+  const remoteLogo = remoteKey ? resolvedLogos?.[remoteKey] : null;
 
-  if (merchantLogoUrl) {
+  if (merchantLogoUrl || remoteLogo?.url) {
     return (
       <div
         aria-hidden
@@ -56,7 +63,9 @@ export function CategoryIcon({
           width: size,
           height: size,
           borderRadius: '50%',
-          backgroundColor: hexToRgba(merchantMatch.color, 0.15),
+          backgroundColor: merchantMatch
+            ? hexToRgba(merchantMatch.color, 0.15)
+            : 'var(--bg-tertiary)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -67,8 +76,8 @@ export function CategoryIcon({
         }}
       >
         <img
-          src={merchantLogoUrl}
-          alt={merchantMatch.name}
+          src={merchantLogoUrl || remoteLogo.url}
+          alt={merchantMatch?.name || remoteLogo.name || ''}
           onError={() => setImgError(true)}
           style={{
             width: Math.round(size * 0.72),

@@ -28,6 +28,7 @@ import { getCategoryColor } from '../utils/colors';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell } from 'recharts';
 import { AccountIcon } from '../components/AccountIcon';
 import { CategoryIcon } from '../components/CategoryIcon';
+import { useMerchantLogos } from '../hooks/useMerchantLogos';
 import { CreditCardFace } from '../components/CreditCardFace';
 import { useCategoryStore } from '../stores/categoryStore';
 import { useIsMobile } from '../hooks/useMediaQuery';
@@ -351,6 +352,7 @@ export function CreditCards() {
         return String(a.id || '').localeCompare(String(b.id || ''));
       });
   }, [currentSelectedBill, search, selectedCategory]);
+  const resolvedLogos = useMerchantLogos(filteredTransactions);
 
   // Bar chart data — keys are already due months
   const chartData = useMemo(() => {
@@ -813,6 +815,7 @@ export function CreditCards() {
                         isCredit={isCredit && !isPayment}
                         title={isPayment ? null : tx.description}
                         merchant={isPayment ? null : tx.merchant}
+                        resolvedLogos={isPayment ? null : resolvedLogos}
                         emptyFallback="receipt"
                         size={36}
                       />

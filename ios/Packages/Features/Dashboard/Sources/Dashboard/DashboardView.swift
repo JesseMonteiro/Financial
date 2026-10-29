@@ -465,12 +465,8 @@ public struct DashboardView: View {
             return part
         }
 
-        let merchantMatch = MerchantLogoCatalog.match(text: purchase.description)
-
         return HStack(spacing: 12) {
-            if let merchant = merchantMatch {
-                MerchantLogoView(entry: merchant, size: 36)
-            } else {
+            PurchaseMerchantMark(text: purchase.description, size: 36) {
                 let tint = purchaseTint(purchase.category)
                 Image(systemName: PurchaseCategoryCatalog.systemImage(for: purchase.category, in: viewModel.purchaseCategories))
                     .font(.subheadline.weight(.semibold))
@@ -1268,7 +1264,6 @@ public struct DashboardView: View {
 
     private func dailyPurchaseDetailRow(_ purchase: DashboardRecentTransaction) -> some View {
         let category = LineItemDetail.translatedCategory(purchase.category)
-        let merchantMatch = MerchantLogoCatalog.match(text: purchase.description)
         let subtitle: String = {
             if viewModel.isDaySelected {
                 var parts = [category]
@@ -1286,9 +1281,7 @@ public struct DashboardView: View {
         }()
 
         return HStack(spacing: 8) {
-            if let merchant = merchantMatch {
-                MerchantLogoView(entry: merchant, size: 22)
-            } else {
+            PurchaseMerchantMark(text: purchase.description, size: 22) {
                 let tint = purchaseTint(purchase.category)
                 Image(systemName: PurchaseCategoryCatalog.systemImage(for: purchase.category, in: viewModel.purchaseCategories))
                     .font(.system(size: 11, weight: .semibold))

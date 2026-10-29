@@ -15,6 +15,7 @@ import syncRoutes from './routes/sync.js';
 import chatbotRoutes from './routes/chatbot.js';
 import jointRoutes from './routes/joint.js';
 import parseBillRoutes from './routes/parseBill.js';
+import merchantLogosRoutes from './routes/merchantLogos.js';
 import { clearCache } from './middleware/cache.js';
 import { checkAuth } from './middleware/auth.js';
 import { initDailySummaryScheduler } from './services/dailySummaryScheduler.js';
@@ -49,6 +50,7 @@ app.use('/api/sync', syncRoutes);
 app.use('/api/chatbot', chatbotRoutes);
 app.use('/api/joint', jointRoutes);
 app.use('/api/parse-bill', parseBillRoutes);
+app.use('/api/merchant-logos', merchantLogosRoutes);
 
 // Support reverse-proxy / Pluggy webhook path: https://jessemonteiro.com/Financial/
 app.use('/Financial/api/webhooks', webhooksRoutes);

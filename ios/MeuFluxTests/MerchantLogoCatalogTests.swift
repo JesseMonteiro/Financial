@@ -75,4 +75,18 @@ final class MerchantLogoCatalogTests: XCTestCase {
         XCTAssertNil(MerchantLogoCatalog.match(text: ""))
         XCTAssertNil(MerchantLogoCatalog.match(text: nil))
     }
+
+    func testLookupKeySkipsCatalogAndGenericText() {
+        XCTAssertNil(MerchantLogoCatalog.lookupKey(text: "iFood *Restaurante"))
+        XCTAssertNil(MerchantLogoCatalog.lookupKey(text: "TED RECEBIDA JOAO SILVA"))
+        XCTAssertNil(MerchantLogoCatalog.lookupKey(text: "PAGAMENTO DE SALARIO"))
+        XCTAssertNil(MerchantLogoCatalog.lookupKey(text: "PIX JOAO"))
+        XCTAssertNil(MerchantLogoCatalog.lookupKey(text: "PAGAMENTO DE FATURA"))
+        XCTAssertNil(MerchantLogoCatalog.lookupKey(text: "RENDIMENTO POUPANCA"))
+        XCTAssertNil(MerchantLogoCatalog.lookupKey(text: ""))
+        XCTAssertNil(MerchantLogoCatalog.lookupKey(text: nil))
+        XCTAssertEqual(MerchantLogoCatalog.lookupKey(text: "Padaria Bella Vista"), "padaria bella vista")
+        XCTAssertEqual(MerchantLogoCatalog.lookupKey(text: "PG *REDEPHARMA 123"), "redepharma")
+        XCTAssertEqual(MerchantLogoCatalog.lookupKey(text: "FATURA ENEL"), "enel")
+    }
 }

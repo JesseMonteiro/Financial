@@ -19,6 +19,7 @@ import {
   DesktopSummaryCarousel,
 } from '../components/DashboardCarousels';
 import { CategoryIcon } from '../components/CategoryIcon';
+import { useMerchantLogos } from '../hooks/useMerchantLogos';
 import { useAccountStore } from '../stores/accountStore';
 import { useTransactionStore } from '../stores/transactionStore';
 import { useInvestmentStore } from '../stores/investmentStore';
@@ -67,6 +68,7 @@ export function Dashboard() {
   const { loadBudgets, budgets } = useBudgetStore();
   const { loadMealBenefits, benefits: mealBenefits, purchases: mealPurchases } = useMealBenefitStore();
   const { loadCategories, categories: purchaseCategories } = useCategoryStore();
+  const resolvedLogos = useMerchantLogos(transactions.slice(0, 5));
   const { loadForAccounts, transactionsByAccount } = useCreditDataStore();
   const clearCreditData = useCreditDataStore((s) => s.clear);
   const user = useAuthStore((s) => s.user);
@@ -384,6 +386,7 @@ export function Dashboard() {
                       isCredit={tx.amount >= 0}
                       title={tx.description}
                       merchant={tx.merchant}
+                      resolvedLogos={resolvedLogos}
                       size={32}
                     />
                     <div style={{ minWidth: 0 }}>

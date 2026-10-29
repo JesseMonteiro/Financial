@@ -180,6 +180,55 @@ public enum MerchantLogoCatalog {
         }
         return nil
     }
+
+    /// Cache key for a purchase the local catalog does not cover.
+    /// Nil means the row must keep its category icon and must not call logo.dev.
+    public static func lookupKey(text: String?) -> String? {
+        guard let text, !text.isEmpty, match(text: text) == nil else { return nil }
+        let normalized = normalize(text)
+        if shouldSkip(normalized) { return nil }
+        let key = cleanLookup(normalized)
+        if key.count < 3 || key.count > 80 { return nil }
+        if shouldSkip(key) { return nil }
+        if match(text: key) != nil { return nil }
+        return key
+    }
+
+    private static let skipFragments = [
+        " pix ",
+        " ted ",
+        " doc ",
+        " salario ",
+        " rendimento ",
+        " poupanca ",
+        " pagamento de fatura ",
+    ]
+
+    private static let noiseTokens: Set<String> = [
+        "compra", "compras", "pag", "pg", "pagamento", "debito", "credito",
+        "cartao", "visa", "master", "mastercard", "elo", "hipercard",
+        "br", "brasil", "sa", "ltda", "me", "eireli", "filial", "loja",
+        "parcela", "de", "do", "da", "dos", "das", "em", "no", "na", "para",
+        "recebida", "recebido", "enviada", "enviado", "transf", "transferencia",
+        "fatura",
+    ]
+
+    private static func shouldSkip(_ normalized: String) -> Bool {
+        let compact = normalized.replacingOccurrences(of: " ", with: "")
+        if compact.isEmpty || compact.allSatisfy(\.isNumber) { return true }
+        let padded = " \(normalized) "
+        return skipFragments.contains { padded.contains($0) }
+    }
+
+    private static func cleanLookup(_ normalized: String) -> String {
+        normalized
+            .split(separator: " ")
+            .map(String.init)
+            .filter { token in
+                !token.isEmpty && !noiseTokens.contains(token) && !token.allSatisfy(\.isNumber)
+            }
+            .joined(separator: " ")
+    }
 }
 
 public struct MerchantLogoView: View {

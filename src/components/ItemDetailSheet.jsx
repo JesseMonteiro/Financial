@@ -5,6 +5,7 @@ import { Badge } from './ui/Badge';
 import { lineItemKindTitle, paidActionTitle } from '../utils/lineItemDetail';
 import { selectedCategoryValue } from '../utils/categories';
 import { CategoryIcon } from './CategoryIcon';
+import { useMerchantLogos } from '../hooks/useMerchantLogos';
 import { useIsMobile } from '../hooks/useMediaQuery';
 
 function badgeVariant(text) {
@@ -28,6 +29,7 @@ export function ItemDetailSheet({
   onChangeCategory,
 }) {
   const isMobile = useIsMobile();
+  const resolvedLogos = useMerchantLogos(item ? [{ title: item.title, merchant: item.merchant }] : []);
   if (!item && !editor) return null;
 
   const handleOverlay = (event) => {
@@ -58,6 +60,7 @@ export function ItemDetailSheet({
               <CategoryIcon
                 title={item.title}
                 category={item.categoryKey || item.category}
+                resolvedLogos={resolvedLogos}
                 size={44}
                 isCredit={item.isCredit}
               />

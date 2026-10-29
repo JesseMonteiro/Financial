@@ -15,6 +15,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { Sparkline } from './charts/Sparkline';
 import { CategoryIcon } from './CategoryIcon';
+import { useMerchantLogos } from '../hooks/useMerchantLogos';
 import { usePrefersReducedMotion } from '../hooks/usePrefersReducedMotion';
 import { attrSelector, bindSnapSelect, centerChild } from '../utils/snapCarousel';
 import { formatCurrency } from '../utils/formatters';
@@ -610,6 +611,7 @@ export function DesktopSummaryCarousel({
 }
 
 export function CreditPurchasesCarousel({ purchases = [], onSelect }) {
+  const resolvedLogos = useMerchantLogos(purchases);
   const slides = purchases.length > 0 ? purchases : [];
   const { trackRef } = useSnapCarousel(slides.length, 'data-purchase-slide', { autoPlay: false });
 
@@ -643,6 +645,7 @@ export function CreditPurchasesCarousel({ purchases = [], onSelect }) {
             <CategoryIcon
               category={purchase.category}
               title={purchase.description}
+              resolvedLogos={resolvedLogos}
               size={36}
               emptyFallback="receipt"
             />

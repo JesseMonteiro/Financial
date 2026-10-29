@@ -475,6 +475,12 @@ export async function sendChatbotMessage({ message, history = [], context = {} }
   return res.data;
 }
 
+export async function resolveMerchantLogos(queries) {
+  if (!Array.isArray(queries) || queries.length === 0) return {};
+  const res = await api.post('/merchant-logos/resolve', { queries });
+  return res.data?.results || {};
+}
+
 export async function checkServerHealth() {
   try {
     const res = await api.get('/health');
