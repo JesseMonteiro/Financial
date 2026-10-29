@@ -20,7 +20,12 @@ export function jsonResponse(data: unknown, status = 200, extraHeaders: Record<s
     : data;
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...CORS, "Content-Type": "application/json", ...extraHeaders },
+    headers: {
+      ...CORS,
+      "Content-Type": "application/json",
+      "Cache-Control": "no-store",
+      ...extraHeaders,
+    },
   });
 }
 

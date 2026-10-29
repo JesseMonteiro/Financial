@@ -40,31 +40,13 @@ export function SyncStatusBadge({ compact = false }) {
       <div
         className="sync-status-compact"
         title={`Status Open Finance: ${currentFreshness.label} (${relTime})`}
-        style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: 6,
-          cursor: 'pointer',
-          padding: '2px 6px',
-          borderRadius: 12,
-          background: 'rgba(255, 255, 255, 0.05)',
-        }}
         onClick={() => loadSyncStatus({ force: true })}
       >
         <span
-          style={{
-            width: 8,
-            height: 8,
-            borderRadius: '50%',
-            backgroundColor: dotColor,
-            boxShadow: `0 0 8px ${dotColor}`,
-            flexShrink: 0,
-            display: 'inline-block',
-          }}
+          className="sync-status-badge__dot"
+          style={{ backgroundColor: dotColor, boxShadow: `0 0 8px ${dotColor}` }}
         />
-        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted, #94a3b8)', fontWeight: 500 }}>
-          {relTime}
-        </span>
+        <span>{relTime}</span>
       </div>
     );
   }
@@ -78,73 +60,31 @@ export function SyncStatusBadge({ compact = false }) {
     >
       <div
         className="sync-status-badge"
-        style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: 7,
-          padding: '4px 10px',
-          borderRadius: 'var(--radius-full, 9999px)',
-          background: 'rgba(255, 255, 255, 0.04)',
-          border: '1px solid rgba(255, 255, 255, 0.08)',
-          backdropFilter: 'blur(8px)',
-          fontSize: 'var(--font-size-xs, 0.75rem)',
-          color: 'var(--text-secondary, #cbd5e1)',
-          cursor: 'pointer',
-          userSelect: 'none',
-          transition: 'all 0.2s ease',
-        }}
         onClick={() => loadSyncStatus({ force: true })}
       >
         <span
-          style={{
-            width: 7,
-            height: 7,
-            borderRadius: '50%',
-            backgroundColor: dotColor,
-            boxShadow: `0 0 6px ${dotColor}`,
-            display: 'inline-block',
-            flexShrink: 0,
-          }}
+          className="sync-status-badge__dot"
+          style={{ backgroundColor: dotColor, boxShadow: `0 0 6px ${dotColor}` }}
         />
-        <span style={{ fontWeight: 500 }}>
+        <span>
           {refreshing ? 'Sincronizando…' : loading ? 'Verificando…' : relTime}
         </span>
         {currentFreshness.level === 'stale' && (
-          <AlertTriangle size={12} style={{ color: 'var(--danger, #ef4444)' }} />
+          <AlertTriangle size={12} style={{ color: 'var(--danger)' }} />
         )}
       </div>
 
-      {/* Hover Tooltip / Popover */}
       {isTooltipOpen && (
-        <div
-          className="sync-status-tooltip"
-          style={{
-            position: 'absolute',
-            top: 'calc(100% + 8px)',
-            right: 0,
-            zIndex: 100,
-            width: 260,
-            padding: '12px 14px',
-            background: 'var(--bg-surface, rgba(15, 23, 42, 0.95))',
-            border: '1px solid rgba(255, 255, 255, 0.12)',
-            borderRadius: 12,
-            boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5)',
-            backdropFilter: 'blur(16px)',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 8,
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid rgba(255, 255, 255, 0.08)', paddingBottom: 6 }}>
-            <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-primary, #f8fafc)' }}>
-              Sincronização Pluggy
-            </span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ fontSize: '0.7rem', color: dotColor, fontWeight: 600 }}>
+        <div className="sync-status-popover liquid-glass liquid-glass--regular" role="dialog" aria-label="Sincronização Pluggy">
+          <div className="sync-status-popover__head">
+            <span className="sync-status-popover__title">Sincronização Pluggy</span>
+            <div className="sync-status-popover__actions">
+              <span className="sync-status-popover__level" style={{ color: dotColor }}>
                 {currentFreshness.label}
               </span>
               <button
                 type="button"
+                className="sync-status-popover__sync"
                 onClick={async (e) => {
                   e.stopPropagation();
                   try {
@@ -154,38 +94,30 @@ export function SyncStatusBadge({ compact = false }) {
                   }
                 }}
                 disabled={loading || refreshing}
-                style={{
-                  background: 'rgba(255, 255, 255, 0.08)',
-                  border: '1px solid rgba(255, 255, 255, 0.15)',
-                  borderRadius: 6,
-                  padding: '2px 8px',
-                  fontSize: '0.65rem',
-                  color: 'var(--text-primary, #fff)',
-                  cursor: (loading || refreshing) ? 'not-allowed' : 'pointer',
-                  fontWeight: 600,
-                  transition: 'background 0.2s',
-                }}
               >
                 {refreshing ? 'Sincronizando…' : 'Sincronizar'}
               </button>
             </div>
           </div>
 
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary, #cbd5e1)', lineHeight: 1.4 }}>
-            Última atualização: <strong style={{ color: 'var(--text-primary, #fff)' }}>{formattedAbsTime}</strong>
+          <div className="sync-status-popover__meta">
+            Última atualização: <strong>{formattedAbsTime}</strong>
           </div>
 
           {items && items.length > 0 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
-              <span style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: 0.5, color: 'var(--text-muted, #94a3b8)' }}>
+            <div className="sync-status-popover__list">
+              <span className="sync-status-popover__kicker">
                 Conexões ({items.length})
               </span>
               {items.map((it) => (
-                <div key={it.pluggyItemId} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.75rem' }}>
-                  <span style={{ color: 'var(--text-primary, #f8fafc)', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', maxWidth: 140 }}>
+                <div key={it.pluggyItemId} className="sync-status-popover__row">
+                  <span className="sync-status-popover__name">
                     {it.connectorName || 'Banco'}
                   </span>
-                  <span style={{ color: it.freshness?.dotColor || 'var(--text-muted)', fontSize: '0.7rem' }}>
+                  <span
+                    className="sync-status-popover__time"
+                    style={{ color: it.freshness?.dotColor || 'var(--text-muted)' }}
+                  >
                     {freshnessRelativeLabel(it.lastSyncedAt)}
                   </span>
                 </div>
@@ -193,7 +125,7 @@ export function SyncStatusBadge({ compact = false }) {
             </div>
           )}
 
-          <div style={{ marginTop: 4, paddingTop: 6, borderTop: '1px solid rgba(255, 255, 255, 0.08)', fontSize: '0.65rem', color: 'var(--text-muted, #94a3b8)' }}>
+          <div className="sync-status-popover__policy">
             Política: cache de 1h · auto-sync via webhooks
           </div>
         </div>

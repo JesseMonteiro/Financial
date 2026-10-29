@@ -113,6 +113,7 @@ public struct DashboardView: View {
             }
             .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
             .scrollClipDisabled()
+            .refreshable { await viewModel.load(force: true) }
         }
         #if os(iOS)
         .toolbar(.hidden, for: .navigationBar)
@@ -143,7 +144,6 @@ public struct DashboardView: View {
                 }
             )
         }
-        .refreshable { await viewModel.load(force: true) }
         .task { await viewModel.load() }
     }
 

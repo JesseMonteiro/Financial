@@ -606,6 +606,7 @@ public final class DashboardViewModel {
                 state = .loaded(snapshot)
             }
             lastLoadedAt = Date()
+            lastCacheKey = cacheKey
             let fallbackPurchases = snapshot.recentCreditPurchases
             let recentTx = snapshot.recentTransactions
             let dailySpendSnap = snapshot.dailySpend
@@ -634,9 +635,10 @@ public final class DashboardViewModel {
         } catch {
             guard generation == loadGeneration else { return }
             if Self.isCancellation(error) {
-                // The SwiftUI `.task` that started this load is already cancelled, so a
-                // nested await would also cancel. Hop to a fresh Task for one retry.
-                if !state.hasContent, cancellationRetry < 1 {
+                // SwiftUI cancels `.refreshable` and `.task` when the scroll view
+                // settles. A nested await would inherit that cancellation. Hop to a
+                // fresh Task so a pull-to-refresh still replaces a days-old snapshot.
+                if cancellationRetry < 1, force || !state.hasContent {
                     let forceRetry = force
                     let retry = cancellationRetry + 1
                     Task { @MainActor in

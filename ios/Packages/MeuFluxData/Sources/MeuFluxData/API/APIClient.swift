@@ -82,6 +82,12 @@ public final class APIClient: APIClientProtocol, @unchecked Sendable {
         var urlRequest = URLRequest(url: url)
         urlRequest.httpMethod = request.method.rawValue
         urlRequest.httpBody = request.body
+        // BFF freshness lives in CacheActor (1h), same as web cachedFetch.
+        // URLCache otherwise keeps GET bodies for days and pull-to-refresh
+        // keeps showing a stale lastSyncedAt.
+        urlRequest.cachePolicy = .reloadIgnoringLocalCacheData
+        urlRequest.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
+        urlRequest.setValue("no-cache", forHTTPHeaderField: "Pragma")
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
         urlRequest.setValue("application/json", forHTTPHeaderField: "Accept")
         urlRequest.setValue(request.correlationID.value, forHTTPHeaderField: "X-Correlation-ID")
